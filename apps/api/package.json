@@ -1,0 +1,37 @@
+{
+  "name": "@tablefolk/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file=../../.env --import tsx --watch src/server.ts",
+    "build": "corepack pnpm --filter @tablefolk/contracts build && prisma generate && tsc -p tsconfig.json",
+    "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@clerk/fastify": "latest",
+    "@fastify/cors": "latest",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "@tablefolk/contracts": "workspace:*",
+    "@vercel/blob": "latest",
+    "@vercel/functions": "latest",
+    "fast-xml-parser": "latest",
+    "fastify": "^5.0.0",
+    "pg": "^8.0.0",
+    "resend": "latest",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "latest",
+    "prisma": "^7.10.0",
+    "tsx": "latest",
+    "typescript": "^5.9.0",
+    "vitest": "latest"
+  }
+}

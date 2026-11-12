@@ -1,0 +1,26 @@
+{
+  "name": "@tablefolk/web",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "corepack pnpm --filter @tablefolk/contracts build && next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clerk/nextjs": "latest",
+    "@fontsource/dm-sans": "latest",
+    "@tablefolk/contracts": "workspace:*",
+    "lucide-react": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "^5.9.0"
+  }
+}

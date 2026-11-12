@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String           @id
+  displayName    String
+  email          String
+  createdAt      DateTime         @default(now())
+  collection     CollectionItem[]
+  createdGroups  Group[]          @relation("GroupCreator")
+  memberships    GroupMember[]
+  shares         GroupShare[]
+  sentInvites    Invitation[]     @relation("InviteSender")
+  createdInviteLinks GroupInviteLink[] @relation("InviteLinkCreator")
+}
+
+model Game {
+  bggId          Int              @id
+  kind           String
+  name           String
+  alternateNames String[]         @default([])
+  yearPublished  Int?
+  description    String?
+  minPlayers     Int?
+  maxPlayers     Int?
+  playingTime    Int?
+  minPlayingTime Int?
+  maxPlayingTime Int?
+  minAge         Int?
+  designers      String[]         @default([])
+  publishers     String[]         @default([])
+  categories     String[]         @default([])
+  coverUrl       String?
+  sourceUrl      String
+  importedAt     DateTime         @default(now())
+  cover          GameCover?
+  collection     CollectionItem[]
+  shares         GroupShare[]
+}
+
+model GameCover {
+  bggId       Int    @id
+  contentType String
+  data        Bytes  @db.ByteA
+  game        Game   @relation(fields: [bggId], references: [bggId], onDelete: Cascade)
+}
+
+model CollectionItem {
+  userId     String
+  bggId      Int
+  addedAt    DateTime     @default(now())
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game       Game         @relation(fields: [bggId], references: [bggId], onDelete: Restrict)
+  shares     GroupShare[]
+
+  @@id([userId, bggId])
+  @@index([bggId])
+}
+
+model Group {
+  id          String        @id @default(uuid())
+  name        String
+  creatorId   String
+  createdAt   DateTime      @default(now())
+  creator     User          @relation("GroupCreator", fields: [creatorId], references: [id])
+  members     GroupMember[]
+  shares      GroupShare[]
+  invitations Invitation[]
+  inviteLinks GroupInviteLink[]
+}
+
+model GroupMember {
+  groupId   String
+  userId    String
+  joinedAt  DateTime     @default(now())
+  group     Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shares    GroupShare[]
+
+  @@id([groupId, userId])
+  @@index([userId])
+}
+
+model GroupShare {
+  groupId     String
+  userId      String
+  bggId       Int
+  sharedAt    DateTime       @default(now())
+  group       Group          @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  member      GroupMember    @relation(fields: [groupId, userId], references: [groupId, userId], onDelete: Cascade)
+  collection  CollectionItem @relation(fields: [userId, bggId], references: [userId, bggId], onDelete: Cascade)
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game        Game           @relation(fields: [bggId], references: [bggId], onDelete: Restrict)
+
+  @@id([groupId, userId, bggId])
+  @@index([groupId, bggId])
+  @@index([userId, bggId])
+}
+
+enum InvitationStatus {
+  PENDING
+  SEND_FAILED
+  ACCEPTED
+  REVOKED
+}
+
+model Invitation {
+  id         String           @id @default(uuid())
+  groupId    String
+  email      String
+  tokenHash  String           @unique
+  status     InvitationStatus @default(PENDING)
+  expiresAt  DateTime
+  createdAt  DateTime         @default(now())
+  acceptedAt DateTime?
+  inviterId  String
+  group      Group            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  inviter    User             @relation("InviteSender", fields: [inviterId], references: [id])
+
+  @@index([groupId, email])
+  @@index([expiresAt])
+}
+
+model GroupInviteLink {
+  id        String    @id @default(uuid())
+  groupId   String
+  creatorId String
+  tokenHash String    @unique
+  expiresAt DateTime?
+  revokedAt DateTime?
+  joinCount Int       @default(0)
+  createdAt DateTime  @default(now())
+  group     Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  creator   User      @relation("InviteLinkCreator", fields: [creatorId], references: [id])
+
+  @@index([groupId, createdAt])
+}
