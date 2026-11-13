@@ -3,10 +3,6 @@ const required = [
   'VERCEL_WEB_PROJECT_ID', 'VERCEL_TEAM_SLUG', 'GITHUB_REPOSITORY',
   'GITHUB_EVENT_PATH', 'GITHUB_EVENT_NAME',
 ];
-for (const key of required) {
-  if (!process.env[key]) throw new Error(`Missing ${key}`);
-}
-
 const event = JSON.parse(await (await import('node:fs/promises')).readFile(process.env.GITHUB_EVENT_PATH, 'utf8'));
 const repo = process.env.GITHUB_REPOSITORY;
 const prNumber = event.issue?.number ?? event.pull_request?.number;
@@ -38,6 +34,31 @@ const github = (path, options) => request('https://api.github.com', path, proces
   headers: { 'X-GitHub-Api-Version': '2022-11-28' },
 });
 const vercel = (project, path, options) => request('https://api.vercel.com', path, project.token, options);
+
+async function comment(body) {
+  await github(`/repos/${repo}/issues/${prNumber}/comments`, {
+    method: 'POST', body: JSON.stringify({ body }),
+  });
+}
+
+async function reactToCommand() {
+  await github(`/repos/${repo}/issues/comments/${event.comment.id}/reactions`, {
+    method: 'POST', body: JSON.stringify({ content: 'eyes' }),
+  });
+}
+
+function failureBody(error) {
+  let trace = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  for (const key of ['GH_TOKEN', 'VERCEL_API_TOKEN', 'VERCEL_WEB_TOKEN']) {
+    const secret = process.env[key];
+    if (secret) trace = trace.replaceAll(secret, '[redacted]');
+  }
+  trace = trace.replaceAll('```', "'''\u200b").slice(0, 12_000);
+  const action = process.env.GITHUB_RUN_ID
+    ? `\n\n[Full workflow logs](https://github.com/${repo}/actions/runs/${process.env.GITHUB_RUN_ID})`
+    : '';
+  return `❌ ${process.env.GITHUB_EVENT_NAME === 'issue_comment' ? 'Preview' : 'Production'} deployment failed.\n\n<details><summary>Stack trace</summary>\n\n\`\`\`text\n${trace}\n\`\`\`\n\n</details>${action}`;
+}
 
 async function comments() {
   const all = [];
@@ -85,6 +106,7 @@ async function removeDeployment(entry, project) {
 const teamQuery = `teamId=${encodeURIComponent(process.env.VERCEL_ORG_ID)}`;
 
 async function verifyProject(project) {
+  console.log(`Checking access to ${project.name}`);
   const settings = await vercel(project, `/v9/projects/${project.id}?${teamQuery}`);
   if (settings.id !== project.id || settings.name !== project.name) {
     throw new Error(`${project.name} token does not resolve the expected Vercel project`);
@@ -105,6 +127,7 @@ async function deploy(project, { sha, ref, repoId, production, overrides = {}, p
     body: JSON.stringify(body),
   });
   if (!created.id) throw new Error(`${project.name} deployment response has no ID`);
+  console.log(`${project.name} deployment ${created.id} started`);
   const deadline = Date.now() + 18 * 60 * 1000;
   while (Date.now() < deadline) {
     const current = await vercel(project, `/v13/deployments/${created.id}?${teamQuery}`);
@@ -128,9 +151,16 @@ async function assignAlias(project, deployment, origin) {
     method: 'POST',
     body: JSON.stringify({ alias: new URL(origin).host }),
   });
+  console.log(`${project.name} preview alias ready: ${origin}`);
 }
 
+async function main() {
+for (const key of required) {
+  if (!process.env[key]) throw new Error(`Missing ${key}`);
+}
 if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
+  await reactToCommand();
+  console.log(`Acknowledged /deploy on PR #${prNumber}`);
   const actor = encodeURIComponent(event.comment.user.login);
   const access = await github(`/repos/${repo}/collaborators/${actor}/permission`);
   if (!['admin', 'maintain', 'write'].includes(access.permission)) {
@@ -142,8 +172,11 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
   const sha = pr.head.sha;
   const previous = await findRecord();
   if (previous?.record.sha === sha) {
+    const webOrigin = `https://tablefolk-web-pr-${prNumber}-${team}.vercel.app`;
+    const apiOrigin = `https://tablefolk-api-pr-${prNumber}-${team}.vercel.app`;
+    await comment(`✅ Preview already ready for \`${sha.slice(0, 7)}\`.\n\n- Web: ${webOrigin}\n- API: ${apiOrigin}`);
     console.log('This PR commit already has a preview');
-    process.exit(0);
+    return;
   }
   await Promise.all(projects.map(verifyProject));
   const webOrigin = `https://tablefolk-web-pr-${prNumber}-${team}.vercel.app`;
@@ -158,11 +191,11 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
   await assignAlias(projects[0], api, apiOrigin);
   await assignAlias(projects[1], web, webOrigin);
   const record = { pr: prNumber, sha, api, web };
-  await writeRecord(previous?.comment, record, `Preview ready for \`${sha.slice(0, 7)}\`:\n\n- Web: ${webOrigin}\n- API: ${apiOrigin}`);
   if (previous) {
     await removeDeployment(previous.record.api, projects[0]);
     await removeDeployment(previous.record.web, projects[1]);
   }
+  await writeRecord(previous?.comment, record, `✅ Preview deployment succeeded for \`${sha.slice(0, 7)}\`.\n\n- Web: ${webOrigin}\n- API: ${apiOrigin}`);
 } else if (process.env.GITHUB_EVENT_NAME === 'pull_request' && event.pull_request.merged) {
   const sha = event.pull_request.merge_commit_sha;
   if (!sha) throw new Error('Merged PR has no merge commit SHA');
@@ -180,4 +213,19 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
   }
 } else {
   throw new Error('Unsupported event');
+}
+}
+
+try {
+  await main();
+} catch (error) {
+  console.error(error);
+  if (repo && prNumber && process.env.GH_TOKEN) {
+    try {
+      await comment(failureBody(error));
+    } catch (commentError) {
+      console.error('Could not post the failure to the PR:', commentError);
+    }
+  }
+  process.exitCode = 1;
 }
