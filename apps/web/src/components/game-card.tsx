@@ -42,10 +42,22 @@ export function GameCard({ game, owners, actions, interestScore, onVote, canVote
           {game.kind === "boardgameexpansion" && <span className="game-kind">Expansion</span>}
         </div>
         <p className="game-meta">
-          {playerRange(game)}
-          {game.playingTime ? ` · ${game.playingTime} min` : ""}
-          {complexity ? ` · ${complexity}` : ""}
-          {game.yearPublished ? ` · ${game.yearPublished}` : ""}
+          <span className="meta-pill meta-players">{playerRange(game)}</span>
+          {game.playingTime && <span className="meta-pill meta-time">⏱️ {game.playingTime} min</span>}
+          {complexity && (
+            <span
+              className={`meta-pill meta-weight ${
+                (game.weight ?? 0) > 3.2
+                  ? "weight-heavy"
+                  : (game.weight ?? 0) > 2.2
+                  ? "weight-medium"
+                  : "weight-light"
+              }`}
+            >
+              ⚖️ {complexity}
+            </span>
+          )}
+          {game.yearPublished && <span className="meta-pill meta-year">📅 {game.yearPublished}</span>}
         </p>
 
         {interestScore !== undefined && interestScore > 0 && (
