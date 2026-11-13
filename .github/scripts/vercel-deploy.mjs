@@ -15,8 +15,8 @@ const marker = '<!-- tablefolk-vercel-preview -->';
 const team = process.env.VERCEL_TEAM_SLUG;
 const sourceDir = resolve(process.env.VERCEL_SOURCE_DIR ?? 'deploy-source');
 const projects = [
-  { name: 'tablefolk-api', id: process.env.VERCEL_API_PROJECT_ID, token: process.env.VERCEL_API_TOKEN },
-  { name: 'tablefolk-web', id: process.env.VERCEL_WEB_PROJECT_ID, token: process.env.VERCEL_WEB_TOKEN },
+  { name: 'tablefolk-api', rootDirectory: 'apps/api', id: process.env.VERCEL_API_PROJECT_ID, token: process.env.VERCEL_API_TOKEN },
+  { name: 'tablefolk-web', rootDirectory: 'apps/web', id: process.env.VERCEL_WEB_PROJECT_ID, token: process.env.VERCEL_WEB_TOKEN },
 ];
 
 async function request(base, path, token, options = {}) {
@@ -127,7 +127,8 @@ async function sourceFiles(expectedSha) {
     (file.startsWith('apps/') || file.startsWith('packages/') ||
     ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.base.json', '.vercelignore', 'vercel.json'].includes(file)) &&
     !file.split('/').some(part => part === '.env' || part.startsWith('.env.')));
-  if (!included.includes('package.json') || !included.some(file => file.startsWith('apps/api/')) || !included.some(file => file.startsWith('apps/web/'))) {
+  if (!included.includes('package.json') || !included.includes('pnpm-lock.yaml') || !included.includes('pnpm-workspace.yaml') ||
+      !included.some(file => file.startsWith('apps/api/')) || !included.some(file => file.startsWith('apps/web/'))) {
     throw new Error('Checked out source is missing required workspace files');
   }
   const files = [];
@@ -161,12 +162,23 @@ async function verifyProject(project) {
   }
 }
 
+async function buildLogTail(project, deploymentId) {
+  const events = await vercel(project, `/v3/deployments/${deploymentId}/events?${teamQuery}&limit=100&direction=backward`);
+  const list = Array.isArray(events) ? events : events?.events;
+  if (!Array.isArray(list)) return '';
+  return list.slice(0, 30).reverse()
+    .map(event => event.text ?? event.payload?.text ?? '')
+    .filter(Boolean).join('\n').slice(-6_000);
+}
+
 async function deploy(project, { sha, ref, production, overrides = {}, files }) {
   await uploadFiles(project, files);
   const body = {
     name: project.name,
     project: project.id,
     files: files.map(({ file, sha: digest, size }) => ({ file, sha: digest, size })),
+    projectSettings: { rootDirectory: project.rootDirectory, sourceFilesOutsideRootDirectory: true },
+    gitMetadata: { rootDirectory: '', commitRef: ref, commitSha: sha },
     ...(production ? { target: 'production' } : {}),
     ...(Object.keys(overrides).length ? { env: overrides, build: { env: overrides } } : {}),
     meta: { tablefolkPr: String(prNumber), commitSha: sha, commitRef: ref },
@@ -212,7 +224,13 @@ async function deploy(project, { sha, ref, production, overrides = {}, files }) 
       return { id: created.id, url };
     }
     if (['ERROR', 'CANCELED'].includes(current.readyState)) {
-      throw new Error(`${project.name} deployment ${created.id} ${current.readyState}: ${current.errorMessage ?? 'see Vercel build logs'}`);
+      let logs = '';
+      try {
+        logs = await buildLogTail(project, created.id);
+      } catch (logError) {
+        console.warn(`Could not retrieve ${project.name} build logs: ${logError}`);
+      }
+      throw new Error(`${project.name} deployment ${created.id} ${current.readyState}: ${current.errorMessage ?? 'see Vercel build logs'}${logs ? `\n\nRecent Vercel build logs:\n${logs}` : ''}`);
     }
     await new Promise(resolve => setTimeout(resolve, 10_000));
   }
