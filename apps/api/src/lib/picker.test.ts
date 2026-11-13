@@ -22,6 +22,16 @@ describe("game night picker", () => {
     expect(eligibleGameIds(games, 6)).toEqual([17]);
   });
 
+  it("supports expanded player counts via effectiveMaxPlayers from expansions", () => {
+    const baseGameWithExpansion = [
+      { bggId: 2653, minPlayers: 2, maxPlayers: 4, effectiveMaxPlayers: 6 },
+    ];
+    // Base game without expansion would be rejected for 6 players, but with expansion it is eligible
+    expect(eligibleGameIds(baseGameWithExpansion, 4)).toEqual([2653]);
+    expect(eligibleGameIds(baseGameWithExpansion, 6)).toEqual([2653]);
+    expect(eligibleGameIds(baseGameWithExpansion, 7)).toEqual([]);
+  });
+
   it("excludes games with unknown or incompatible player counts", () => {
     expect(eligibleGameIds(games, 7)).toEqual([]);
     expect(eligibleGameIds([{ bggId: 1, minPlayers: 5, maxPlayers: 2 }], 3)).toEqual([]);

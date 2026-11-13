@@ -10,6 +10,8 @@ export function gameDto(game: DbGame): Game {
     description: game.description,
     minPlayers: game.minPlayers,
     maxPlayers: game.maxPlayers,
+    baseGameBggId: game.baseGameBggId,
+    baseGameTitle: game.baseGameTitle,
     playingTime: game.playingTime,
     minPlayingTime: game.minPlayingTime,
     maxPlayingTime: game.maxPlayingTime,
