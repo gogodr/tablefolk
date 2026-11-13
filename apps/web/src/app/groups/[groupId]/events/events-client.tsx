@@ -253,6 +253,29 @@ export function EventsClient() {
                   </div>
                 </div>
 
+                {/* Announced Official Pick / Lineup if present */}
+                {(event.officialPick || (event.officialLineup && event.officialLineup.length > 0)) && (
+                  <div className="event-official-badge-card">
+                    <span className="official-tag">🎲 Official Selection:</span>
+                    {event.officialPick && (
+                      <span className="official-game-name">
+                        <strong>{event.officialPick.name}</strong>
+                        {event.officialPick.weight && ` (Weight ${event.officialPick.weight.toFixed(1)})`}
+                      </span>
+                    )}
+                    {event.officialLineup && event.officialLineup.length > 0 && (
+                      <span className="official-lineup-names">
+                        {event.officialLineup.map((s, idx) => (
+                          <span key={s.bggId} className="official-lineup-item">
+                            {idx > 0 && " → "}
+                            <strong>{s.name}</strong> ({s.label})
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 {event.description && <p className="event-description">{event.description}</p>}
 
                 {/* RSVP Controls */}

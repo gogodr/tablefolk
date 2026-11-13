@@ -22,6 +22,8 @@ CREATE TABLE "Event" (
     "hostUserId" TEXT,
     "manualHeadcount" INTEGER,
     "status" TEXT NOT NULL DEFAULT 'SCHEDULED',
+    "officialPickBggId" INTEGER,
+    "officialLineup" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Event_pkey" PRIMARY KEY ("id")
 );
@@ -62,6 +64,7 @@ CREATE TABLE "EventPick" (
 CREATE INDEX "Event_groupId_scheduledDate_idx" ON "Event"("groupId", "scheduledDate");
 ALTER TABLE "Event" ADD CONSTRAINT "Event_groupId_fkey" FOREIGN KEY ("groupId") REFERENCES "Group"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "Event" ADD CONSTRAINT "Event_hostUserId_fkey" FOREIGN KEY ("hostUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Event" ADD CONSTRAINT "Event_officialPickBggId_fkey" FOREIGN KEY ("officialPickBggId") REFERENCES "Game"("bggId") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- Indexes and Constraints for EventRsvp
 CREATE UNIQUE INDEX "EventRsvp_eventId_userId_key" ON "EventRsvp"("eventId", "userId");

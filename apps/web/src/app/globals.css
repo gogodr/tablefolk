@@ -512,3 +512,70 @@ body { font-size: var(--text-md); }
   margin-top: var(--space-md);
   width: 100%;
 }
+
+/* Official Selection Banner & Badges */
+.official-selection-banner {
+  margin-bottom: var(--space-lg);
+  border: 2px solid var(--accent);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(217, 119, 6, 0.02) 100%);
+  padding: var(--space-md);
+  border-radius: var(--radius-surface);
+}
+
+.official-selection-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--space-md);
+}
+
+.official-selection-header h2 {
+  margin: 4px 0 2px;
+  font-size: 20px;
+}
+
+.official-selection-header p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.official-pick-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.official-lineup-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.event-official-badge-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-input);
+  font-size: 13px;
+}
+
+.official-tag {
+  font-weight: 700;
+  color: var(--accent-ink);
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+.official-game-name, .official-lineup-names {
+  color: var(--text);
+}
+
+.official-lineup-item strong {
+  color: var(--accent-ink);
+}

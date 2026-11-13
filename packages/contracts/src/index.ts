@@ -57,6 +57,18 @@ export const sessionPlanSchema = z.object({
   excludeBggIds: z.array(z.number().int().positive()).optional(),
 });
 
+export const eventSetOfficialSchema = z.object({
+  type: z.enum(["single", "lineup", "clear"]),
+  bggId: z.number().int().positive().optional(),
+  lineup: z.array(z.object({
+    role: z.enum(["warmup", "main", "cooldown", "filler"]),
+    label: z.string(),
+    bggId: z.number().int().positive(),
+    name: z.string(),
+    estimatedMinutes: z.number().int().positive(),
+  })).optional(),
+});
+
 export type GameKind = "boardgame" | "boardgameexpansion";
 
 export interface Game {
@@ -163,6 +175,14 @@ export interface EventRsvpMember {
   updatedAt: string;
 }
 
+export interface OfficialLineupItem {
+  role: SessionRole;
+  label: string;
+  bggId: number;
+  name: string;
+  estimatedMinutes: number;
+}
+
 export interface EventDetail {
   id: string;
   groupId: string;
@@ -175,6 +195,9 @@ export interface EventDetail {
   manualHeadcount: number | null;
   totalHeadcount: number;
   status: "SCHEDULED" | "COMPLETED" | "CANCELLED";
+  officialPickBggId?: number | null;
+  officialPick?: Game | null;
+  officialLineup?: OfficialLineupItem[] | null;
   createdAt: string;
   rsvps: EventRsvpMember[];
 }

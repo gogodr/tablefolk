@@ -5,16 +5,19 @@ import {
   eventRsvpSchema,
   eventPickSchema,
   sessionPlanSchema,
+  eventSetOfficialSchema,
   type EventDetail,
   type EventRsvpMember,
   type PickResult,
   type SessionLineupResult,
+  type OfficialLineupItem,
 } from "@tablefolk/contracts";
+import { Prisma } from "../generated/prisma/client.js";
 import { requireUser } from "../auth.js";
 import { db } from "../db.js";
 import { AppError, forbidden, notFound } from "../lib/errors.js";
 import { eligibleGameIds, chooseWeightedGameId, planSessionLineup } from "../lib/picker.js";
-import { groupGames } from "../lib/serialize.js";
+import { groupGames, gameDto } from "../lib/serialize.js";
 
 export async function eventRoutes(app: FastifyInstance) {
   // List events for a group
@@ -31,6 +34,7 @@ export async function eventRoutes(app: FastifyInstance) {
       where: { groupId },
       include: {
         host: { select: { id: true, displayName: true } },
+        officialPick: true,
         rsvps: {
           include: { user: { select: { id: true, displayName: true, bggUsername: true } } },
         },
@@ -57,6 +61,9 @@ export async function eventRoutes(app: FastifyInstance) {
           manualHeadcount: e.manualHeadcount,
           totalHeadcount,
           status: e.status as "SCHEDULED" | "COMPLETED" | "CANCELLED",
+          officialPickBggId: e.officialPickBggId,
+          officialPick: e.officialPick ? gameDto(e.officialPick) : null,
+          officialLineup: (e.officialLineup as unknown as OfficialLineupItem[]) ?? null,
           createdAt: e.createdAt.toISOString(),
           rsvps: e.rsvps.map((r): EventRsvpMember => ({
             userId: r.user.id,
@@ -121,6 +128,9 @@ export async function eventRoutes(app: FastifyInstance) {
         manualHeadcount: event.manualHeadcount,
         totalHeadcount: 1,
         status: event.status,
+        officialPickBggId: null,
+        officialPick: null,
+        officialLineup: null,
         createdAt: event.createdAt.toISOString(),
         rsvps: event.rsvps.map((r) => ({
           userId: r.user.id,
@@ -143,6 +153,7 @@ export async function eventRoutes(app: FastifyInstance) {
       where: { id: eventId },
       include: {
         host: { select: { id: true, displayName: true } },
+        officialPick: true,
         rsvps: {
           include: { user: { select: { id: true, displayName: true, bggUsername: true } } },
         },
@@ -172,13 +183,16 @@ export async function eventRoutes(app: FastifyInstance) {
         hostDisplayName: event.host?.displayName ?? null,
         manualHeadcount: event.manualHeadcount,
         totalHeadcount,
-        status: event.status,
+        status: event.status as "SCHEDULED" | "COMPLETED" | "CANCELLED",
+        officialPickBggId: event.officialPickBggId,
+        officialPick: event.officialPick ? gameDto(event.officialPick) : null,
+        officialLineup: (event.officialLineup as unknown as OfficialLineupItem[]) ?? null,
         createdAt: event.createdAt.toISOString(),
         rsvps: event.rsvps.map((r) => ({
           userId: r.user.id,
           displayName: r.user.displayName,
           bggUsername: r.user.bggUsername,
-          status: r.status,
+          status: r.status as "ATTENDING" | "DECLINED" | "MAYBE",
           additionalGuests: r.additionalGuests,
           updatedAt: r.updatedAt.toISOString(),
         })),
@@ -216,6 +230,82 @@ export async function eventRoutes(app: FastifyInstance) {
     });
 
     return { rsvp };
+  });
+
+  // Set or update Official Selection for an event (Host only or Group Creator)
+  app.put("/v1/events/:eventId/official", async (request) => {
+    const user = await requireUser(request);
+    const { eventId } = request.params as { eventId: string };
+
+    const event = await db().event.findUnique({
+      where: { id: eventId },
+      include: { group: true },
+    });
+    if (!event) throw notFound("Event not found");
+
+    const member = await db().groupMember.findUnique({
+      where: { groupId_userId: { groupId: event.groupId, userId: user.id } },
+    });
+    if (!member) throw forbidden("You are not a member of this group.");
+
+    // Host of the event or group creator can set official picks
+    const isHost = event.hostUserId ? event.hostUserId === user.id : true;
+    const isGroupCreator = event.group.creatorId === user.id;
+    if (!isHost && !isGroupCreator) {
+      throw forbidden("Only the event host or group creator can announce the official selection.");
+    }
+
+    const body = eventSetOfficialSchema.parse(request.body);
+
+    if (body.type === "clear") {
+      const updated = await db().event.update({
+        where: { id: eventId },
+        data: {
+          officialPickBggId: null,
+          officialLineup: Prisma.DbNull,
+        },
+      });
+      return { success: true, officialPickBggId: null, officialLineup: null };
+    }
+
+    if (body.type === "single") {
+      if (!body.bggId) throw new AppError(400, "VALIDATION_ERROR", "bggId is required for single official pick.");
+      const updated = await db().event.update({
+        where: { id: eventId },
+        data: {
+          officialPickBggId: body.bggId,
+          officialLineup: Prisma.DbNull,
+        },
+        include: { officialPick: true },
+      });
+      return {
+        success: true,
+        officialPickBggId: updated.officialPickBggId,
+        officialPick: updated.officialPick ? gameDto(updated.officialPick) : null,
+        officialLineup: null,
+      };
+    }
+
+    if (body.type === "lineup") {
+      if (!body.lineup || body.lineup.length === 0) {
+        throw new AppError(400, "VALIDATION_ERROR", "lineup is required for lineup official pick.");
+      }
+      const updated = await db().event.update({
+        where: { id: eventId },
+        data: {
+          officialPickBggId: null,
+          officialLineup: body.lineup as unknown as Prisma.InputJsonValue,
+        },
+      });
+      return {
+        success: true,
+        officialPickBggId: null,
+        officialPick: null,
+        officialLineup: updated.officialLineup,
+      };
+    }
+
+    return { success: true };
   });
 
   // Event Single Game Night Picker

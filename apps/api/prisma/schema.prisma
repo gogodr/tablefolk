@@ -50,6 +50,7 @@ model Game {
   collection     CollectionItem[]
   shares         GroupShare[]
   eventPicks     EventPick[]
+  officialForEvents Event[]      @relation("EventOfficialPick")
   interests      GameInterest[]
 }
 
@@ -166,9 +167,12 @@ model Event {
   hostUserId      String?
   manualHeadcount Int?
   status          String      @default("SCHEDULED")
+  officialPickBggId Int?
+  officialLineup  Json?
   createdAt       DateTime    @default(now())
   group           Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
   host            User?       @relation("EventHost", fields: [hostUserId], references: [id])
+  officialPick    Game?       @relation("EventOfficialPick", fields: [officialPickBggId], references: [bggId], onDelete: SetNull)
   rsvps           EventRsvp[]
   picks           EventPick[]
 

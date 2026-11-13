@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { useCallback, useEffect, useState } from "react";
 import type { EventDetail, PickResult, SessionLineupResult } from "@tablefolk/contracts";
 import { GameCard } from "@/components/game-card";
@@ -13,11 +13,13 @@ type Mode = "single" | "lineup";
 export function EventClient() {
   const { groupId, eventId } = useParams<{ groupId: string; eventId: string }>();
   const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
   const api = useApi();
 
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [savingOfficial, setSavingOfficial] = useState(false);
 
   const [mode, setMode] = useState<Mode>("lineup");
 
@@ -101,6 +103,49 @@ export function EventClient() {
     }
   }
 
+  async function handleSetOfficial(type: "single" | "lineup" | "clear") {
+    setSavingOfficial(true);
+    setError("");
+
+    try {
+      if (type === "clear") {
+        await api(`/v1/events/${eventId}/official`, {
+          method: "PUT",
+          body: JSON.stringify({ type: "clear" }),
+        });
+      } else if (type === "single" && singleResult?.status === "picked") {
+        await api(`/v1/events/${eventId}/official`, {
+          method: "PUT",
+          body: JSON.stringify({
+            type: "single",
+            bggId: singleResult.game.bggId,
+          }),
+        });
+      } else if (type === "lineup" && lineupResult?.lineup) {
+        await api(`/v1/events/${eventId}/official`, {
+          method: "PUT",
+          body: JSON.stringify({
+            type: "lineup",
+            lineup: lineupResult.lineup.map((s) => ({
+              role: s.role,
+              label: s.label,
+              bggId: s.game.bggId,
+              name: s.game.name,
+              estimatedMinutes: s.estimatedMinutes,
+            })),
+          }),
+        });
+      }
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not announce official pick.");
+    } finally {
+      setSavingOfficial(false);
+    }
+  }
+
+  const isHostOrCreator = !event?.hostUserId || event?.hostUserId === user?.id;
+
   if (!isLoaded || loading) return <div className="page"><p className="loading">Entering Game Night room…</p></div>;
   if (!isSignedIn) {
     return (
@@ -166,6 +211,53 @@ export function EventClient() {
           </button>
         </div>
       </div>
+
+      {/* Official Selection Announcement Banner */}
+      {(event?.officialPick || (event?.officialLineup && event.officialLineup.length > 0)) && (
+        <section className="panel official-selection-banner">
+          <div className="official-selection-header">
+            <div>
+              <span className="eyebrow">📢 Official Announcement</span>
+              <h2>Tonight&apos;s Official Game Night Selection</h2>
+              <p>The host has locked in this selection for the event.</p>
+            </div>
+            {isHostOrCreator && (
+              <button
+                type="button"
+                className="button-quiet button-small"
+                disabled={savingOfficial}
+                onClick={() => void handleSetOfficial("clear")}
+              >
+                {savingOfficial ? "Clearing…" : "✕ Clear Official Pick"}
+              </button>
+            )}
+          </div>
+
+          {event.officialPick && (
+            <div className="official-pick-content">
+              <span className="slot-role-badge">Featured Game</span>
+              <GameCard game={event.officialPick} owners={[]} />
+            </div>
+          )}
+
+          {event.officialLineup && event.officialLineup.length > 0 && (
+            <div className="official-lineup-content">
+              <span className="slot-role-badge">Scheduled Lineup</span>
+              <div className="lineup-slots">
+                {event.officialLineup.map((slot) => (
+                  <div key={slot.bggId} className="lineup-slot-card panel">
+                    <div className="lineup-slot-header">
+                      <span className="slot-role-badge">{slot.label}</span>
+                      <span className="slot-time-badge">⏱️ ~{slot.estimatedMinutes} min</span>
+                    </div>
+                    <h3>{slot.name}</h3>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="draw-layout">
         {/* Draw Controls */}
@@ -360,6 +452,16 @@ export function EventClient() {
                 </div>
 
                 <div className="draw-actions">
+                  {isHostOrCreator && (
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={savingOfficial}
+                      onClick={() => void handleSetOfficial("lineup")}
+                    >
+                      {savingOfficial ? "Saving…" : "📌 Set as Official Event Lineup"}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="button-secondary"
@@ -401,6 +503,16 @@ export function EventClient() {
               <h2>Let&apos;s play {singleResult.game.name}!</h2>
               <GameCard game={singleResult.game} owners={singleResult.game.owners} />
               <div className="draw-actions">
+                {isHostOrCreator && (
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={savingOfficial}
+                    onClick={() => void handleSetOfficial("single")}
+                  >
+                    {savingOfficial ? "Saving…" : "📌 Set as Official Event Game"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="button-secondary"
