@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --env-file=../../.env --import tsx --watch src/server.ts",
-    "build": "corepack pnpm --filter @tablefolk/contracts build && prisma generate && tsc -p tsconfig.json",
+    "build": "pnpm --filter @tablefolk/contracts build && prisma generate && tsc -p tsconfig.json",
     "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "db:generate": "prisma generate",
