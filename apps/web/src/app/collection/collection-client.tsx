@@ -9,7 +9,7 @@ import { GameSearch } from "@/components/game-search";
 import { ShareControl } from "@/components/share-control";
 import { useApi } from "@/lib/api";
 
-type Filter = "all" | "boardgame" | "boardgameexpansion" | "available" | "unavailable";
+type Filter = "all" | "boardgame" | "boardgameexpansion" | "available" | "unavailable" | "expanded";
 type SortOption = "name-asc" | "name-desc" | "weight-desc" | "weight-asc" | "time-asc" | "year-desc" | "recent";
 type PlayerFilter = "all" | "2" | "3-4" | "5+";
 type WeightFilter = "all" | "light" | "medium" | "heavy";
@@ -87,12 +87,13 @@ export function CollectionClient() {
     bggId: number,
     isAvailable: boolean,
     unavailableReason?: string | null,
-    versionName?: string | null
+    versionName?: string | null,
+    maxPlayersOverride?: number | null
   ) {
     try {
       await api(`/v1/collection/${bggId}`, {
         method: "PATCH",
-        body: JSON.stringify({ isAvailable, unavailableReason, versionName }),
+        body: JSON.stringify({ isAvailable, unavailableReason, versionName, maxPlayersOverride }),
       });
       await load();
       setEditingId(null);
@@ -170,6 +171,7 @@ export function CollectionClient() {
         (g) =>
           g.name.toLowerCase().includes(q) ||
           (g.versionName && g.versionName.toLowerCase().includes(q)) ||
+          (g.baseGameTitle && g.baseGameTitle.toLowerCase().includes(q)) ||
           g.designers.some((d) => d.toLowerCase().includes(q))
       );
     }
@@ -181,15 +183,17 @@ export function CollectionClient() {
       list = list.filter((g) => !g.isAvailable);
     } else if (filter === "boardgame" || filter === "boardgameexpansion") {
       list = list.filter((g) => g.kind === filter);
+    } else if (filter === "expanded") {
+      list = list.filter((g) => (g.effectiveMaxPlayers ?? 0) > (g.maxPlayers ?? 0) || (g.expansionCount ?? 0) > 0);
     }
 
-    // 3. Player Count
+    // 3. Player Count (takes into account effective max players from expansions)
     if (playerFilter === "2") {
-      list = list.filter((g) => (g.minPlayers ?? 0) <= 2 && (g.maxPlayers ?? 0) >= 2);
+      list = list.filter((g) => (g.minPlayers ?? 0) <= 2 && (g.effectiveMaxPlayers ?? g.maxPlayers ?? 0) >= 2);
     } else if (playerFilter === "3-4") {
-      list = list.filter((g) => (g.minPlayers ?? 0) <= 4 && (g.maxPlayers ?? 0) >= 3);
+      list = list.filter((g) => (g.minPlayers ?? 0) <= 4 && (g.effectiveMaxPlayers ?? g.maxPlayers ?? 0) >= 3);
     } else if (playerFilter === "5+") {
-      list = list.filter((g) => (g.maxPlayers ?? 0) >= 5);
+      list = list.filter((g) => (g.effectiveMaxPlayers ?? g.maxPlayers ?? 0) >= 5);
     }
 
     // 4. Weight / Complexity
@@ -328,6 +332,11 @@ export function CollectionClient() {
               { id: "available", label: "Available to travel", count: games.filter((g) => g.isAvailable).length },
               { id: "boardgame", label: "Base games", count: games.filter((g) => g.kind === "boardgame").length },
               { id: "boardgameexpansion", label: "Expansions", count: games.filter((g) => g.kind === "boardgameexpansion").length },
+              {
+                id: "expanded",
+                label: "🧩 Has Expansions",
+                count: games.filter((g) => (g.effectiveMaxPlayers ?? 0) > (g.maxPlayers ?? 0) || (g.expansionCount ?? 0) > 0).length,
+              },
             ] as const
           ).map((item) => (
             <button
@@ -557,11 +566,58 @@ export function CollectionClient() {
                           game.bggId,
                           game.isAvailable,
                           game.unavailableReason,
-                          e.target.value.trim() || null
+                          e.target.value.trim() || null,
+                          game.maxPlayersOverride
                         )
                       }
                     />
                   </div>
+
+                  <div className="field max-players-field" style={{ marginTop: "12px" }}>
+                    <label htmlFor={`max-players-${game.bggId}`}>
+                      Max players (with expansions)
+                      {game.effectiveMaxPlayers && game.effectiveMaxPlayers > (game.maxPlayers ?? 0) && (
+                        <span className="field-hint"> · Calculated with expansions: {game.effectiveMaxPlayers}p</span>
+                      )}
+                    </label>
+                    <input
+                      id={`max-players-${game.bggId}`}
+                      type="number"
+                      min="1"
+                      max="99"
+                      placeholder={String(game.effectiveMaxPlayers || game.maxPlayers || "")}
+                      defaultValue={game.maxPlayersOverride || ""}
+                      onBlur={(e) => {
+                        const parsed = e.target.value.trim() ? parseInt(e.target.value, 10) : null;
+                        void updateAvailability(
+                          game.bggId,
+                          game.isAvailable,
+                          game.unavailableReason,
+                          game.versionName,
+                          Number.isInteger(parsed) && parsed! > 0 ? parsed : null
+                        );
+                      }}
+                    />
+                  </div>
+
+                  {game.expansions && game.expansions.length > 0 && (
+                    <div className="owned-expansions-list">
+                      <span className="owned-expansions-title">🧩 Owned Expansions ({game.expansions.length}):</span>
+                      <ul>
+                        {game.expansions.map((exp) => (
+                          <li key={exp.bggId}>
+                            {exp.name} {exp.maxPlayers && exp.maxPlayers > (game.maxPlayers ?? 0) ? `(supports up to ${exp.maxPlayers} players)` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {game.baseGameTitle && (
+                    <div className="base-game-reference">
+                      <span>🔗 Expansion for: <strong>{game.baseGameTitle}</strong></span>
+                    </div>
+                  )}
                 </div>
               )}
 

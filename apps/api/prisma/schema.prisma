@@ -35,6 +35,8 @@ model Game {
   description    String?
   minPlayers     Int?
   maxPlayers     Int?
+  baseGameBggId  Int?
+  baseGameTitle  String?
   playingTime    Int?
   minPlayingTime Int?
   maxPlayingTime Int?
@@ -52,6 +54,8 @@ model Game {
   eventPicks     EventPick[]
   officialForEvents Event[]      @relation("EventOfficialPick")
   interests      GameInterest[]
+
+  @@index([baseGameBggId])
 }
 
 model GameCover {
@@ -62,12 +66,13 @@ model GameCover {
 }
 
 model CollectionItem {
-  userId            String
-  bggId             Int
-  versionName       String?
-  isAvailable       Boolean      @default(true)
-  unavailableReason String?
-  addedAt           DateTime     @default(now())
+  userId             String
+  bggId              Int
+  versionName        String?
+  isAvailable        Boolean      @default(true)
+  unavailableReason  String?
+  maxPlayersOverride Int?
+  addedAt            DateTime     @default(now())
   user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   game              Game         @relation(fields: [bggId], references: [bggId], onDelete: Restrict)
   shares            GroupShare[]

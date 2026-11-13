@@ -3,9 +3,18 @@ import { gameCoverSrc } from "@/lib/assets";
 
 export function playerRange(game: Game | CollectionGame): string {
   if (!game.minPlayers || !game.maxPlayers) return "Player count unknown";
-  return game.minPlayers === game.maxPlayers
+  const effectiveMax = "effectiveMaxPlayers" in game && game.effectiveMaxPlayers
+    ? game.effectiveMaxPlayers
+    : game.maxPlayers;
+
+  const baseRange = game.minPlayers === game.maxPlayers
     ? `${game.minPlayers} players`
     : `${game.minPlayers}–${game.maxPlayers} players`;
+
+  if (effectiveMax > game.maxPlayers) {
+    return `${baseRange} (up to ${effectiveMax}p with expansion)`;
+  }
+  return baseRange;
 }
 
 export function weightLabel(weight: number | null): string | null {
@@ -64,6 +73,19 @@ export function GameCard({ game, owners, actions, interestScore, onVote, canVote
           {versionName && (
             <span className="meta-pill meta-version" title={`Edition: ${versionName}`}>
               🏷️ {versionName}
+            </span>
+          )}
+          {game.baseGameTitle && (
+            <span className="meta-pill meta-basegame" title={`Expansion for ${game.baseGameTitle}`}>
+              🔗 For: {game.baseGameTitle}
+            </span>
+          )}
+          {"expansions" in game && (game as CollectionGame).expansions && (game as CollectionGame).expansions!.length > 0 && (
+            <span
+              className="meta-pill meta-expansions-badge"
+              title={(game as CollectionGame).expansions!.map((e) => `${e.name} (up to ${e.maxPlayers ?? "?"}p)`).join(", ")}
+            >
+              🧩 {(game as CollectionGame).expansions!.length} {(game as CollectionGame).expansions!.length === 1 ? "expansion" : "expansions"}
             </span>
           )}
           {!isAvailable && (

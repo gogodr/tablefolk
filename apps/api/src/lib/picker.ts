@@ -9,6 +9,7 @@ export interface CandidateGame {
   bggId: number;
   minPlayers: number | null;
   maxPlayers: number | null;
+  effectiveMaxPlayers?: number | null;
   playingTime?: number | null;
   weight?: number | null;
 }
@@ -29,14 +30,15 @@ export function eligibleGameIds(
 
   return [...new Set(games
     .filter((game) => {
-      // Player count filter
+      // Player count filter (taking into account effective max players from expansions)
+      const effectiveMax = game.effectiveMaxPlayers ?? game.maxPlayers;
       if (
         game.minPlayers === null ||
-        game.maxPlayers === null ||
+        effectiveMax === null ||
         game.minPlayers <= 0 ||
-        game.maxPlayers < game.minPlayers ||
+        effectiveMax < game.minPlayers ||
         playerCount < game.minPlayers ||
-        playerCount > game.maxPlayers
+        playerCount > effectiveMax
       ) {
         return false;
       }
@@ -118,11 +120,12 @@ export function planSessionLineup(
     random = Math.random,
   } = options;
 
-  // Filter games that support the playerCount
+  // Filter games that support the playerCount (including expansion player counts)
   const eligible = availableGames.filter((g) => {
     if (excludeBggIds.includes(g.bggId)) return false;
-    if (g.minPlayers === null || g.maxPlayers === null) return false;
-    return playerCount >= g.minPlayers && playerCount <= g.maxPlayers;
+    const effectiveMax = (g as { effectiveMaxPlayers?: number | null }).effectiveMaxPlayers ?? g.maxPlayers;
+    if (g.minPlayers === null || effectiveMax === null) return false;
+    return playerCount >= g.minPlayers && playerCount <= effectiveMax;
   });
 
   if (eligible.length === 0) {

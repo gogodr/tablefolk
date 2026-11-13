@@ -844,6 +844,44 @@ body { font-size: var(--text-md); }
   color: #b91c1c;
 }
 
+.meta-pill.meta-basegame {
+  background: rgba(14, 165, 233, 0.08);
+  border-color: rgba(14, 165, 233, 0.25);
+  color: #0369a1;
+}
+
+.meta-pill.meta-expansions-badge {
+  background: rgba(168, 85, 247, 0.08);
+  border-color: rgba(168, 85, 247, 0.25);
+  color: #7e22ce;
+}
+
+.owned-expansions-list {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: var(--color-paper-2);
+  border-radius: var(--radius-input);
+  font-size: 13px;
+}
+
+.owned-expansions-title {
+  font-weight: 700;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.owned-expansions-list ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+}
+
+.base-game-reference {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 /* Collection Toolbar & Filters */
 .collection-toolbar {
   margin-top: 18px;

@@ -20,14 +20,44 @@ export async function collectionRoutes(app: FastifyInstance) {
       include: { game: true, shares: { select: { groupId: true } } },
       orderBy: { addedAt: "desc" },
     });
+
+    // Map expansions owned by the user to their base games
+    const expansionsByBase = new Map<number, { bggId: number; name: string; maxPlayers: number | null }[]>();
+    for (const item of items) {
+      if (item.game.baseGameBggId) {
+        const list = expansionsByBase.get(item.game.baseGameBggId) ?? [];
+        list.push({
+          bggId: item.game.bggId,
+          name: item.game.name,
+          maxPlayers: item.game.maxPlayers,
+        });
+        expansionsByBase.set(item.game.baseGameBggId, list);
+      }
+    }
+
     return {
-      games: items.map((item) => ({
-        ...gameDto(item.game),
-        sharedGroupIds: item.shares.map((share) => share.groupId),
-        isAvailable: item.isAvailable,
-        unavailableReason: item.unavailableReason,
-        versionName: item.versionName,
-      })),
+      games: items.map((item) => {
+        const ownedExpansions = expansionsByBase.get(item.bggId) ?? [];
+        const expansionMax = ownedExpansions.reduce(
+          (max, exp) => Math.max(max, exp.maxPlayers ?? 0),
+          0
+        );
+        const effectiveMaxPlayers =
+          item.maxPlayersOverride ??
+          (expansionMax > (item.game.maxPlayers ?? 0) ? expansionMax : item.game.maxPlayers);
+
+        return {
+          ...gameDto(item.game),
+          sharedGroupIds: item.shares.map((share) => share.groupId),
+          isAvailable: item.isAvailable,
+          unavailableReason: item.unavailableReason,
+          versionName: item.versionName,
+          maxPlayersOverride: item.maxPlayersOverride,
+          effectiveMaxPlayers,
+          expansionCount: ownedExpansions.length,
+          expansions: ownedExpansions,
+        };
+      }),
     };
   });
 
@@ -107,6 +137,7 @@ export async function collectionRoutes(app: FastifyInstance) {
         isAvailable: body.isAvailable,
         unavailableReason: body.isAvailable ? null : (body.unavailableReason ?? item.unavailableReason),
         versionName: body.versionName !== undefined ? body.versionName : item.versionName,
+        maxPlayersOverride: body.maxPlayersOverride !== undefined ? body.maxPlayersOverride : item.maxPlayersOverride,
       },
       include: { game: true, shares: { select: { groupId: true } } },
     });
@@ -118,6 +149,7 @@ export async function collectionRoutes(app: FastifyInstance) {
         isAvailable: updated.isAvailable,
         unavailableReason: updated.unavailableReason,
         versionName: updated.versionName,
+        maxPlayersOverride: updated.maxPlayersOverride,
       },
     };
   });
@@ -246,6 +278,8 @@ export async function collectionRoutes(app: FastifyInstance) {
             data: {
               kind: details.kind,
               weight: details.weight,
+              baseGameBggId: details.baseGameBggId ?? undefined,
+              baseGameTitle: details.baseGameTitle ?? undefined,
               coverUrl: details.imageUrl ? details.imageUrl : undefined,
               description: details.description ?? undefined,
               designers: details.designers.length ? details.designers : undefined,
@@ -293,6 +327,8 @@ export async function collectionRoutes(app: FastifyInstance) {
           data: {
             kind: details.kind,
             weight: details.weight,
+            baseGameBggId: details.baseGameBggId ?? undefined,
+            baseGameTitle: details.baseGameTitle ?? undefined,
             coverUrl: details.imageUrl ? details.imageUrl : undefined,
             description: details.description ?? undefined,
             designers: details.designers.length ? details.designers : undefined,

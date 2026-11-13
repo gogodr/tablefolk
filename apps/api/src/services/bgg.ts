@@ -93,6 +93,13 @@ export async function searchBgg(query: string): Promise<SearchResult[]> {
 }
 
 interface RawName { type?: string; value: string }
+interface RawLink {
+  type: string;
+  id?: number | string;
+  value: string;
+  inbound?: boolean | string;
+}
+
 interface RawItem {
   id: number | string;
   type: string;
@@ -107,7 +114,7 @@ interface RawItem {
   minage?: { value: number | string };
   image?: string;
   thumbnail?: string;
-  link?: { type: string; value: string } | { type: string; value: string }[];
+  link?: RawLink | RawLink[];
   statistics?: {
     ratings?: {
       averageweight?: { value: number | string };
@@ -128,6 +135,8 @@ export interface BggGameDetails {
   description: string | null;
   minPlayers: number | null;
   maxPlayers: number | null;
+  baseGameBggId: number | null;
+  baseGameTitle: string | null;
   playingTime: number | null;
   minPlayingTime: number | null;
   maxPlayingTime: number | null;
@@ -146,6 +155,12 @@ function parseRawItem(item: RawItem): BggGameDetails | null {
   const names = nameValues(item.name);
   const links = array(item.link);
   const linked = (type: string) => links.filter((link) => link.type === type).map((link) => link.value);
+  const baseLink = links.find(
+    (l) => l.type === "boardgameexpansion" && (l.inbound === true || l.inbound === "true")
+  );
+  const baseGameBggId = baseLink && Number(baseLink.id) > 0 ? Number(baseLink.id) : null;
+  const baseGameTitle = baseLink ? baseLink.value : null;
+
   return {
     bggId,
     kind: item.type as GameKind,
@@ -155,6 +170,8 @@ function parseRawItem(item: RawItem): BggGameDetails | null {
     description: textOrNull(item.description),
     minPlayers: numberOrNull(item.minplayers),
     maxPlayers: numberOrNull(item.maxplayers),
+    baseGameBggId,
+    baseGameTitle,
     playingTime: numberOrNull(item.playingtime),
     minPlayingTime: numberOrNull(item.minplaytime),
     maxPlayingTime: numberOrNull(item.maxplaytime),
