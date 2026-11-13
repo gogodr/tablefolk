@@ -16,6 +16,7 @@ export const collectionAvailabilitySchema = z.object({
   isAvailable: z.boolean(),
   unavailableReason: z.string().trim().max(100).nullable().optional(),
   versionName: z.string().trim().max(100).nullable().optional(),
+  maxPlayersOverride: z.number().int().min(1).max(99).nullable().optional(),
 });
 
 export const bggProfileSchema = z.object({
@@ -81,6 +82,8 @@ export interface Game {
   description: string | null;
   minPlayers: number | null;
   maxPlayers: number | null;
+  baseGameBggId?: number | null;
+  baseGameTitle?: string | null;
   playingTime: number | null;
   minPlayingTime: number | null;
   maxPlayingTime: number | null;
@@ -98,6 +101,10 @@ export interface CollectionGame extends Game {
   isAvailable: boolean;
   unavailableReason: string | null;
   versionName: string | null;
+  maxPlayersOverride?: number | null;
+  effectiveMaxPlayers?: number | null;
+  expansionCount?: number;
+  expansions?: { bggId: number; name: string; maxPlayers: number | null }[];
 }
 
 export interface Member {

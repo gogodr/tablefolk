@@ -92,6 +92,41 @@ describe("BGG import", () => {
     });
   });
 
+  it("fetches a batch of games via getBggGamesBatch", async () => {
+    const { getBggGamesBatch } = await import("./bgg.js");
+    const mockBatchXml = `
+      <items totalitems="2">
+        <item type="boardgame" id="101">
+          <name type="primary" value="Catan" />
+          <yearpublished value="1995" />
+          <statistics page="1">
+            <ratings>
+              <averageweight value="2.31" />
+            </ratings>
+          </statistics>
+        </item>
+        <item type="boardgameexpansion" id="102">
+          <name type="primary" value="Catan: Cities &amp; Knights" />
+          <yearpublished value="1998" />
+          <statistics page="1">
+            <ratings>
+              <averageweight value="3.15" />
+            </ratings>
+          </statistics>
+        </item>
+      </items>
+    `;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(mockBatchXml)));
+    const map = await getBggGamesBatch([101, 102]);
+    expect(map.size).toBe(2);
+    expect(map.get(101)?.name).toBe("Catan");
+    expect(map.get(101)?.weight).toBe(2.31);
+    expect(map.get(101)?.kind).toBe("boardgame");
+    expect(map.get(102)?.name).toBe("Catan: Cities & Knights");
+    expect(map.get(102)?.weight).toBe(3.15);
+    expect(map.get(102)?.kind).toBe("boardgameexpansion");
+  });
+
   it("reports upstream failure within the add flow", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("busy", { status: 503 })));
     await expect(getBggGame(12)).rejects.toMatchObject({ code: "BGG_BUSY" });

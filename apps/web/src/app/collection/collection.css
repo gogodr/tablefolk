@@ -44,7 +44,13 @@
 .collection-page .section-title { margin: 0 0 var(--space-sm); }
 .collection-page .section-title h2 { font-size: var(--text-xl); text-wrap: balance; }
 .collection-page .section-title p { font-size: var(--text-sm); }
-.collection-page .count-filters { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-bottom: var(--space-lg); }
+.collection-page .collection-toolbar { margin: 0 0 var(--space-lg); gap: var(--space-sm); }
+.collection-page .collection-search-wrap { max-width: 540px; }
+.collection-page .collection-search-input { min-height: 44px; border-color: var(--color-edge); background: var(--color-card); box-shadow: none; }
+.collection-page .collection-filters-row { justify-content: flex-start; gap: var(--space-sm) var(--space-lg); }
+.collection-page .collection-select-group { gap: var(--space-xs); }
+.collection-page .collection-select { min-height: 40px; background: var(--color-card); }
+.collection-page .count-filters { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-bottom: 0; }
 .collection-page .count-filter { display: inline-flex; align-items: center; gap: var(--space-xs); min-height: 42px; padding: var(--space-xs) var(--space-md); border: 1px solid var(--color-rule); border-radius: var(--radius-pill); background: transparent; font-size: var(--text-sm); transition: background-color var(--dur-short), border-color var(--dur-short); }
 .collection-page .count-filter:hover { border-color: var(--color-ink); }
 .collection-page .count-filter:active { background: var(--color-paper-3); }
@@ -66,6 +72,7 @@
 .collection-card-wrap .game-kind { font-size: var(--text-xs); }
 .collection-card-wrap .game-meta { display: flex; flex-wrap: wrap; gap: var(--space-xs) var(--space-sm); margin-top: var(--space-sm); }
 .collection-card-wrap .meta-pill { padding: 0; margin: 0; border: 0; background: transparent; color: var(--color-muted); font-size: var(--text-xs); font-weight: 500; }
+.collection-card-wrap .meta-unavailable { display: none; }
 .collection-card-wrap .game-card-bottom { align-items: center; padding-top: var(--space-lg); margin-top: auto; border-top: 1px solid var(--color-rule); }
 .collection-card-wrap .text-link { font-size: var(--text-xs); white-space: nowrap; }
 .collection-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); }
@@ -94,7 +101,10 @@
 .collection-inspector-section h3 { font-size: var(--text-lg); text-wrap: balance; }
 .collection-inspector-section .field label { font-size: var(--text-sm); }
 .collection-inspector-section .field label:has(input[type="checkbox"]) { display: flex; align-items: start; gap: var(--space-xs); }
-.collection-inspector-section input[type="checkbox"] { width: 18px; height: 18px; min-height: 0; margin: var(--space-2xs) 0 0; accent-color: var(--color-accent-2); }
+.collection-inspector-section input[type="checkbox"] { width: 18px; height: 18px; min-height: 0; margin: var(--space-2xs) 0 0; accent-color: var(--color-focus); }
+.collection-inspector-section .max-players-field .field-hint { display: block; }
+.collection-inspector-section .owned-expansions-list { margin: 0; background: var(--color-paper-2); }
+.collection-inspector-section .base-game-reference { margin: 0; color: var(--color-muted); }
 .collection-inspector-section .share-list { display: grid; gap: var(--space-xs); }
 .collection-inspector-section .share-pill { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: var(--space-xs) var(--space-md); border-color: var(--color-rule); border-radius: var(--radius-input); background: var(--color-paper); color: var(--color-ink); font-size: var(--text-sm); text-align: left; }
 .collection-inspector-section .share-pill:hover { border-color: var(--color-ink); }

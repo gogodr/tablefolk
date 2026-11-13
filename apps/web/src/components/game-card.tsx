@@ -1,11 +1,20 @@
-import type { Game, GameOwner, Member } from "@tablefolk/contracts";
+import type { Game, CollectionGame, GameOwner, Member } from "@tablefolk/contracts";
 import { gameCoverSrc } from "@/lib/assets";
 
-export function playerRange(game: Game): string {
+export function playerRange(game: Game | CollectionGame): string {
   if (!game.minPlayers || !game.maxPlayers) return "Player count unknown";
-  return game.minPlayers === game.maxPlayers
+  const effectiveMax = "effectiveMaxPlayers" in game && game.effectiveMaxPlayers
+    ? game.effectiveMaxPlayers
+    : game.maxPlayers;
+
+  const baseRange = game.minPlayers === game.maxPlayers
     ? `${game.minPlayers} players`
     : `${game.minPlayers}–${game.maxPlayers} players`;
+
+  if (effectiveMax > game.maxPlayers) {
+    return `${baseRange} (up to ${effectiveMax}p with expansion)`;
+  }
+  return baseRange;
 }
 
 export function weightLabel(weight: number | null): string | null {
@@ -16,7 +25,7 @@ export function weightLabel(weight: number | null): string | null {
 }
 
 interface GameCardProps {
-  game: Game;
+  game: Game | CollectionGame;
   eagerCover?: boolean;
   owners?: (GameOwner | Member)[];
   actions?: React.ReactNode;
@@ -27,6 +36,10 @@ interface GameCardProps {
 
 export function GameCard({ game, eagerCover = false, owners, actions, interestScore, onVote, canVote }: GameCardProps) {
   const complexity = weightLabel(game.weight);
+  const versionName = "versionName" in game ? (game as CollectionGame).versionName : null;
+  const isAvailable = "isAvailable" in game ? (game as CollectionGame).isAvailable : true;
+  const unavailableReason = "unavailableReason" in game ? (game as CollectionGame).unavailableReason : null;
+  const expansions = "expansions" in game ? game.expansions : undefined;
 
   return (
     <article className="game-card">
@@ -59,6 +72,14 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
             </span>
           )}
           {game.yearPublished && <span className="meta-pill meta-year">{game.yearPublished}</span>}
+          {versionName && <span className="meta-pill meta-version" title={`Edition: ${versionName}`}>{versionName}</span>}
+          {game.baseGameTitle && <span className="meta-pill meta-basegame" title={`Expansion for ${game.baseGameTitle}`}>For {game.baseGameTitle}</span>}
+          {expansions && expansions.length > 0 && (
+            <span className="meta-pill meta-expansions-badge" title={expansions.map((expansion) => `${expansion.name} (up to ${expansion.maxPlayers ?? "?"} players)`).join(", ")}>
+              {expansions.length} {expansions.length === 1 ? "expansion" : "expansions"}
+            </span>
+          )}
+          {!isAvailable && <span className="meta-pill meta-unavailable" title={unavailableReason || "Unavailable to travel"}>{unavailableReason || "Home only"}</span>}
         </p>
 
         {interestScore !== undefined && interestScore > 0 && (

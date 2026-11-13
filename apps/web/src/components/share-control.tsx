@@ -4,11 +4,20 @@ import { useState } from "react";
 import type { GroupSummary } from "@tablefolk/contracts";
 import { useApi } from "@/lib/api";
 
-export function ShareControl({ bggId, sharedGroupIds, groups, onChanged }: {
+export function ShareControl({
+  bggId,
+  gameName,
+  sharedGroupIds,
+  groups,
+  onChanged,
+  onClose,
+}: {
   bggId: number;
+  gameName?: string;
   sharedGroupIds: string[];
   groups: GroupSummary[];
   onChanged: () => void;
+  onClose?: () => void;
 }) {
   const api = useApi();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -26,10 +35,12 @@ export function ShareControl({ bggId, sharedGroupIds, groups, onChanged }: {
       onChanged();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not change sharing.");
-    } finally { setBusyId(null); }
+    } finally {
+      setBusyId(null);
+    }
   }
 
-  if (groups.length === 0) return <p className="muted">Create a group to share this game.</p>;
+  if (groups.length === 0) return <p className="muted">Create or join a group to share this game.</p>;
   return <div>
     <div className="share-list" aria-label="Share with groups">
       {groups.map((group) => {
