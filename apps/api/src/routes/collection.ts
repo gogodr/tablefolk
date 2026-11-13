@@ -207,7 +207,9 @@ export async function collectionRoutes(app: FastifyInstance) {
         });
         importedCount++;
       } else {
-        if (item.versionName && existing.versionName !== item.versionName) {
+        // Keep existing isAvailable and unavailableReason intact
+        // Only update versionName if user hasn't set a custom one
+        if (item.versionName && !existing.versionName) {
           await db().collectionItem.update({
             where: { userId_bggId: { userId: user.id, bggId: item.bggId } },
             data: { versionName: item.versionName },
