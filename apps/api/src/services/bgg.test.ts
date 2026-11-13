@@ -28,6 +28,63 @@ describe("BGG import", () => {
     expect(game).toMatchObject({ bggId: 11, kind: "boardgameexpansion", minPlayers: 2, maxPlayers: 6, playingTime: 45, designers: ["Alex Example"], imageUrl: "https://cf.geekdo-images.com/example.jpg" });
   });
 
+  it("parses user collection XML with stats, ratings weight, and version", async () => {
+    const { getBggCollection } = await import("./bgg.js");
+    const mockCollectionXml = `
+      <items totalitems="2">
+        <item objectid="167791" subtype="boardgame">
+          <name>Terraforming Mars</name>
+          <yearpublished>2016</yearpublished>
+          <stats minplayers="1" maxplayers="5" playingtime="120" minplaytime="90" maxplaytime="120">
+            <rating>
+              <averageweight value="3.24" />
+            </rating>
+          </stats>
+          <version>
+            <item id="316238" type="boardgameversion">
+              <name>Maldito Games Spanish Edition</name>
+            </item>
+          </version>
+        </item>
+        <item objectid="133473" subtype="boardgame">
+          <name>Sushi Go!</name>
+          <yearpublished>2013</yearpublished>
+          <stats minplayers="2" maxplayers="5" playingtime="20">
+            <rating>
+              <averageweight value="1.16" />
+            </rating>
+          </stats>
+        </item>
+      </items>
+    `;
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(mockCollectionXml)));
+    const collection = await getBggCollection("testuser");
+
+    expect(collection).toHaveLength(2);
+    expect(collection[0]).toEqual({
+      bggId: 167791,
+      kind: "boardgame",
+      name: "Terraforming Mars",
+      yearPublished: 2016,
+      minPlayers: 1,
+      maxPlayers: 5,
+      playingTime: 120,
+      minPlayingTime: 90,
+      maxPlayingTime: 120,
+      weight: 3.24,
+      versionName: "Maldito Games Spanish Edition",
+      imageUrl: null,
+    });
+    expect(collection[1]).toMatchObject({
+      bggId: 133473,
+      name: "Sushi Go!",
+      weight: 1.16,
+      playingTime: 20,
+      versionName: null,
+    });
+  });
+
   it("reports upstream failure within the add flow", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("busy", { status: 503 })));
     await expect(getBggGame(12)).rejects.toMatchObject({ code: "BGG_BUSY" });
