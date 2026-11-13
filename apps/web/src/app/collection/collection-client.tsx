@@ -139,13 +139,15 @@ export function CollectionClient() {
       );
       if (res.enrichedCount > 0) {
         setEnrichStatus(
-          `Enriched ${res.enrichedCount} games! ${
-            res.remainingCount > 0 ? `(${res.remainingCount} more can be enriched)` : "All games up-to-date."
+          `Successfully cached and enriched ${res.enrichedCount} games! ${
+            res.remainingCount > 0
+              ? `(${res.remainingCount} more pending)`
+              : "All games are fully enriched and cached in Tablefolk."
           }`
         );
         await load();
       } else {
-        setEnrichStatus("All your games already have complete BGG metadata!");
+        setEnrichStatus("All your games are already fully cached and enriched in Tablefolk!");
       }
     } catch (cause) {
       setEnrichStatus(cause instanceof Error ? cause.message : "Could not complete enrichment.");
@@ -154,9 +156,15 @@ export function CollectionClient() {
     }
   }
 
-  // Missing weight count to show friendly enrichment reminder
-  const missingWeightCount = useMemo(
-    () => games.filter((g) => g.weight === null).length,
+  // Pending enrichment count (missing complexity weight OR not yet cached locally in Tablefolk)
+  const pendingEnrichmentCount = useMemo(
+    () =>
+      games.filter(
+        (g) =>
+          g.weight === null ||
+          !g.coverUrl ||
+          !g.coverUrl.startsWith("/v1/covers/")
+      ).length,
     [games]
   );
 
@@ -273,10 +281,10 @@ export function CollectionClient() {
         </form>
         {syncStatus && <p className="form-success">{syncStatus}</p>}
 
-        {missingWeightCount > 0 && (
+        {pendingEnrichmentCount > 0 && (
           <div className="enrich-banner">
             <p>
-              💡 <strong>{missingWeightCount} games</strong> don&apos;t have BGG complexity weights yet.
+              💡 <strong>{pendingEnrichmentCount} {pendingEnrichmentCount === 1 ? "game has" : "games have"}</strong> pending BGG enrichment (local cover cache or complexity weight).
             </p>
             <button
               type="button"
@@ -284,7 +292,7 @@ export function CollectionClient() {
               onClick={() => void handleEnrich()}
               disabled={enriching}
             >
-              {enriching ? "Enriching…" : "⚡ Enrich BGG data"}
+              {enriching ? "Enriching…" : "⚡ Cache & Enrich in Tablefolk"}
             </button>
           </div>
         )}
