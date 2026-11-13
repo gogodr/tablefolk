@@ -176,10 +176,11 @@ async function sourceFiles(expectedSha) {
   return files;
 }
 
-function migratePreviewDatabase() {
-  const directUrl = process.env.PREVIEW_DIRECT_URL;
-  const pooledUrl = process.env.PREVIEW_DATABASE_URL;
-  if (!directUrl || !pooledUrl) throw new Error('Neon did not return both PR database connection URLs');
+function migrateDatabase({ directUrl, pooledUrl, label = 'PR' }) {
+  if (!directUrl && !pooledUrl) {
+    console.warn(`No database connection URLs provided for ${label}; skipping database migration`);
+    return;
+  }
   const safeEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
     !/(TOKEN|KEY|SECRET|PASSWORD)/i.test(key) && !key.startsWith('VERCEL_') &&
     !key.startsWith('PREVIEW_') && !key.startsWith('GITHUB_')));
@@ -191,15 +192,32 @@ function migratePreviewDatabase() {
       if (output.trim()) console.log(redactSecrets(output.trim()));
     } catch (error) {
       const detail = [error.stdout, error.stderr].filter(Boolean).join('\n').slice(-6000);
-      throw new Error(`PR database migration command failed: corepack pnpm ${args.join(' ')}${detail ? `\n${detail}` : ''}`);
+      throw new Error(`${label} database migration command failed: corepack pnpm ${args.join(' ')}${detail ? `\n${detail}` : ''}`);
     }
   };
-  console.log('Installing PR dependencies for database migration');
+  console.log(`Installing dependencies for ${label} database migration`);
   runPnpm(['install', '--frozen-lockfile'], safeEnv);
-  console.log('Applying PR Prisma migrations to its Neon branch');
+  console.log(`Applying Prisma migrations to ${label} database`);
   runPnpm(['--filter', '@tablefolk/api', 'db:deploy'], {
-    ...safeEnv, DIRECT_URL: directUrl, DATABASE_URL: pooledUrl,
+    ...safeEnv, DIRECT_URL: directUrl ?? pooledUrl, DATABASE_URL: pooledUrl ?? directUrl,
   });
+}
+
+function migratePreviewDatabase() {
+  const directUrl = process.env.PREVIEW_DIRECT_URL;
+  const pooledUrl = process.env.PREVIEW_DATABASE_URL;
+  if (!directUrl || !pooledUrl) throw new Error('Neon did not return both PR database connection URLs');
+  migrateDatabase({ directUrl, pooledUrl, label: 'PR preview' });
+}
+
+function migrateProductionDatabase() {
+  const directUrl = process.env.DIRECT_URL;
+  const pooledUrl = process.env.DATABASE_URL;
+  if (!directUrl && !pooledUrl) {
+    console.log('No production database URLs (DIRECT_URL or DATABASE_URL) in secrets; skipping automated production migration');
+    return;
+  }
+  migrateDatabase({ directUrl, pooledUrl, label: 'production' });
 }
 
 async function uploadFiles(project, files) {
@@ -386,6 +404,7 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
   if (!sha) throw new Error('Merged PR has no merge commit SHA');
   await Promise.all(projects.map(verifyProject));
   const files = await sourceFiles(sha);
+  migrateProductionDatabase();
   const source = {
     sha, ref: 'main', production: true, files,
   };

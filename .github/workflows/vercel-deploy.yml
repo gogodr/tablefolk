@@ -78,6 +78,8 @@ jobs:
           VERCEL_API_PROJECT_ID: ${{ vars.VERCEL_API_PROJECT_ID }}
           VERCEL_WEB_PROJECT_ID: ${{ vars.VERCEL_WEB_PROJECT_ID }}
           VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
           PREVIEW_DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
           PREVIEW_DIRECT_URL: ${{ steps.neon.outputs.db_url }}
       - name: Delete PR database branch
