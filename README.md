@@ -120,3 +120,16 @@ corepack pnpm --filter @tablefolk/api db:deploy
 Confirm the BGG application license covers the intended public use and storage of text and cover images before launch. Set `BGG_COVER_STORAGE_ALLOWED=true` in the API project only after cover storage is approved. Covers are downloaded once when a game is imported, stored in PostgreSQL, and served by the API; collection views do not call BGG. The site displays BGG's linked credit image in the footer and game search, and each game links to its source. If cover copying is unavailable, Tablefolk uses its own placeholder. Configure a verified Resend sending domain before trying invitations.
 
 See [operations](docs/operations.md) for deployment and recovery details.
+
+---
+
+## 🗺️ Future Roadmap & Ideas
+
+Tablefolk continues to evolve from a game picker into a complete Game Night Operating System. Key features envisioned for future releases include:
+
+- **📊 Play Logger & Group Leaderboards**: Record winners, final scores, and play durations after each game night; automatically sync sessions to BGG Plays (`/xmlapi2/plays`) and maintain group win-rate leaderboards.
+- **🪑 Multi-Table Splitter (*Split Tables*)**: Intelligent auto-division for large gatherings (8–16+ attendees) into balanced parallel tables (e.g., 4-player strategy heavy game + 6-player social party game).
+- **🍕 Potluck / Snack Board**: Collaborative RSVP checklists for food and drinks to coordinate table snacks.
+- **🧙‍♂️ Campaign & Legacy Tracker**: Episodic progress saving for campaign games (*Gloomhaven*, *Pandemic Legacy*, *Arkham Horror LCG*), keeping track of the table lineup.
+- **📱 PWA & Offline Table Mode**: Native-like installation on mobile devices with local caching for cabin/basement play sessions without reliable internet.
+- **🎯 BGG Community "Best at X Players"**: Background polling of community player count votes to highlight games at their optimal table size.
