@@ -4,13 +4,13 @@
   "version": "0.1.0",
   "packageManager": "pnpm@12.18.0",
   "scripts": {
-    "dev:web": "pnpm --filter @tablefolk/web dev",
-    "dev:api": "pnpm --filter @tablefolk/api dev",
-    "build": "pnpm --filter @tablefolk/contracts build && pnpm --filter @tablefolk/api build && pnpm --filter @tablefolk/web build",
-    "typecheck": "pnpm --filter @tablefolk/contracts build && pnpm -r typecheck",
-    "test": "pnpm --filter @tablefolk/api test",
-    "db:generate": "pnpm --filter @tablefolk/api db:generate",
-    "db:migrate": "pnpm --filter @tablefolk/api db:migrate"
+    "dev:web": "corepack pnpm --filter @tablefolk/web dev",
+    "dev:api": "corepack pnpm --filter @tablefolk/api dev",
+    "build": "corepack pnpm --filter @tablefolk/contracts build && corepack pnpm --filter @tablefolk/api build && corepack pnpm --filter @tablefolk/web build",
+    "typecheck": "corepack pnpm --filter @tablefolk/contracts build && corepack pnpm -r typecheck",
+    "test": "corepack pnpm --filter @tablefolk/api test",
+    "db:generate": "corepack pnpm --filter @tablefolk/api db:generate",
+    "db:migrate": "corepack pnpm --filter @tablefolk/api db:migrate"
   },
   "dependencies": {
     "@vercel/blob": "^2.9.0"
