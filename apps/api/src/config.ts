@@ -5,7 +5,11 @@ export const config = {
   bggToken: process.env.BGG_TOKEN,
   resendApiKey: process.env.RESEND_API_KEY,
   resendFromEmail: process.env.RESEND_FROM_EMAIL,
-  coverStorageAllowed: process.env.BGG_COVER_STORAGE_ALLOWED === "true",
+  coverStorageAllowed:
+    process.env.BGG_COVER_STORAGE_ALLOWED === "true" ||
+    process.env.BGG_COVER_STORAGE_ALLOWED === "1" ||
+    process.env.VERCEL_ENV === "preview" ||
+    process.env.NODE_ENV !== "production",
 };
 
 export function requireSetting(value: string | undefined, name: string): string {

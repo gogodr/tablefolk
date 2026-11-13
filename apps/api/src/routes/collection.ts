@@ -286,9 +286,32 @@ export async function collectionRoutes(app: FastifyInstance) {
             where: { bggId },
             select: { coverUrl: true },
           });
-          const coverUrlToUpdate = existingGame?.coverUrl?.startsWith("/v1/covers/")
-            ? existingGame.coverUrl
-            : (details.imageUrl ?? existingGame?.coverUrl ?? undefined);
+
+          let coverUrl = existingGame?.coverUrl;
+
+          // Attempt to download and cache cover into Tablefolk's local DB if not yet cached
+          if (!coverUrl?.startsWith("/v1/covers/")) {
+            const targetUrl = details.imageUrl ?? coverUrl ?? null;
+            if (targetUrl) {
+              try {
+                const cover = await fetchCover(targetUrl);
+                if (cover) {
+                  await db().gameCover.upsert({
+                    where: { bggId },
+                    create: { bggId, contentType: cover.contentType, data: cover.data },
+                    update: { contentType: cover.contentType, data: cover.data },
+                  });
+                  coverUrl = `/v1/covers/${bggId}`;
+                }
+              } catch (coverErr) {
+                console.warn(`Could not cache cover for game ${bggId}:`, coverErr);
+              }
+            }
+          }
+
+          if (!coverUrl && details.imageUrl) {
+            coverUrl = details.imageUrl;
+          }
 
           await db().game.update({
             where: { bggId },
@@ -297,7 +320,7 @@ export async function collectionRoutes(app: FastifyInstance) {
               weight: details.weight,
               baseGameBggId: details.baseGameBggId ?? undefined,
               baseGameTitle: details.baseGameTitle ?? undefined,
-              coverUrl: coverUrlToUpdate,
+              coverUrl: coverUrl ?? undefined,
               description: details.description ?? undefined,
               designers: details.designers.length ? details.designers : undefined,
               publishers: details.publishers.length ? details.publishers : undefined,
@@ -330,10 +353,15 @@ export async function collectionRoutes(app: FastifyInstance) {
     });
 
     const candidates = items
-      .filter((item) => item.game.weight === null || !item.game.coverUrl)
+      .filter(
+        (item) =>
+          item.game.weight === null ||
+          !item.game.coverUrl ||
+          !item.game.coverUrl.startsWith("/v1/covers/")
+      )
       .map((item) => item.bggId);
 
-    const batch = candidates.slice(0, 20);
+    const batch = candidates.slice(0, 15);
     let enrichedCount = 0;
 
     if (batch.length > 0) {
@@ -343,9 +371,32 @@ export async function collectionRoutes(app: FastifyInstance) {
           where: { bggId },
           select: { coverUrl: true },
         });
-        const coverUrlToUpdate = existingGame?.coverUrl?.startsWith("/v1/covers/")
-          ? existingGame.coverUrl
-          : (details.imageUrl ?? existingGame?.coverUrl ?? undefined);
+
+        let coverUrl = existingGame?.coverUrl;
+
+        // Attempt to download and store cover into Tablefolk's local DB if not yet cached
+        if (!coverUrl?.startsWith("/v1/covers/")) {
+          const targetUrl = details.imageUrl ?? coverUrl ?? null;
+          if (targetUrl) {
+            try {
+              const cover = await fetchCover(targetUrl);
+              if (cover) {
+                await db().gameCover.upsert({
+                  where: { bggId },
+                  create: { bggId, contentType: cover.contentType, data: cover.data },
+                  update: { contentType: cover.contentType, data: cover.data },
+                });
+                coverUrl = `/v1/covers/${bggId}`;
+              }
+            } catch (coverErr) {
+              console.warn(`Could not cache cover for game ${bggId}:`, coverErr);
+            }
+          }
+        }
+
+        if (!coverUrl && details.imageUrl) {
+          coverUrl = details.imageUrl;
+        }
 
         await db().game.update({
           where: { bggId },
@@ -354,7 +405,7 @@ export async function collectionRoutes(app: FastifyInstance) {
             weight: details.weight,
             baseGameBggId: details.baseGameBggId ?? undefined,
             baseGameTitle: details.baseGameTitle ?? undefined,
-            coverUrl: coverUrlToUpdate,
+            coverUrl: coverUrl ?? undefined,
             description: details.description ?? undefined,
             designers: details.designers.length ? details.designers : undefined,
             publishers: details.publishers.length ? details.publishers : undefined,
