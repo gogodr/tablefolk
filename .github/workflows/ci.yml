@@ -15,6 +15,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: node .github/scripts/vercel-deploy.smoke.mjs
+      - run: node .github/scripts/neon-cleanup.smoke.mjs
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
