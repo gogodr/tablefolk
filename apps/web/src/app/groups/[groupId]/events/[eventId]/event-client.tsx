@@ -611,7 +611,7 @@ export function EventClient() {
                     <div key={slot.game.bggId} style={{ display: "contents" }}>
                       {idx > 0 && (
                         <div className="lineup-buffer-pill">
-                          ☕ 15m Intermission &amp; Setup buffer
+                          {slot.transitionReason ?? `☕ ${slot.transitionBeforeMinutes ?? 15}m Intermission & Setup buffer`}
                         </div>
                       )}
                       <div className="lineup-slot-card panel">

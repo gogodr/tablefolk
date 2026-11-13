@@ -98,6 +98,43 @@ export function chooseWeightedGameId(
   return pool[pool.length - 1]!;
 }
 
+export interface TransitionDetail {
+  minutes: number;
+  reason: string;
+}
+
+export function getGameTransition(game: GroupGame): TransitionDetail {
+  const duration = game.playingTime ?? 60;
+  const weight = game.weight ?? 2.0;
+
+  // Heavy / Epic game (e.g. Rising Sun, Brass, Scythe, Terraforming Mars)
+  if (weight >= 3.2 || duration >= 90) {
+    return {
+      minutes: 30,
+      reason: "☕ 30m Setup & Rules Teach (Heavy game)",
+    };
+  }
+  // Medium-Heavy game (e.g. Wingspan, Clank!, Catan with 5-6p expansion)
+  if (weight >= 2.6 || duration >= 70) {
+    return {
+      minutes: 25,
+      reason: "☕ 25m Table Setup & Rules Overview",
+    };
+  }
+  // Medium standard game (e.g. Pandemic, Ticket to Ride, WoW: Lich King)
+  if (weight >= 2.0 || duration >= 45) {
+    return {
+      minutes: 20,
+      reason: "☕ 20m Intermission & Board Setup",
+    };
+  }
+  // Light / filler game (e.g. Avalon, Sushi Go, Love Letter)
+  return {
+    minutes: 15,
+    reason: "☕ 15m Quick Reset & Snack buffer",
+  };
+}
+
 export const TRANSITION_BUFFER_MINUTES = 15;
 
 export interface LineupPlannerOptions {
@@ -188,13 +225,8 @@ export function planSessionLineup(
     });
 
     // 2. Anti-fatigue & Hierarchy Filler Selection
-    // Each additional game requires its duration + TRANSITION_BUFFER_MINUTES (15m buffer)
-    // Anti-fatigue & Hierarchy rules:
-    // - Warm-up: strictly <= 35 min, weight <= 2.2, duration <= mainDuration, weight <= mainWeight.
-    // - Cooldown: strictly <= 45 min, duration <= mainDuration.
-    //   If Main was heavy, weight <= 2.0. Otherwise weight <= 2.4 and <= mainWeight.
-    // - Never more than 3 games per session.
-    while (remainingMinutes >= (15 + TRANSITION_BUFFER_MINUTES) && selectedLineup.length < 3) {
+    // Dynamically scales setup & intermission buffer (15m to 30m) based on game complexity & duration
+    while (remainingMinutes >= 20 && selectedLineup.length < 3) {
       const hasWarmup = selectedLineup.some((s) => s.role === "warmup");
       const hasCooldown = selectedLineup.some((s) => s.role === "cooldown");
 
@@ -205,8 +237,11 @@ export function planSessionLineup(
         const duration = getDuration(g);
         const weight = g.weight ?? 2.0;
 
-        // Needs to fit in remaining time including transition buffer (with 15m grace)
-        if (duration + TRANSITION_BUFFER_MINUTES > remainingMinutes + 15) return false;
+        // Transition buffer required before the next game:
+        // - Warm-up is played before the Main Game, so the transition before Main Game depends on Main Game
+        const warmupBuffer = getGameTransition(mainGame).minutes;
+        // - Cooldown is played after the Main Game, so transition before Cooldown depends on Cooldown
+        const cooldownBuffer = getGameTransition(g).minutes;
 
         // Warm-up eligibility (quick opener)
         const canBeWarmup =
@@ -214,14 +249,16 @@ export function planSessionLineup(
           duration <= 35 &&
           duration <= mainDuration &&
           isLight(g) &&
-          weight <= mainWeight;
+          weight <= mainWeight &&
+          duration + warmupBuffer <= remainingMinutes + 15;
 
         // Cooldown eligibility (wind-down closer)
         const canBeCooldown =
           !hasCooldown &&
           duration <= 45 &&
           duration <= mainDuration &&
-          (hasHeavyGame ? weight <= 2.0 : weight <= 2.4 && weight <= mainWeight);
+          (hasHeavyGame ? weight <= 2.0 : weight <= 2.4 && weight <= mainWeight) &&
+          duration + cooldownBuffer <= remainingMinutes + 15;
 
         return canBeWarmup || canBeCooldown;
       });
@@ -234,18 +271,21 @@ export function planSessionLineup(
       const duration = getDuration(fillerGame);
       const weight = fillerGame.weight ?? 2.0;
 
-      pickedIds.add(chosenId);
-      remainingMinutes -= (duration + TRANSITION_BUFFER_MINUTES);
+      const warmupBuffer = getGameTransition(mainGame).minutes;
+      const cooldownBuffer = getGameTransition(fillerGame).minutes;
 
       const canBeWarmup =
         !hasWarmup &&
         duration <= 35 &&
         duration <= mainDuration &&
         isLight(fillerGame) &&
-        weight <= mainWeight;
+        weight <= mainWeight &&
+        duration + warmupBuffer <= remainingMinutes + 15;
 
-      // Assign role: prefer warmup first if not present, otherwise cooldown
+      // Assign role: prefer warmup first if not present and eligible, otherwise cooldown
       if (canBeWarmup && !hasWarmup) {
+        pickedIds.add(chosenId);
+        remainingMinutes -= (duration + warmupBuffer);
         selectedLineup.unshift({
           role: "warmup",
           label: "🍕 Warm-up / Apertura",
@@ -253,6 +293,8 @@ export function planSessionLineup(
           estimatedMinutes: duration,
         });
       } else {
+        pickedIds.add(chosenId);
+        remainingMinutes -= (duration + cooldownBuffer);
         selectedLineup.push({
           role: "cooldown",
           label: "☕ Cooldown / Despedida",
@@ -263,9 +305,24 @@ export function planSessionLineup(
     }
   }
 
+  // Populate dynamic transition details per slot
+  for (let i = 0; i < selectedLineup.length; i++) {
+    const slot = selectedLineup[i]!;
+    if (i === 0) {
+      slot.transitionBeforeMinutes = 0;
+      slot.transitionReason = undefined;
+    } else {
+      const transition = getGameTransition(slot.game);
+      slot.transitionBeforeMinutes = transition.minutes;
+      slot.transitionReason = transition.reason;
+    }
+  }
+
   const gameMinutes = selectedLineup.reduce((sum, slot) => sum + slot.estimatedMinutes, 0);
-  const transitions = Math.max(0, selectedLineup.length - 1);
-  const transitionMinutes = transitions * TRANSITION_BUFFER_MINUTES;
+  const transitionMinutes = selectedLineup.reduce(
+    (sum, slot) => sum + (slot.transitionBeforeMinutes ?? 0),
+    0
+  );
   const totalEstimated = gameMinutes + transitionMinutes;
 
   return {

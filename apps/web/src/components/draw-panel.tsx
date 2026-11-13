@@ -132,7 +132,10 @@ export function DrawPanel({ groupId }: { groupId: string }) {
         lineupResult.transitionMinutes ? ` (incluye ${lineupResult.transitionMinutes}m de pausas y setup)` : ""
       }`,
       ``,
-      ...lineupResult.lineup.map((s) => `• ${s.label}: *${s.game.name}* (~${s.estimatedMinutes} min)`),
+      ...lineupResult.lineup.flatMap((s, idx) => [
+        ...(idx > 0 && s.transitionBeforeMinutes ? [`  ${s.transitionReason ?? `☕ ${s.transitionBeforeMinutes}m Setup buffer`}`] : []),
+        `• ${s.label}: *${s.game.name}* (~${s.estimatedMinutes} min)`,
+      ]),
     ];
     void navigator.clipboard.writeText(textLines.join("\n"));
     setCopied(true);
@@ -361,7 +364,7 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                     <div key={slot.game.bggId} style={{ display: "contents" }}>
                       {idx > 0 && (
                         <div className="lineup-buffer-pill">
-                          ☕ 15m Intermission &amp; Setup buffer
+                          {slot.transitionReason ?? `☕ ${slot.transitionBeforeMinutes ?? 15}m Intermission & Setup buffer`}
                         </div>
                       )}
                       <div className="lineup-slot-card panel">

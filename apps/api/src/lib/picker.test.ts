@@ -231,18 +231,64 @@ describe("game night picker", () => {
       }
     });
 
-    it("calculates 15-minute transition dead time between games", () => {
-      const result = planSessionLineup(sampleGroupGames, {
+    it("calculates dynamic transition dead time based on game complexity & duration (e.g. 30m for Rising Sun)", () => {
+      const risingSunAndFillers: GroupGame[] = [
+        {
+          bggId: 201,
+          name: "Rising Sun",
+          kind: "boardgame",
+          minPlayers: 3,
+          maxPlayers: 5,
+          playingTime: 120,
+          minPlayingTime: 90,
+          maxPlayingTime: 120,
+          weight: 3.3, // Heavy epic game
+          yearPublished: 2018,
+          description: null,
+          minAge: 14,
+          coverUrl: null,
+          sourceUrl: "https://bgg.com/201",
+          designers: [],
+          publishers: [],
+          categories: [],
+          owners: [],
+        },
+        {
+          bggId: 202,
+          name: "Sushi Go!",
+          kind: "boardgame",
+          minPlayers: 2,
+          maxPlayers: 5,
+          playingTime: 20,
+          minPlayingTime: 15,
+          maxPlayingTime: 20,
+          weight: 1.2, // Light filler
+          yearPublished: 2013,
+          description: null,
+          minAge: 8,
+          coverUrl: null,
+          sourceUrl: "https://bgg.com/202",
+          designers: [],
+          publishers: [],
+          categories: [],
+          owners: [],
+        },
+      ];
+
+      const result = planSessionLineup(risingSunAndFillers, {
         playerCount: 4,
         totalMinutes: 180,
       });
 
-      if (result.lineup.length > 1) {
-        const expectedTransitions = (result.lineup.length - 1) * 15;
-        expect(result.transitionMinutes).toBe(expectedTransitions);
-        const gameSum = result.lineup.reduce((sum, s) => sum + s.estimatedMinutes, 0);
-        expect(result.totalEstimatedMinutes).toBe(gameSum + expectedTransitions);
-      }
+      expect(result.status).toBe("success");
+      expect(result.lineup.length).toBe(2);
+
+      // Warm-up is Sushi Go!, Main is Rising Sun
+      const risingSunSlot = result.lineup.find((s) => s.game.bggId === 201);
+      expect(risingSunSlot).toBeDefined();
+      expect(risingSunSlot!.transitionBeforeMinutes).toBe(30); // 30 min buffer for Rising Sun!
+      expect(result.transitionMinutes).toBe(30);
+      expect(result.totalEstimatedMinutes).toBe(20 + 30 + 120); // 170 min
     });
   });
 });

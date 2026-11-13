@@ -165,6 +165,8 @@ export interface SessionGameSlot {
   label: string;
   game: GroupGame;
   estimatedMinutes: number;
+  transitionBeforeMinutes?: number;
+  transitionReason?: string;
 }
 
 export interface SessionLineupResult {
