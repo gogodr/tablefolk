@@ -22,6 +22,13 @@ describe("BGG import", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("returns each BGG ID once in search results", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(`<items><item id="349286" type="boardgame"><name type="primary" value="First name"/></item><item id="349286" type="boardgame"><name type="alternate" value="Alternate name"/></item><item id="12" type="boardgameexpansion"><name type="primary" value="Expansion"/></item></items>`)));
+    const games = await searchBgg("Duplicate example");
+    expect(games.map((game) => game.bggId)).toEqual([349286, 12]);
+    expect(games[0]?.name).toBe("First name");
+  });
+
   it("reads stored player range and metadata from a game detail response", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(`<items><item id="11" type="boardgameexpansion"><name type="primary" value="Forest Trail: More Trees"/><minplayers value="2"/><maxplayers value="6"/><playingtime value="45"/><link type="boardgamedesigner" value="Alex Example"/><image>https://cf.geekdo-images.com/example.jpg</image></item></items>`)));
     const game = await getBggGame(11);

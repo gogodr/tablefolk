@@ -79,14 +79,22 @@ export async function searchBgg(query: string): Promise<SearchResult[]> {
   if (cached && cached.until > Date.now()) return cached.result;
   const result = await requestXml(`/search?query=${encodeURIComponent(normalized)}&type=boardgame,boardgameexpansion`);
   const items = array((result as { items?: { item?: RawItem | RawItem[] } }).items?.item);
-  const matches = items.filter((item) => kinds.has(item.type as GameKind)).slice(0, 25).map((item) => ({
-    bggId: Number(item.id),
-    kind: item.type as GameKind,
-    name: nameValues(item.name).find((name) => name.type === "primary")?.value
-      ?? nameValues(item.name)[0]?.value
-      ?? "Unnamed game",
-    yearPublished: numberOrNull(item.yearpublished),
-  })).filter((item) => Number.isInteger(item.bggId) && item.bggId > 0);
+  const matches: SearchResult[] = [];
+  const seenIds = new Set<number>();
+  for (const item of items) {
+    const bggId = Number(item.id);
+    if (!kinds.has(item.type as GameKind) || !Number.isInteger(bggId) || bggId <= 0 || seenIds.has(bggId)) continue;
+    seenIds.add(bggId);
+    matches.push({
+      bggId,
+      kind: item.type as GameKind,
+      name: nameValues(item.name).find((name) => name.type === "primary")?.value
+        ?? nameValues(item.name)[0]?.value
+        ?? "Unnamed game",
+      yearPublished: numberOrNull(item.yearpublished),
+    });
+    if (matches.length === 25) break;
+  }
   if (searchCache.size > 100) searchCache.delete(searchCache.keys().next().value ?? "");
   searchCache.set(key, { until: Date.now() + 5 * 60_000, result: matches });
   return matches;

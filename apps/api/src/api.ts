@@ -36,7 +36,9 @@ export function buildApp() {
     methods: ["GET", "POST", "PATCH", "PUT", "DELETE"],
     allowedHeaders: ["Authorization", "Content-Type"],
   });
-  app.register(clerkPlugin);
+  if (process.env.CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY) {
+    app.register(clerkPlugin);
+  }
   app.get("/health", async () => ({ ok: true }));
   app.register(catalogRoutes);
   app.register(collectionRoutes);

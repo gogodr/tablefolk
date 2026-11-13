@@ -17,6 +17,7 @@ export function weightLabel(weight: number | null): string | null {
 
 interface GameCardProps {
   game: Game;
+  eagerCover?: boolean;
   owners?: (GameOwner | Member)[];
   actions?: React.ReactNode;
   interestScore?: number;
@@ -24,14 +25,14 @@ interface GameCardProps {
   canVote?: boolean;
 }
 
-export function GameCard({ game, owners, actions, interestScore, onVote, canVote }: GameCardProps) {
+export function GameCard({ game, eagerCover = false, owners, actions, interestScore, onVote, canVote }: GameCardProps) {
   const complexity = weightLabel(game.weight);
 
   return (
     <article className="game-card">
       <div className="game-cover">
         {game.coverUrl ? (
-          <img src={gameCoverSrc(game.coverUrl)} alt={`${game.name} cover`} loading="lazy" />
+          <img src={gameCoverSrc(game.coverUrl)} alt={`${game.name} cover`} loading={eagerCover ? "eager" : "lazy"} fetchPriority={eagerCover ? "high" : undefined} />
         ) : (
           <img className="cover-placeholder" src="/brand/tablefolk-mark.png" alt="" />
         )}
@@ -43,7 +44,7 @@ export function GameCard({ game, owners, actions, interestScore, onVote, canVote
         </div>
         <p className="game-meta">
           <span className="meta-pill meta-players">{playerRange(game)}</span>
-          {game.playingTime && <span className="meta-pill meta-time">⏱️ {game.playingTime} min</span>}
+          {game.playingTime && <span className="meta-pill meta-time">{game.playingTime} min</span>}
           {complexity && (
             <span
               className={`meta-pill meta-weight ${
@@ -54,15 +55,15 @@ export function GameCard({ game, owners, actions, interestScore, onVote, canVote
                   : "weight-light"
               }`}
             >
-              ⚖️ {complexity}
+              {complexity}
             </span>
           )}
-          {game.yearPublished && <span className="meta-pill meta-year">📅 {game.yearPublished}</span>}
+          {game.yearPublished && <span className="meta-pill meta-year">{game.yearPublished}</span>}
         </p>
 
         {interestScore !== undefined && interestScore > 0 && (
           <div className="game-interest-badge">
-            <span>⭐ {interestScore} {interestScore === 1 ? "want point" : "want points"}</span>
+            <span>{interestScore} {interestScore === 1 ? "want point" : "want points"}</span>
             {canVote && onVote && (
               <button type="button" className="button-quiet button-small" onClick={onVote}>
                 + Add vote

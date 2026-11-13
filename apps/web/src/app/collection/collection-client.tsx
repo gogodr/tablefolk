@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CollectionGame, GroupSummary, BggSyncResult } from "@tablefolk/contracts";
 import { GameCard } from "@/components/game-card";
 import { GameSearch } from "@/components/game-search";
@@ -24,6 +24,7 @@ export function CollectionClient() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const inspectorRef = useRef<HTMLDialogElement>(null);
 
   // BGG Sync State
   const [bggUsername, setBggUsername] = useState("");
@@ -51,6 +52,28 @@ export function CollectionClient() {
     else if (isLoaded) setLoading(false);
   }, [isLoaded, isSignedIn, load]);
 
+  const selectedId = sharingId ?? editingId;
+  const selectedGame = games.find((game) => game.bggId === selectedId);
+
+  useEffect(() => {
+    const inspector = inspectorRef.current;
+    if (!inspector) return;
+    if (selectedGame && !inspector.open) inspector.showModal();
+    if (!selectedGame && inspector.open) inspector.close();
+  }, [selectedGame]);
+
+  function closeInspector() {
+    setSharingId(null);
+    setEditingId(null);
+    setConfirmId(null);
+  }
+
+  function openInspector(bggId: number, section: "share" | "details") {
+    setSharingId(section === "share" ? bggId : null);
+    setEditingId(section === "details" ? bggId : null);
+    setConfirmId(null);
+  }
+
   async function removeGame(bggId: number) {
     setRemovingId(bggId);
     try {
@@ -77,7 +100,6 @@ export function CollectionClient() {
         body: JSON.stringify({ isAvailable, unavailableReason, versionName }),
       });
       await load();
-      setEditingId(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not update availability.");
     }
@@ -127,44 +149,47 @@ export function CollectionClient() {
       ? games.filter((game) => game.isAvailable)
       : games.filter((game) => game.kind === filter);
 
+  const game = selectedGame;
+
   return (
-    <div className="page">
-      <div className="page-header">
+    <div className="page collection-page">
+      <div className="page-header collection-heading">
         <div>
           <h1>My collection</h1>
           <p>Keep the games you own close, manage what can travel, and share them with your groups.</p>
         </div>
-        <Link href="/groups" className="button-secondary">View groups</Link>
+        <Link href="/groups" className="collection-groups-link">View groups</Link>
       </div>
 
-      {/* BGG Auto-Sync Section */}
-      <section className="panel bgg-sync-panel">
-        <div className="panel-header">
-          <div>
-            <h2>Import from BoardGameGeek</h2>
+      <div className="collection-tools">
+        <details className="collection-tool collection-tool-add">
+          <summary>Add a game</summary>
+          <div className="collection-tool-content"><GameSearch onAdded={() => void load()} /></div>
+        </details>
+        <details className="collection-tool">
+          <summary>Import from BoardGameGeek</summary>
+          <div className="collection-tool-content">
             <p>Connect your BGG account to automatically import and refresh your owned collection.</p>
+            <form onSubmit={handleSyncBgg} className="inline-form">
+              <div className="field">
+                <label htmlFor="bgg-user">BGG Username</label>
+                <input
+                  id="bgg-user"
+                  type="text"
+                  placeholder="e.g. Rahdo"
+                  value={bggUsername}
+                  onChange={(e) => setBggUsername(e.target.value)}
+                  disabled={syncing}
+                />
+              </div>
+              <button type="submit" className="button" disabled={syncing || !bggUsername.trim()}>
+                {syncing ? "Syncing with BGG…" : "Sync BGG Collection"}
+              </button>
+            </form>
+            {syncStatus && <p className="form-success">{syncStatus}</p>}
           </div>
-        </div>
-        <form onSubmit={handleSyncBgg} className="inline-form">
-          <div className="field">
-            <label htmlFor="bgg-user">BGG Username</label>
-            <input
-              id="bgg-user"
-              type="text"
-              placeholder="e.g. Rahdo"
-              value={bggUsername}
-              onChange={(e) => setBggUsername(e.target.value)}
-              disabled={syncing}
-            />
-          </div>
-          <button type="submit" className="button" disabled={syncing || !bggUsername.trim()}>
-            {syncing ? "Syncing with BGG…" : "Sync BGG Collection"}
-          </button>
-        </form>
-        {syncStatus && <p className="form-success">{syncStatus}</p>}
-      </section>
-
-      <GameSearch onAdded={() => void load()} />
+        </details>
+      </div>
 
       <div className="section-title">
         <h2>Your games</h2>
@@ -223,42 +248,82 @@ export function CollectionClient() {
           </div>
         </div>
       ) : (
-        <div className="game-grid">
-          {shown.map((game) => (
+        <div className="game-grid collection-grid">
+          {shown.map((game, index) => (
             <div className="collection-card-wrap" key={game.bggId}>
               <GameCard
                 game={game}
+                eagerCover={index === 0}
                 actions={
-                  <div className="game-actions">
+                  <div className="collection-card-actions">
                     <button
                       type="button"
-                      className={`button-quiet ${!game.isAvailable ? "status-flag" : ""}`}
-                      onClick={() => setEditingId(editingId === game.bggId ? null : game.bggId)}
+                      className="collection-action"
+                      onClick={() => openInspector(game.bggId, "share")}
+                      aria-label={`Share ${game.name} with groups`}
                     >
-                      {game.isAvailable ? "✓ Available" : `⚠ ${game.unavailableReason || "Unavailable"}`}
+                      Share {game.sharedGroupIds.length > 0 && <span>{game.sharedGroupIds.length}</span>}
                     </button>
                     <button
                       type="button"
-                      className="button-quiet"
-                      onClick={() => setSharingId(sharingId === game.bggId ? null : game.bggId)}
+                      className="collection-action"
+                      onClick={() => openInspector(game.bggId, "details")}
+                      aria-label={`Manage ${game.name}`}
                     >
-                      Share ({game.sharedGroupIds.length})
-                    </button>
-                    <button
-                      type="button"
-                      className="button-quiet"
-                      onClick={() => setConfirmId(game.bggId)}
-                    >
-                      Remove
+                      Manage
                     </button>
                   </div>
                 }
               />
+              <span className={`collection-status ${game.isAvailable ? "" : "collection-status-unavailable"}`}>
+                {game.isAvailable ? "Available to travel" : game.unavailableReason || "Unavailable"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
-              {/* Availability & Version Editor */}
-              {editingId === game.bggId && (
-                <div className="availability-panel panel">
-                  <h3>Game Availability & Version</h3>
+      <dialog
+        ref={inspectorRef}
+        className="collection-inspector"
+        aria-label={game ? `Manage ${game.name}` : "Manage game"}
+        onClose={closeInspector}
+        onClick={(event) => {
+          const bounds = event.currentTarget.getBoundingClientRect();
+          if (event.target === event.currentTarget &&
+              (event.clientX < bounds.left || event.clientX > bounds.right ||
+               event.clientY < bounds.top || event.clientY > bounds.bottom)) {
+            event.currentTarget.close();
+          }
+        }}
+      >
+        {game && (
+          <div className="collection-inspector-inner">
+            <div className="collection-inspector-head">
+              <div>
+                <h2>{game.name}</h2>
+                <p>{game.isAvailable ? "Available to travel" : game.unavailableReason || "Unavailable"}</p>
+              </div>
+              <button type="button" className="collection-close" onClick={() => inspectorRef.current?.close()} aria-label="Close game details">Close</button>
+            </div>
+            <div className="collection-inspector-tabs" role="group" aria-label="Game settings">
+              <button type="button" className={sharingId === game.bggId ? "active" : ""} aria-pressed={sharingId === game.bggId} onClick={() => openInspector(game.bggId, "share")}>Share</button>
+              <button type="button" className={editingId === game.bggId ? "active" : ""} aria-pressed={editingId === game.bggId} onClick={() => openInspector(game.bggId, "details")}>Details</button>
+            </div>
+
+            {sharingId === game.bggId ? (
+              <section className="collection-inspector-section">
+                <h3>Share with groups</h3>
+                <ShareControl
+                  bggId={game.bggId}
+                  sharedGroupIds={game.sharedGroupIds}
+                  groups={groups}
+                  onChanged={() => void load()}
+                />
+              </section>
+            ) : (
+              <section className="collection-inspector-section">
+                <h3>Game Availability &amp; Version</h3>
                   <div className="field">
                     <label>
                       <input
@@ -304,6 +369,7 @@ export function CollectionClient() {
                   <div className="field">
                     <label htmlFor={`version-${game.bggId}`}>Specific Edition / Version Name</label>
                     <input
+                      key={game.bggId}
                       id={`version-${game.bggId}`}
                       type="text"
                       placeholder="e.g. 25th Anniversary, 2nd Edition"
@@ -318,20 +384,9 @@ export function CollectionClient() {
                       }
                     />
                   </div>
-                </div>
-              )}
-
-              {sharingId === game.bggId && (
-                <ShareControl
-                  bggId={game.bggId}
-                  sharedGroupIds={game.sharedGroupIds}
-                  groups={groups}
-                  onChanged={() => void load()}
-                />
-              )}
-
-              {confirmId === game.bggId && (
-                <div className="confirm-strip">
+                <div className="collection-remove">
+                  {confirmId !== game.bggId && <button type="button" className="collection-remove-trigger" onClick={() => setConfirmId(game.bggId)}>Remove from collection</button>}
+                  {confirmId === game.bggId && <div className="confirm-strip">
                   <span>
                     Remove {game.name}? This also stops sharing your copy with{" "}
                     {game.sharedGroupIds.length}{" "}
@@ -350,12 +405,13 @@ export function CollectionClient() {
                   >
                     Cancel
                   </button>
+                  </div>}
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+              </section>
+            )}
+          </div>
+        )}
+      </dialog>
     </div>
   );
 }

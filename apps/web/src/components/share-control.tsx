@@ -35,7 +35,7 @@ export function ShareControl({ bggId, sharedGroupIds, groups, onChanged }: {
       {groups.map((group) => {
         const shared = sharedGroupIds.includes(group.id);
         return <button key={group.id} type="button" className={`share-pill ${shared ? "active" : ""}`} aria-pressed={shared} disabled={busyId !== null} onClick={() => toggle(group.id)}>
-          {busyId === group.id ? "Saving…" : shared ? `✓ ${group.name}` : `+ ${group.name}`}
+          <span>{group.name}</span><span>{busyId === group.id ? "Saving…" : shared ? "Shared" : "Share"}</span>
         </button>;
       })}
     </div>
