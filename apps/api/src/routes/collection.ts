@@ -205,6 +205,15 @@ export async function collectionRoutes(app: FastifyInstance) {
     let updatedCount = 0;
 
     for (const item of bggItems) {
+      // Check if game already exists with a local cached cover (/v1/covers/:bggId)
+      const existingGame = await db().game.findUnique({
+        where: { bggId: item.bggId },
+        select: { coverUrl: true },
+      });
+      const coverUrlToUpdate = existingGame?.coverUrl?.startsWith("/v1/covers/")
+        ? existingGame.coverUrl
+        : (item.imageUrl ?? existingGame?.coverUrl ?? undefined);
+
       // Upsert game record including image URL and kind
       await db().game.upsert({
         where: { bggId: item.bggId },
@@ -218,7 +227,7 @@ export async function collectionRoutes(app: FastifyInstance) {
           minPlayingTime: item.minPlayingTime,
           maxPlayingTime: item.maxPlayingTime,
           weight: item.weight ?? undefined,
-          coverUrl: item.imageUrl ? item.imageUrl : undefined,
+          coverUrl: coverUrlToUpdate,
         },
         create: {
           bggId: item.bggId,
@@ -273,6 +282,14 @@ export async function collectionRoutes(app: FastifyInstance) {
       try {
         const enrichedDetails = await getBggGamesBatch(missingWeightIds);
         for (const [bggId, details] of enrichedDetails) {
+          const existingGame = await db().game.findUnique({
+            where: { bggId },
+            select: { coverUrl: true },
+          });
+          const coverUrlToUpdate = existingGame?.coverUrl?.startsWith("/v1/covers/")
+            ? existingGame.coverUrl
+            : (details.imageUrl ?? existingGame?.coverUrl ?? undefined);
+
           await db().game.update({
             where: { bggId },
             data: {
@@ -280,7 +297,7 @@ export async function collectionRoutes(app: FastifyInstance) {
               weight: details.weight,
               baseGameBggId: details.baseGameBggId ?? undefined,
               baseGameTitle: details.baseGameTitle ?? undefined,
-              coverUrl: details.imageUrl ? details.imageUrl : undefined,
+              coverUrl: coverUrlToUpdate,
               description: details.description ?? undefined,
               designers: details.designers.length ? details.designers : undefined,
               publishers: details.publishers.length ? details.publishers : undefined,
@@ -322,6 +339,14 @@ export async function collectionRoutes(app: FastifyInstance) {
     if (batch.length > 0) {
       const enrichedDetails = await getBggGamesBatch(batch);
       for (const [bggId, details] of enrichedDetails) {
+        const existingGame = await db().game.findUnique({
+          where: { bggId },
+          select: { coverUrl: true },
+        });
+        const coverUrlToUpdate = existingGame?.coverUrl?.startsWith("/v1/covers/")
+          ? existingGame.coverUrl
+          : (details.imageUrl ?? existingGame?.coverUrl ?? undefined);
+
         await db().game.update({
           where: { bggId },
           data: {
@@ -329,7 +354,7 @@ export async function collectionRoutes(app: FastifyInstance) {
             weight: details.weight,
             baseGameBggId: details.baseGameBggId ?? undefined,
             baseGameTitle: details.baseGameTitle ?? undefined,
-            coverUrl: details.imageUrl ? details.imageUrl : undefined,
+            coverUrl: coverUrlToUpdate,
             description: details.description ?? undefined,
             designers: details.designers.length ? details.designers : undefined,
             publishers: details.publishers.length ? details.publishers : undefined,
