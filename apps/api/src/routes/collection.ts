@@ -263,11 +263,11 @@ export async function collectionRoutes(app: FastifyInstance) {
       }
     }
 
-    // Automatically batch-enrich games that lack weight or need full details (up to 40 items per sync)
+    // Automatically batch-enrich a gentle slice of games (up to 12 items) during initial sync
     const missingWeightIds = bggItems
       .filter((item) => item.weight === null)
       .map((item) => item.bggId)
-      .slice(0, 40);
+      .slice(0, 12);
 
     if (missingWeightIds.length > 0) {
       try {
@@ -316,7 +316,7 @@ export async function collectionRoutes(app: FastifyInstance) {
       .filter((item) => item.game.weight === null || !item.game.coverUrl)
       .map((item) => item.bggId);
 
-    const batch = candidates.slice(0, 40);
+    const batch = candidates.slice(0, 20);
     let enrichedCount = 0;
 
     if (batch.length > 0) {

@@ -44,9 +44,11 @@ async function requestXml(path: string, retries = 2): Promise<unknown> {
     throw new AppError(503, "BGG_UNAVAILABLE", "BoardGameGeek is unavailable. Try again later.");
   }
 
-  // BGG returns 202 while compiling user collection
-  if (response.status === 202 && retries > 0) {
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+  // BGG returns 202 while compiling user collection, or 429 when rate-limited
+  if ((response.status === 202 || response.status === 429) && retries > 0) {
+    const retryAfter = Number(response.headers.get("retry-after"));
+    const delayMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 4000;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
     return requestXml(path, retries - 1);
   }
 
@@ -203,7 +205,9 @@ export async function getBggGamesBatch(bggIds: number[]): Promise<Map<number, Bg
   const map = new Map<number, BggGameDetails>();
   if (uniqueIds.length === 0) return map;
 
-  const chunkSize = 20;
+  // Process in small polite chunks of 12 games with 1.5s pauses between requests
+  // to stay well within BoardGameGeek API rate limits and avoid 429/503 errors.
+  const chunkSize = 12;
   for (let i = 0; i < uniqueIds.length; i += chunkSize) {
     const chunk = uniqueIds.slice(i, i + chunkSize);
     try {
@@ -218,8 +222,9 @@ export async function getBggGamesBatch(bggIds: number[]): Promise<Map<number, Bg
     } catch (err) {
       console.warn(`Failed to fetch BGG batch for IDs ${chunk.join(",")}:`, err);
     }
+    // Respectful 1.5s pause between batch requests
     if (i + chunkSize < uniqueIds.length) {
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     }
   }
 
