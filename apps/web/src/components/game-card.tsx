@@ -1,7 +1,7 @@
-import type { Game, GameOwner, Member } from "@tablefolk/contracts";
+import type { Game, CollectionGame, GameOwner, Member } from "@tablefolk/contracts";
 import { gameCoverSrc } from "@/lib/assets";
 
-export function playerRange(game: Game): string {
+export function playerRange(game: Game | CollectionGame): string {
   if (!game.minPlayers || !game.maxPlayers) return "Player count unknown";
   return game.minPlayers === game.maxPlayers
     ? `${game.minPlayers} players`
@@ -16,7 +16,7 @@ export function weightLabel(weight: number | null): string | null {
 }
 
 interface GameCardProps {
-  game: Game;
+  game: Game | CollectionGame;
   owners?: (GameOwner | Member)[];
   actions?: React.ReactNode;
   interestScore?: number;
@@ -26,6 +26,9 @@ interface GameCardProps {
 
 export function GameCard({ game, owners, actions, interestScore, onVote, canVote }: GameCardProps) {
   const complexity = weightLabel(game.weight);
+  const versionName = "versionName" in game ? (game as CollectionGame).versionName : null;
+  const isAvailable = "isAvailable" in game ? (game as CollectionGame).isAvailable : true;
+  const unavailableReason = "unavailableReason" in game ? (game as CollectionGame).unavailableReason : null;
 
   return (
     <article className="game-card">
@@ -58,6 +61,16 @@ export function GameCard({ game, owners, actions, interestScore, onVote, canVote
             </span>
           )}
           {game.yearPublished && <span className="meta-pill meta-year">📅 {game.yearPublished}</span>}
+          {versionName && (
+            <span className="meta-pill meta-version" title={`Edition: ${versionName}`}>
+              🏷️ {versionName}
+            </span>
+          )}
+          {!isAvailable && (
+            <span className="meta-pill meta-unavailable" title={unavailableReason || "Unavailable to travel"}>
+              ⚠ {unavailableReason || "Home only"}
+            </span>
+          )}
         </p>
 
         {interestScore !== undefined && interestScore > 0 && (

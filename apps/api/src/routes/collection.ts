@@ -8,7 +8,7 @@ import { requireUser } from "../auth.js";
 import { db } from "../db.js";
 import { AppError, notFound } from "../lib/errors.js";
 import { gameDto } from "../lib/serialize.js";
-import { getBggGame, getBggCollection } from "../services/bgg.js";
+import { getBggGame, getBggCollection, getBggGamesBatch } from "../services/bgg.js";
 import { fetchCover } from "../services/cover-store.js";
 import { config } from "../config.js";
 
@@ -133,6 +133,15 @@ export async function collectionRoutes(app: FastifyInstance) {
   });
 
   // User BGG Profile
+  app.get("/v1/user/bgg-profile", async (request) => {
+    const user = await requireUser(request);
+    const dbUser = await db().user.findUnique({ where: { id: user.id } });
+    return {
+      bggUsername: dbUser?.bggUsername ?? null,
+      lastBggSyncAt: dbUser?.lastBggSyncAt ? dbUser.lastBggSyncAt.toISOString() : null,
+    };
+  });
+
   app.put("/v1/user/bgg-profile", async (request) => {
     const user = await requireUser(request);
     const { bggUsername } = bggProfileSchema.parse(request.body);
@@ -154,9 +163,9 @@ export async function collectionRoutes(app: FastifyInstance) {
       throw new AppError(400, "NO_BGG_USERNAME", "Please configure your BGG username first.");
     }
 
-    // Rate limit check: max 1 sync every 5 minutes
-    if (dbUser?.lastBggSyncAt && Date.now() - dbUser.lastBggSyncAt.getTime() < 5 * 60 * 1000) {
-      throw new AppError(429, "SYNC_TOO_FREQUENT", "Collection was synced recently. Please wait 5 minutes before syncing again.");
+    // Rate limit check: max 1 sync every 30 seconds
+    if (dbUser?.lastBggSyncAt && Date.now() - dbUser.lastBggSyncAt.getTime() < 30 * 1000) {
+      throw new AppError(429, "SYNC_TOO_FREQUENT", "Collection was synced recently. Please wait a few seconds before syncing again.");
     }
 
     const bggItems = await getBggCollection(bggUsername);
@@ -164,18 +173,20 @@ export async function collectionRoutes(app: FastifyInstance) {
     let updatedCount = 0;
 
     for (const item of bggItems) {
-      // Upsert game record
+      // Upsert game record including image URL and kind
       await db().game.upsert({
         where: { bggId: item.bggId },
         update: {
           name: item.name,
+          kind: item.kind,
           yearPublished: item.yearPublished,
           minPlayers: item.minPlayers,
           maxPlayers: item.maxPlayers,
           playingTime: item.playingTime,
           minPlayingTime: item.minPlayingTime,
           maxPlayingTime: item.maxPlayingTime,
-          weight: item.weight,
+          weight: item.weight ?? undefined,
+          coverUrl: item.imageUrl ? item.imageUrl : undefined,
         },
         create: {
           bggId: item.bggId,
@@ -188,6 +199,7 @@ export async function collectionRoutes(app: FastifyInstance) {
           minPlayingTime: item.minPlayingTime,
           maxPlayingTime: item.maxPlayingTime,
           weight: item.weight,
+          coverUrl: item.imageUrl,
           sourceUrl: `https://boardgamegeek.com/boardgame/${item.bggId}`,
         },
       });
@@ -208,7 +220,7 @@ export async function collectionRoutes(app: FastifyInstance) {
         importedCount++;
       } else {
         // Keep existing isAvailable and unavailableReason intact
-        // Only update versionName if user hasn't set a custom one
+        // Update versionName if provided by BGG and not set
         if (item.versionName && !existing.versionName) {
           await db().collectionItem.update({
             where: { userId_bggId: { userId: user.id, bggId: item.bggId } },
@@ -216,6 +228,34 @@ export async function collectionRoutes(app: FastifyInstance) {
           });
           updatedCount++;
         }
+      }
+    }
+
+    // Automatically batch-enrich games that lack weight or need full details (up to 40 items per sync)
+    const missingWeightIds = bggItems
+      .filter((item) => item.weight === null)
+      .map((item) => item.bggId)
+      .slice(0, 40);
+
+    if (missingWeightIds.length > 0) {
+      try {
+        const enrichedDetails = await getBggGamesBatch(missingWeightIds);
+        for (const [bggId, details] of enrichedDetails) {
+          await db().game.update({
+            where: { bggId },
+            data: {
+              kind: details.kind,
+              weight: details.weight,
+              coverUrl: details.imageUrl ? details.imageUrl : undefined,
+              description: details.description ?? undefined,
+              designers: details.designers.length ? details.designers : undefined,
+              publishers: details.publishers.length ? details.publishers : undefined,
+              categories: details.categories.length ? details.categories : undefined,
+            },
+          });
+        }
+      } catch (err) {
+        console.warn("Background batch enrichment notice:", err);
       }
     }
 
@@ -228,6 +268,46 @@ export async function collectionRoutes(app: FastifyInstance) {
       importedCount,
       updatedCount,
       totalCount: bggItems.length,
+    };
+  });
+
+  app.post("/v1/collection/enrich", async (request) => {
+    const user = await requireUser(request);
+    const items = await db().collectionItem.findMany({
+      where: { userId: user.id },
+      include: { game: true },
+    });
+
+    const candidates = items
+      .filter((item) => item.game.weight === null || !item.game.coverUrl)
+      .map((item) => item.bggId);
+
+    const batch = candidates.slice(0, 40);
+    let enrichedCount = 0;
+
+    if (batch.length > 0) {
+      const enrichedDetails = await getBggGamesBatch(batch);
+      for (const [bggId, details] of enrichedDetails) {
+        await db().game.update({
+          where: { bggId },
+          data: {
+            kind: details.kind,
+            weight: details.weight,
+            coverUrl: details.imageUrl ? details.imageUrl : undefined,
+            description: details.description ?? undefined,
+            designers: details.designers.length ? details.designers : undefined,
+            publishers: details.publishers.length ? details.publishers : undefined,
+            categories: details.categories.length ? details.categories : undefined,
+          },
+        });
+        enrichedCount++;
+      }
+    }
+
+    return {
+      enrichedCount,
+      remainingCount: Math.max(0, candidates.length - batch.length),
+      totalCandidates: candidates.length,
     };
   });
 }

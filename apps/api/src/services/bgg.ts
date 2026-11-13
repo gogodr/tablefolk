@@ -140,12 +140,9 @@ export interface BggGameDetails {
   imageUrl: string | null;
 }
 
-export async function getBggGame(bggId: number): Promise<BggGameDetails> {
-  const result = await requestXml(`/thing?id=${bggId}&type=boardgame,boardgameexpansion&stats=1`);
-  const item = array((result as { items?: { item?: RawItem | RawItem[] } }).items?.item)[0];
-  if (!item || !kinds.has(item.type as GameKind) || Number(item.id) !== bggId) {
-    throw new AppError(404, "BGG_GAME_NOT_FOUND", "That game was not found on BoardGameGeek.");
-  }
+function parseRawItem(item: RawItem): BggGameDetails | null {
+  const bggId = Number(item.id);
+  if (!Number.isInteger(bggId) || bggId < 1 || !kinds.has(item.type as GameKind)) return null;
   const names = nameValues(item.name);
   const links = array(item.link);
   const linked = (type: string) => links.filter((link) => link.type === type).map((link) => link.value);
@@ -171,6 +168,64 @@ export async function getBggGame(bggId: number): Promise<BggGameDetails> {
   };
 }
 
+export async function getBggGame(bggId: number): Promise<BggGameDetails> {
+  const result = await requestXml(`/thing?id=${bggId}&type=boardgame,boardgameexpansion&stats=1`);
+  const item = array((result as { items?: { item?: RawItem | RawItem[] } }).items?.item)[0];
+  if (!item) {
+    throw new AppError(404, "BGG_GAME_NOT_FOUND", "That game was not found on BoardGameGeek.");
+  }
+  const parsed = parseRawItem(item);
+  if (!parsed) {
+    throw new AppError(404, "BGG_GAME_NOT_FOUND", "That game was not found on BoardGameGeek.");
+  }
+  return parsed;
+}
+
+export async function getBggGamesBatch(bggIds: number[]): Promise<Map<number, BggGameDetails>> {
+  const uniqueIds = Array.from(new Set(bggIds.filter((id) => Number.isInteger(id) && id > 0)));
+  const map = new Map<number, BggGameDetails>();
+  if (uniqueIds.length === 0) return map;
+
+  const chunkSize = 20;
+  for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+    const chunk = uniqueIds.slice(i, i + chunkSize);
+    try {
+      const result = await requestXml(`/thing?id=${chunk.join(",")}&type=boardgame,boardgameexpansion&stats=1`);
+      const items = array((result as { items?: { item?: RawItem | RawItem[] } }).items?.item);
+      for (const item of items) {
+        const details = parseRawItem(item);
+        if (details) {
+          map.set(details.bggId, details);
+        }
+      }
+    } catch (err) {
+      console.warn(`Failed to fetch BGG batch for IDs ${chunk.join(",")}:`, err);
+    }
+    if (i + chunkSize < uniqueIds.length) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+
+  return map;
+}
+
+function extractVersionName(version: unknown): string | null {
+  if (typeof version !== "object" || version === null) return null;
+  const item = (version as { item?: unknown }).item;
+  if (!item || typeof item !== "object") return null;
+  const nameObj = (item as { name?: unknown }).name;
+  if (typeof nameObj === "string") return nameObj.trim() || null;
+  if (typeof nameObj === "object" && nameObj !== null) {
+    if ("value" in nameObj && typeof (nameObj as { value: unknown }).value === "string") {
+      return (nameObj as { value: string }).value.trim() || null;
+    }
+    if ("#text" in nameObj && typeof (nameObj as { "#text": unknown })["#text"] === "string") {
+      return (nameObj as { "#text": string })["#text"].trim() || null;
+    }
+  }
+  return null;
+}
+
 export interface BggCollectionItem {
   bggId: number;
   kind: GameKind;
@@ -190,16 +245,14 @@ export async function getBggCollection(username: string): Promise<BggCollectionI
   const normalized = username.trim();
   if (!normalized) return [];
 
-  const result = await requestXml(`/collection?username=${encodeURIComponent(normalized)}&own=1&stats=1`);
+  const result = await requestXml(`/collection?username=${encodeURIComponent(normalized)}&own=1&stats=1&version=1`);
   const root = result as { items?: { item?: RawCollectionItem | RawCollectionItem[] } };
   const items = array(root.items?.item);
 
   return items.map((item) => {
     const subtype = (item.subtype ?? "boardgame") as GameKind;
     const stats = item.stats;
-    const versionName = typeof item.version === "object" && item.version !== null && "item" in item.version
-      ? String((item.version as { item?: { name?: string } }).item?.name ?? "")
-      : null;
+    const versionName = extractVersionName(item.version);
 
     return {
       bggId: Number(item.objectid),
