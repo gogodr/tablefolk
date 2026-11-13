@@ -114,7 +114,42 @@ export function MembersClient() {
     {error && <p className="form-error" role="alert">{error}</p>}{success && <p className="form-success" role="status">{success}</p>}
     <div className="panel">
       <div className="panel-header"><h2>People in the group</h2></div>
-      <ul className="member-list">{group.members.map((member) => <li key={member.userId} className="member-row"><div className="member-identity"><span className="member-avatar" aria-hidden="true">{member.displayName.charAt(0).toUpperCase()}</span><div><strong>{member.displayName}</strong>{member.userId === group.creatorId && <div className="role-note">Group creator</div>}</div></div>{isCreator && member.userId !== group.creatorId && <button className="button-quiet button-small" onClick={() => setConfirmRemove(member.userId)}>Remove</button>}</li>)}</ul>
+      <ul className="member-list">
+        {group.members.map((member) => (
+          <li key={member.userId} className="member-row">
+            <div className="member-identity">
+              <span className="member-avatar" aria-hidden="true">
+                {member.displayName.charAt(0).toUpperCase()}
+              </span>
+              <div>
+                <strong>{member.displayName}</strong>
+                {member.bggUsername && (
+                  <div>
+                    <a
+                      href={`https://boardgamegeek.com/user/${member.bggUsername}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-link"
+                      style={{ fontSize: "12px" }}
+                    >
+                      ↗ BGG: @{member.bggUsername}
+                    </a>
+                  </div>
+                )}
+                {member.userId === group.creatorId && <div className="role-note">Group creator</div>}
+              </div>
+            </div>
+            {isCreator && member.userId !== group.creatorId && (
+              <button
+                className="button-quiet button-small"
+                onClick={() => setConfirmRemove(member.userId)}
+              >
+                Remove
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
       {confirmRemove && <div className="confirm-strip"><span>Remove this member? Their shared games will leave the group unless someone else shares them.</span><button className="button-danger button-small" disabled={busy} onClick={() => void remove(confirmRemove)}>Remove member</button><button className="button-secondary button-small" onClick={() => setConfirmRemove(null)}>Cancel</button></div>}
     </div>
     {isCreator && <>

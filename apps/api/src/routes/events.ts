@@ -1,0 +1,337 @@
+import type { FastifyInstance } from "fastify";
+import {
+  eventCreateSchema,
+  eventUpdateSchema,
+  eventRsvpSchema,
+  eventPickSchema,
+  type EventDetail,
+  type EventRsvpMember,
+  type PickResult,
+} from "@tablefolk/contracts";
+import { requireUser } from "../auth.js";
+import { db } from "../db.js";
+import { AppError, forbidden, notFound } from "../lib/errors.js";
+import { eligibleGameIds, chooseWeightedGameId } from "../lib/picker.js";
+import { groupGames } from "../lib/serialize.js";
+
+export async function eventRoutes(app: FastifyInstance) {
+  // List events for a group
+  app.get("/v1/groups/:groupId/events", async (request) => {
+    const user = await requireUser(request);
+    const { groupId } = request.params as { groupId: string };
+
+    const member = await db().groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId: user.id } },
+    });
+    if (!member) throw forbidden("You are not a member of this group.");
+
+    const events = await db().event.findMany({
+      where: { groupId },
+      include: {
+        host: { select: { id: true, displayName: true } },
+        rsvps: {
+          include: { user: { select: { id: true, displayName: true, bggUsername: true } } },
+        },
+      },
+      orderBy: { scheduledDate: "asc" },
+    });
+
+    return {
+      events: events.map((e): EventDetail => {
+        const attendingRsvps = e.rsvps.filter((r) => r.status === "ATTENDING");
+        const totalHeadcount = e.manualHeadcount !== null
+          ? e.manualHeadcount
+          : attendingRsvps.reduce((acc, r) => acc + 1 + r.additionalGuests, 0);
+
+        return {
+          id: e.id,
+          groupId: e.groupId,
+          title: e.title,
+          description: e.description,
+          scheduledDate: e.scheduledDate.toISOString(),
+          location: e.location,
+          hostUserId: e.hostUserId,
+          hostDisplayName: e.host?.displayName ?? null,
+          manualHeadcount: e.manualHeadcount,
+          totalHeadcount,
+          status: e.status as "SCHEDULED" | "COMPLETED" | "CANCELLED",
+          createdAt: e.createdAt.toISOString(),
+          rsvps: e.rsvps.map((r): EventRsvpMember => ({
+            userId: r.user.id,
+            displayName: r.user.displayName,
+            bggUsername: r.user.bggUsername,
+            status: r.status as "ATTENDING" | "DECLINED" | "MAYBE",
+            additionalGuests: r.additionalGuests,
+            updatedAt: r.updatedAt.toISOString(),
+          })),
+        };
+      }),
+    };
+  });
+
+  // Create an event
+  app.post("/v1/groups/:groupId/events", async (request, reply) => {
+    const user = await requireUser(request);
+    const { groupId } = request.params as { groupId: string };
+
+    const member = await db().groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId: user.id } },
+    });
+    if (!member) throw forbidden("You are not a member of this group.");
+
+    const body = eventCreateSchema.parse(request.body);
+
+    const event = await db().event.create({
+      data: {
+        groupId,
+        title: body.title,
+        description: body.description ?? null,
+        scheduledDate: new Date(body.scheduledDate),
+        location: body.location ?? null,
+        hostUserId: body.hostUserId ?? null,
+        manualHeadcount: body.manualHeadcount ?? null,
+        rsvps: {
+          create: {
+            userId: user.id,
+            status: "ATTENDING",
+            additionalGuests: 0,
+          },
+        },
+      },
+      include: {
+        host: { select: { id: true, displayName: true } },
+        rsvps: {
+          include: { user: { select: { id: true, displayName: true, bggUsername: true } } },
+        },
+      },
+    });
+
+    return reply.code(201).send({
+      event: {
+        id: event.id,
+        groupId: event.groupId,
+        title: event.title,
+        description: event.description,
+        scheduledDate: event.scheduledDate.toISOString(),
+        location: event.location,
+        hostUserId: event.hostUserId,
+        hostDisplayName: event.host?.displayName ?? null,
+        manualHeadcount: event.manualHeadcount,
+        totalHeadcount: 1,
+        status: event.status,
+        createdAt: event.createdAt.toISOString(),
+        rsvps: event.rsvps.map((r) => ({
+          userId: r.user.id,
+          displayName: r.user.displayName,
+          bggUsername: r.user.bggUsername,
+          status: r.status,
+          additionalGuests: r.additionalGuests,
+          updatedAt: r.updatedAt.toISOString(),
+        })),
+      },
+    });
+  });
+
+  // Get event details
+  app.get("/v1/events/:eventId", async (request) => {
+    const user = await requireUser(request);
+    const { eventId } = request.params as { eventId: string };
+
+    const event = await db().event.findUnique({
+      where: { id: eventId },
+      include: {
+        host: { select: { id: true, displayName: true } },
+        rsvps: {
+          include: { user: { select: { id: true, displayName: true, bggUsername: true } } },
+        },
+      },
+    });
+    if (!event) throw notFound("Event not found");
+
+    const member = await db().groupMember.findUnique({
+      where: { groupId_userId: { groupId: event.groupId, userId: user.id } },
+    });
+    if (!member) throw forbidden("You are not a member of this group.");
+
+    const attendingRsvps = event.rsvps.filter((r) => r.status === "ATTENDING");
+    const totalHeadcount = event.manualHeadcount !== null
+      ? event.manualHeadcount
+      : attendingRsvps.reduce((acc, r) => acc + 1 + r.additionalGuests, 0);
+
+    return {
+      event: {
+        id: event.id,
+        groupId: event.groupId,
+        title: event.title,
+        description: event.description,
+        scheduledDate: event.scheduledDate.toISOString(),
+        location: event.location,
+        hostUserId: event.hostUserId,
+        hostDisplayName: event.host?.displayName ?? null,
+        manualHeadcount: event.manualHeadcount,
+        totalHeadcount,
+        status: event.status,
+        createdAt: event.createdAt.toISOString(),
+        rsvps: event.rsvps.map((r) => ({
+          userId: r.user.id,
+          displayName: r.user.displayName,
+          bggUsername: r.user.bggUsername,
+          status: r.status,
+          additionalGuests: r.additionalGuests,
+          updatedAt: r.updatedAt.toISOString(),
+        })),
+      },
+    };
+  });
+
+  // RSVP to an event
+  app.post("/v1/events/:eventId/rsvp", async (request) => {
+    const user = await requireUser(request);
+    const { eventId } = request.params as { eventId: string };
+
+    const event = await db().event.findUnique({ where: { id: eventId } });
+    if (!event) throw notFound("Event not found");
+
+    const member = await db().groupMember.findUnique({
+      where: { groupId_userId: { groupId: event.groupId, userId: user.id } },
+    });
+    if (!member) throw forbidden("You are not a member of this group.");
+
+    const body = eventRsvpSchema.parse(request.body);
+
+    const rsvp = await db().eventRsvp.upsert({
+      where: { eventId_userId: { eventId, userId: user.id } },
+      create: {
+        eventId,
+        userId: user.id,
+        status: body.status,
+        additionalGuests: body.additionalGuests,
+      },
+      update: {
+        status: body.status,
+        additionalGuests: body.additionalGuests,
+      },
+    });
+
+    return { rsvp };
+  });
+
+  // Event Game Night Picker
+  app.post("/v1/events/:eventId/pick", async (request): Promise<PickResult> => {
+    const user = await requireUser(request);
+    const { eventId } = request.params as { eventId: string };
+
+    const event = await db().event.findUnique({
+      where: { id: eventId },
+      include: {
+        rsvps: true,
+      },
+    });
+    if (!event) throw notFound("Event not found");
+
+    const member = await db().groupMember.findUnique({
+      where: { groupId_userId: { groupId: event.groupId, userId: user.id } },
+    });
+    if (!member) throw forbidden("You are not a member of this group.");
+
+    const body = eventPickSchema.parse(request.body ?? {});
+
+    const attendingUserIds = new Set(
+      event.rsvps.filter((r) => r.status === "ATTENDING").map((r) => r.userId)
+    );
+
+    const headcount = body.playerCount !== undefined
+      ? body.playerCount
+      : (event.manualHeadcount !== null
+        ? event.manualHeadcount
+        : event.rsvps
+            .filter((r) => r.status === "ATTENDING")
+            .reduce((acc, r) => acc + 1 + r.additionalGuests, 0));
+
+    if (headcount <= 0) {
+      return { status: "no_match", eligibleCount: 0, unknownPlayerCount: 0 };
+    }
+
+    // Load shares for this group
+    const shares = await db().groupShare.findMany({
+      where: { groupId: event.groupId },
+      include: {
+        game: true,
+        user: { select: { id: true, displayName: true, bggUsername: true } },
+        collection: true,
+      },
+    });
+
+    // Filter shares only from attending members who have game available (or host's home games)
+    const activeShares = shares.filter((share) => {
+      if (!attendingUserIds.has(share.userId)) return false;
+      const isHost = event.hostUserId === share.userId;
+      if (isHost) return true; // Host's home games are automatically available
+      return share.collection?.isAvailable ?? true;
+    });
+
+    if (activeShares.length === 0) {
+      return { status: "empty", eligibleCount: 0 };
+    }
+
+    // Load interest votes from attending members
+    const interests = await db().gameInterest.findMany({
+      where: {
+        groupId: event.groupId,
+        userId: { in: [...attendingUserIds] },
+      },
+    });
+
+    const interestMap = new Map<number, number>();
+    for (const interest of interests) {
+      interestMap.set(interest.bggId, (interestMap.get(interest.bggId) ?? 0) + interest.points);
+    }
+
+    const availableGroupGames = groupGames(activeShares, { interestMap });
+    const eligibleIds = eligibleGameIds(
+      availableGroupGames,
+      {
+        playerCount: headcount,
+        maxDuration: body.maxDuration,
+        maxWeight: body.maxWeight,
+      }
+    );
+
+    if (eligibleIds.length === 0) {
+      return { status: "no_match", eligibleCount: 0, unknownPlayerCount: 0 };
+    }
+
+    // Weights: Base weight 1 + interest points
+    const weightsMap = new Map<number, number>();
+    for (const id of eligibleIds) {
+      weightsMap.set(id, 1 + (interestMap.get(id) ?? 0));
+    }
+
+    const chosenId = chooseWeightedGameId(eligibleIds, weightsMap, body.excludeBggId);
+    const chosenGame = availableGroupGames.find((g) => g.bggId === chosenId)!;
+
+    // Record the pick
+    await db().eventPick.create({
+      data: {
+        eventId,
+        bggId: chosenId,
+        playerCount: headcount,
+      },
+    });
+
+    // Winning decay: reset/reduce interest votes on the winning game
+    await db().gameInterest.deleteMany({
+      where: {
+        groupId: event.groupId,
+        bggId: chosenId,
+      },
+    });
+
+    return {
+      status: "picked",
+      game: chosenGame,
+      eligibleCount: eligibleIds.length,
+      onlyMatch: eligibleIds.length === 1,
+    };
+  });
+}

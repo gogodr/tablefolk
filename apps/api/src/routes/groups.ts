@@ -44,7 +44,11 @@ export async function groupRoutes(app: FastifyInstance) {
     return { group: {
       id: group.id, name: group.name, creatorId: group.creatorId,
       memberCount: members.length, gameCount: new Set(shares.map((share) => share.bggId)).size,
-      members: members.map((member) => ({ userId: member.userId, displayName: member.user.displayName })),
+      members: members.map((member) => ({
+        userId: member.userId,
+        displayName: member.user.displayName,
+        bggUsername: member.user.bggUsername,
+      })),
     } };
   });
 
@@ -52,10 +56,28 @@ export async function groupRoutes(app: FastifyInstance) {
     const user = await requireUser(request);
     const { groupId } = request.params as { groupId: string };
     await requireMember(groupId, user.id);
-    const shares = await db().groupShare.findMany({
-      where: { groupId }, include: { game: true, user: { select: { id: true, displayName: true } } },
-    });
-    return { games: groupGames(shares) };
+    const [shares, interests] = await Promise.all([
+      db().groupShare.findMany({
+        where: { groupId },
+        include: {
+          game: true,
+          user: { select: { id: true, displayName: true, bggUsername: true } },
+          collection: { select: { versionName: true, isAvailable: true, unavailableReason: true } },
+        },
+      }),
+      db().gameInterest.findMany({ where: { groupId } }),
+    ]);
+
+    const interestMap = new Map<number, number>();
+    const userVotesMap = new Map<number, number>();
+    for (const interest of interests) {
+      interestMap.set(interest.bggId, (interestMap.get(interest.bggId) ?? 0) + interest.points);
+      if (interest.userId === user.id) {
+        userVotesMap.set(interest.bggId, interest.points);
+      }
+    }
+
+    return { games: groupGames(shares, { interestMap, userVotesMap }) };
   });
 
   app.get("/v1/groups/:groupId/members", async (request) => {
@@ -63,18 +85,27 @@ export async function groupRoutes(app: FastifyInstance) {
     const { groupId } = request.params as { groupId: string };
     await requireMember(groupId, user.id);
     const members = await db().groupMember.findMany({ where: { groupId }, include: { user: true }, orderBy: { joinedAt: "asc" } });
-    return { members: members.map((member) => ({ userId: member.userId, displayName: member.user.displayName })) };
+    return {
+      members: members.map((member) => ({
+        userId: member.userId,
+        displayName: member.user.displayName,
+        bggUsername: member.user.bggUsername,
+      })),
+    };
   });
 
   app.delete("/v1/groups/:groupId/members/:userId", async (request, reply) => {
     const actor = await requireUser(request);
     const { groupId, userId } = request.params as { groupId: string; userId: string };
     const group = await requireCreator(groupId, actor.id);
-    if (group.creatorId === userId) throw new AppError(400, "CREATOR_REQUIRED", "The group creator cannot be removed.");
-    const target = await db().groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } });
-    if (!target) throw notFound("Member not found");
-    await db().groupMember.delete({ where: { groupId_userId: { groupId, userId } } });
-    audit("member.removed", { groupId, actorId: actor.id, targetId: userId });
+    if (userId === group.creatorId) throw new AppError(400, "CANNOT_REMOVE_CREATOR", "The group creator cannot be removed.");
+    const existing = await db().groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } });
+    if (!existing) throw notFound("Member not found in this group");
+    await db().$transaction([
+      db().groupShare.deleteMany({ where: { groupId, userId } }),
+      db().groupMember.delete({ where: { groupId_userId: { groupId, userId } } }),
+    ]);
+    audit("member.removed", { groupId, actorId: actor.id, targetUserId: userId });
     return reply.code(204).send();
   });
 }

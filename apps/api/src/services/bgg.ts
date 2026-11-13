@@ -19,29 +19,44 @@ function numberOrNull(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function floatOrNull(value: unknown): number | null {
+  const parsed = Number(typeof value === "object" && value !== null && "value" in value
+    ? (value as { value: unknown }).value
+    : value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : null;
+}
+
 function textOrNull(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed || null;
 }
 
-async function requestXml(path: string): Promise<unknown> {
+async function requestXml(path: string, retries = 2): Promise<unknown> {
   const token = requireSetting(config.bggToken, "BGG_TOKEN");
   let response: Response;
   try {
     response = await fetch(`${baseUrl}${path}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/xml" },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(15000),
     });
   } catch {
     throw new AppError(503, "BGG_UNAVAILABLE", "BoardGameGeek is unavailable. Try again later.");
   }
+
+  // BGG returns 202 while compiling user collection
+  if (response.status === 202 && retries > 0) {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    return requestXml(path, retries - 1);
+  }
+
   if (!response.ok) {
     const code = response.status === 429 || response.status === 500 || response.status === 503
       ? "BGG_BUSY"
       : "BGG_ERROR";
     throw new AppError(503, code, "BoardGameGeek could not load games right now. Try again later.");
   }
+
   try {
     return parser.parse(await response.text());
   } catch {
@@ -93,6 +108,11 @@ interface RawItem {
   image?: string;
   thumbnail?: string;
   link?: { type: string; value: string } | { type: string; value: string }[];
+  statistics?: {
+    ratings?: {
+      averageweight?: { value: number | string };
+    };
+  };
 }
 
 function nameValues(value: RawName | RawName[] | undefined): RawName[] {
@@ -111,6 +131,7 @@ export interface BggGameDetails {
   playingTime: number | null;
   minPlayingTime: number | null;
   maxPlayingTime: number | null;
+  weight: number | null;
   minAge: number | null;
   designers: string[];
   publishers: string[];
@@ -120,7 +141,7 @@ export interface BggGameDetails {
 }
 
 export async function getBggGame(bggId: number): Promise<BggGameDetails> {
-  const result = await requestXml(`/thing?id=${bggId}&type=boardgame,boardgameexpansion`);
+  const result = await requestXml(`/thing?id=${bggId}&type=boardgame,boardgameexpansion&stats=1`);
   const item = array((result as { items?: { item?: RawItem | RawItem[] } }).items?.item)[0];
   if (!item || !kinds.has(item.type as GameKind) || Number(item.id) !== bggId) {
     throw new AppError(404, "BGG_GAME_NOT_FOUND", "That game was not found on BoardGameGeek.");
@@ -140,11 +161,81 @@ export async function getBggGame(bggId: number): Promise<BggGameDetails> {
     playingTime: numberOrNull(item.playingtime),
     minPlayingTime: numberOrNull(item.minplaytime),
     maxPlayingTime: numberOrNull(item.maxplaytime),
+    weight: floatOrNull(item.statistics?.ratings?.averageweight),
     minAge: numberOrNull(item.minage),
     designers: linked("boardgamedesigner"),
     publishers: linked("boardgamepublisher"),
     categories: linked("boardgamecategory"),
     sourceUrl: `https://boardgamegeek.com/boardgame/${bggId}`,
     imageUrl: textOrNull(item.image) ?? textOrNull(item.thumbnail),
+  };
+}
+
+export interface BggCollectionItem {
+  bggId: number;
+  kind: GameKind;
+  name: string;
+  yearPublished: number | null;
+  minPlayers: number | null;
+  maxPlayers: number | null;
+  playingTime: number | null;
+  minPlayingTime: number | null;
+  maxPlayingTime: number | null;
+  weight: number | null;
+  versionName: string | null;
+  imageUrl: string | null;
+}
+
+export async function getBggCollection(username: string): Promise<BggCollectionItem[]> {
+  const normalized = username.trim();
+  if (!normalized) return [];
+
+  const result = await requestXml(`/collection?username=${encodeURIComponent(normalized)}&own=1&stats=1`);
+  const root = result as { items?: { item?: RawCollectionItem | RawCollectionItem[] } };
+  const items = array(root.items?.item);
+
+  return items.map((item) => {
+    const subtype = (item.subtype ?? "boardgame") as GameKind;
+    const stats = item.stats;
+    const versionName = typeof item.version === "object" && item.version !== null && "item" in item.version
+      ? String((item.version as { item?: { name?: string } }).item?.name ?? "")
+      : null;
+
+    return {
+      bggId: Number(item.objectid),
+      kind: kinds.has(subtype) ? subtype : "boardgame",
+      name: typeof item.name === "object" && item.name !== null && "#text" in item.name
+        ? String((item.name as { "#text"?: string })["#text"])
+        : String(item.name ?? "Unnamed game"),
+      yearPublished: numberOrNull(item.yearpublished),
+      minPlayers: numberOrNull(stats?.minplayers),
+      maxPlayers: numberOrNull(stats?.maxplayers),
+      playingTime: numberOrNull(stats?.playingtime),
+      minPlayingTime: numberOrNull(stats?.minplaytime),
+      maxPlayingTime: numberOrNull(stats?.maxplaytime),
+      weight: floatOrNull(stats?.rating?.averageweight),
+      versionName: versionName ? versionName.trim() || null : null,
+      imageUrl: textOrNull(item.image) ?? textOrNull(item.thumbnail),
+    };
+  }).filter((item) => Number.isInteger(item.bggId) && item.bggId > 0);
+}
+
+interface RawCollectionItem {
+  objectid: number | string;
+  subtype?: string;
+  name?: string | { "#text"?: string };
+  yearpublished?: number | string;
+  image?: string;
+  thumbnail?: string;
+  version?: unknown;
+  stats?: {
+    minplayers?: number | string;
+    maxplayers?: number | string;
+    playingtime?: number | string;
+    minplaytime?: number | string;
+    maxplaytime?: number | string;
+    rating?: {
+      averageweight?: { value?: number | string };
+    };
   };
 }
