@@ -50,6 +50,13 @@ export const eventPickSchema = z.object({
   maxWeight: z.number().min(1).max(5).optional(),
 });
 
+export const sessionPlanSchema = z.object({
+  playerCount: z.number().int().min(1).max(1000).optional(),
+  totalMinutes: z.number().int().min(30).max(720).default(180),
+  allowHeavy: z.boolean().default(true),
+  excludeBggIds: z.array(z.number().int().positive()).optional(),
+});
+
 export type GameKind = "boardgame" | "boardgameexpansion";
 
 export interface Game {
@@ -129,6 +136,23 @@ export type PickResult =
   | { status: "picked"; game: GroupGame; eligibleCount: number; onlyMatch: boolean }
   | { status: "empty"; eligibleCount: 0 }
   | { status: "no_match"; eligibleCount: 0; unknownPlayerCount: number };
+
+export type SessionRole = "warmup" | "main" | "cooldown" | "filler";
+
+export interface SessionGameSlot {
+  role: SessionRole;
+  label: string;
+  game: GroupGame;
+  estimatedMinutes: number;
+}
+
+export interface SessionLineupResult {
+  status: "success" | "empty" | "no_match";
+  lineup: SessionGameSlot[];
+  totalEstimatedMinutes: number;
+  targetMinutes: number;
+  hasHeavy: boolean;
+}
 
 export interface EventRsvpMember {
   userId: string;

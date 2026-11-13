@@ -4,14 +4,16 @@ import {
   eventUpdateSchema,
   eventRsvpSchema,
   eventPickSchema,
+  sessionPlanSchema,
   type EventDetail,
   type EventRsvpMember,
   type PickResult,
+  type SessionLineupResult,
 } from "@tablefolk/contracts";
 import { requireUser } from "../auth.js";
 import { db } from "../db.js";
 import { AppError, forbidden, notFound } from "../lib/errors.js";
-import { eligibleGameIds, chooseWeightedGameId } from "../lib/picker.js";
+import { eligibleGameIds, chooseWeightedGameId, planSessionLineup } from "../lib/picker.js";
 import { groupGames } from "../lib/serialize.js";
 
 export async function eventRoutes(app: FastifyInstance) {
@@ -216,7 +218,7 @@ export async function eventRoutes(app: FastifyInstance) {
     return { rsvp };
   });
 
-  // Event Game Night Picker
+  // Event Single Game Night Picker
   app.post("/v1/events/:eventId/pick", async (request): Promise<PickResult> => {
     const user = await requireUser(request);
     const { eventId } = request.params as { eventId: string };
@@ -266,7 +268,7 @@ export async function eventRoutes(app: FastifyInstance) {
     const activeShares = shares.filter((share) => {
       if (!attendingUserIds.has(share.userId)) return false;
       const isHost = event.hostUserId === share.userId;
-      if (isHost) return true; // Host's home games are automatically available
+      if (isHost) return true;
       return share.collection?.isAvailable ?? true;
     });
 
@@ -333,5 +335,102 @@ export async function eventRoutes(app: FastifyInstance) {
       eligibleCount: eligibleIds.length,
       onlyMatch: eligibleIds.length === 1,
     };
+  });
+
+  // Event Session Lineup (Multi-Game Menu & Anti-Fatigue)
+  app.post("/v1/events/:eventId/lineup", async (request): Promise<SessionLineupResult> => {
+    const user = await requireUser(request);
+    const { eventId } = request.params as { eventId: string };
+
+    const event = await db().event.findUnique({
+      where: { id: eventId },
+      include: { rsvps: true },
+    });
+    if (!event) throw notFound("Event not found");
+
+    const member = await db().groupMember.findUnique({
+      where: { groupId_userId: { groupId: event.groupId, userId: user.id } },
+    });
+    if (!member) throw forbidden("You are not a member of this group.");
+
+    const body = sessionPlanSchema.parse(request.body ?? {});
+
+    const attendingUserIds = new Set(
+      event.rsvps.filter((r) => r.status === "ATTENDING").map((r) => r.userId)
+    );
+
+    const headcount = body.playerCount !== undefined
+      ? body.playerCount
+      : (event.manualHeadcount !== null
+        ? event.manualHeadcount
+        : event.rsvps
+            .filter((r) => r.status === "ATTENDING")
+            .reduce((acc, r) => acc + 1 + r.additionalGuests, 0));
+
+    if (headcount <= 0) {
+      return {
+        status: "no_match",
+        lineup: [],
+        totalEstimatedMinutes: 0,
+        targetMinutes: body.totalMinutes,
+        hasHeavy: false,
+      };
+    }
+
+    // Load shares for this group
+    const shares = await db().groupShare.findMany({
+      where: { groupId: event.groupId },
+      include: {
+        game: true,
+        user: { select: { id: true, displayName: true, bggUsername: true } },
+        collection: true,
+      },
+    });
+
+    const activeShares = shares.filter((share) => {
+      if (!attendingUserIds.has(share.userId)) return false;
+      const isHost = event.hostUserId === share.userId;
+      if (isHost) return true;
+      return share.collection?.isAvailable ?? true;
+    });
+
+    if (activeShares.length === 0) {
+      return {
+        status: "empty",
+        lineup: [],
+        totalEstimatedMinutes: 0,
+        targetMinutes: body.totalMinutes,
+        hasHeavy: false,
+      };
+    }
+
+    const interests = await db().gameInterest.findMany({
+      where: {
+        groupId: event.groupId,
+        userId: { in: [...attendingUserIds] },
+      },
+    });
+
+    const interestMap = new Map<number, number>();
+    for (const interest of interests) {
+      interestMap.set(interest.bggId, (interestMap.get(interest.bggId) ?? 0) + interest.points);
+    }
+
+    const availableGroupGames = groupGames(activeShares, { interestMap });
+
+    const weightsMap = new Map<number, number>();
+    for (const game of availableGroupGames) {
+      weightsMap.set(game.bggId, 1 + (interestMap.get(game.bggId) ?? 0));
+    }
+
+    const result = planSessionLineup(availableGroupGames, {
+      playerCount: headcount,
+      totalMinutes: body.totalMinutes,
+      allowHeavy: body.allowHeavy,
+      weightsMap,
+      excludeBggIds: body.excludeBggIds,
+    });
+
+    return result;
   });
 }
