@@ -42,7 +42,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install Vercel CLI
-        run: npm install --global vercel@latest
-      - name: Deploy and manage preview
+      - name: Deploy API and web
         run: node .github/scripts/vercel-deploy.mjs

@@ -1,7 +1,3 @@
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 const required = [
   'GH_TOKEN', 'VERCEL_API_TOKEN', 'VERCEL_WEB_TOKEN', 'VERCEL_ORG_ID', 'VERCEL_API_PROJECT_ID',
   'VERCEL_WEB_PROJECT_ID', 'VERCEL_TEAM_SLUG', 'GITHUB_REPOSITORY',
@@ -13,7 +9,6 @@ for (const key of required) {
 
 const event = JSON.parse(await (await import('node:fs/promises')).readFile(process.env.GITHUB_EVENT_PATH, 'utf8'));
 const repo = process.env.GITHUB_REPOSITORY;
-const [owner, name] = repo.split('/');
 const prNumber = event.issue?.number ?? event.pull_request?.number;
 const marker = '<!-- tablefolk-vercel-preview -->';
 const team = process.env.VERCEL_TEAM_SLUG;
@@ -32,7 +27,8 @@ async function request(base, path, token, options = {}) {
       ...options.headers,
     },
   });
-  const body = response.status === 204 ? null : await response.json();
+  const raw = await response.text();
+  const body = raw ? JSON.parse(raw) : null;
   if (!response.ok) throw new Error(`${options.method ?? 'GET'} ${path}: ${response.status} ${JSON.stringify(body)}`);
   return body;
 }
@@ -42,10 +38,6 @@ const github = (path, options) => request('https://api.github.com', path, proces
   headers: { 'X-GitHub-Api-Version': '2022-11-28' },
 });
 const vercel = (project, path, options) => request('https://api.vercel.com', path, project.token, options);
-
-function run(file, args, options = {}) {
-  return execFileSync(file, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...options }).trim();
-}
 
 async function comments() {
   const all = [];
@@ -90,53 +82,52 @@ async function removeDeployment(entry, project) {
   await vercel(project, path, { method: 'DELETE' });
 }
 
-function deploy(project, sha, production, overrides = []) {
-  const linkDirectory = resolve('source/.vercel');
-  mkdirSync(linkDirectory, { recursive: true });
-  writeFileSync(resolve(linkDirectory, 'project.json'), JSON.stringify({
-    orgId: process.env.VERCEL_ORG_ID,
-    projectId: project.id,
-  }));
-  const args = ['deploy', '--yes', '--token', project.token, '--scope', team];
-  if (production) args.push('--prod');
-  for (const [key, value] of overrides) {
-    args.push('--env', `${key}=${value}`, '--build-env', `${key}=${value}`);
+const teamQuery = `teamId=${encodeURIComponent(process.env.VERCEL_ORG_ID)}`;
+
+async function verifyProject(project) {
+  const settings = await vercel(project, `/v9/projects/${project.id}?${teamQuery}`);
+  if (settings.id !== project.id || settings.name !== project.name) {
+    throw new Error(`${project.name} token does not resolve the expected Vercel project`);
   }
-  const url = run('vercel', args, {
-    cwd: resolve('source'),
-    env: {
-      ...process.env,
-      GH_TOKEN: '',
-      VERCEL_API_TOKEN: '',
-      VERCEL_WEB_TOKEN: '',
-      VERCEL_PROJECT_ID: project.id,
-      VERCEL_ORG_ID: process.env.VERCEL_ORG_ID,
-    },
-    timeout: 18 * 60 * 1000,
+}
+
+async function deploy(project, { sha, ref, repoId, production, overrides = {}, prId }) {
+  const body = {
+    name: project.name,
+    project: project.id,
+    gitSource: { type: 'github', repoId, ref, sha, ...(prId ? { prId } : {}) },
+    ...(production ? { target: 'production' } : {}),
+    ...(Object.keys(overrides).length ? { env: overrides, build: { env: overrides } } : {}),
+    meta: { tablefolkPr: String(prNumber) },
+  };
+  const created = await vercel(project, `/v13/deployments?${teamQuery}&forceNew=1`, {
+    method: 'POST',
+    body: JSON.stringify(body),
   });
-  if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app$/i.test(url)) throw new Error(`Unexpected Vercel URL: ${url}`);
-  console.log(`${project.name} ${sha}: ${url}`);
-  return { url };
+  if (!created.id) throw new Error(`${project.name} deployment response has no ID`);
+  const deadline = Date.now() + 18 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const current = await vercel(project, `/v13/deployments/${created.id}?${teamQuery}`);
+    if (current.projectId !== project.id) throw new Error(`Unexpected project for deployment ${created.id}`);
+    if (current.readyState === 'READY') {
+      if (!/^[a-z0-9.-]+\.vercel\.app$/i.test(current.url)) throw new Error(`Unexpected Vercel URL: ${current.url}`);
+      const url = `https://${current.url}`;
+      console.log(`${project.name} ${sha}: ${url}`);
+      return { id: created.id, url };
+    }
+    if (['ERROR', 'CANCELED'].includes(current.readyState)) {
+      throw new Error(`${project.name} deployment ${created.id} ${current.readyState}: ${current.errorMessage ?? 'see Vercel build logs'}`);
+    }
+    await new Promise(resolve => setTimeout(resolve, 10_000));
+  }
+  throw new Error(`${project.name} deployment ${created.id} did not finish within 18 minutes`);
 }
 
-async function identifyDeployment(entry, project) {
-  const host = new URL(entry.url).host;
-  const deployment = await vercel(project, `/v13/deployments/${host}?teamId=${encodeURIComponent(process.env.VERCEL_ORG_ID)}`);
-  if (deployment.projectId !== project.id) throw new Error(`Unexpected project for ${host}`);
-  return { ...entry, id: deployment.id };
-}
-
-function sourceAt(sha) {
-  mkdirSync('source', { recursive: true });
-  run('git', ['init'], { cwd: 'source' });
-  run('git', ['remote', 'add', 'origin', `https://github.com/${repo}.git`], { cwd: 'source' });
-  const credentials = Buffer.from(`x-access-token:${process.env.GH_TOKEN}`).toString('base64');
-  run('git', [
-    '-c', `http.https://github.com/.extraheader=AUTHORIZATION: basic ${credentials}`,
-    'fetch', '--depth=1', 'origin', sha,
-  ], { cwd: 'source', timeout: 120_000 });
-  run('git', ['checkout', '--detach', 'FETCH_HEAD'], { cwd: 'source' });
-  if (run('git', ['rev-parse', 'HEAD'], { cwd: 'source' }) !== sha) throw new Error('Fetched commit differs from the PR commit');
+async function assignAlias(project, deployment, origin) {
+  await vercel(project, `/v2/deployments/${deployment.id}/aliases?${teamQuery}`, {
+    method: 'POST',
+    body: JSON.stringify({ alias: new URL(origin).host }),
+  });
 }
 
 if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
@@ -154,19 +145,18 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
     console.log('This PR commit already has a preview');
     process.exit(0);
   }
-  sourceAt(sha);
+  await Promise.all(projects.map(verifyProject));
   const webOrigin = `https://tablefolk-web-pr-${prNumber}-${team}.vercel.app`;
   const apiOrigin = `https://tablefolk-api-pr-${prNumber}-${team}.vercel.app`;
-  const api = await identifyDeployment(
-    deploy(projects[0], sha, false, [['WEB_ORIGIN', webOrigin], ['PUBLIC_WEB_URL', webOrigin]]),
-    projects[0],
-  );
-  const web = await identifyDeployment(
-    deploy(projects[1], sha, false, [['NEXT_PUBLIC_API_URL', apiOrigin]]),
-    projects[1],
-  );
-  run('vercel', ['alias', 'set', api.url, new URL(apiOrigin).host, '--token', projects[0].token, '--scope', team]);
-  run('vercel', ['alias', 'set', web.url, new URL(webOrigin).host, '--token', projects[1].token, '--scope', team]);
+  const source = { sha, ref: pr.head.ref, repoId: pr.head.repo.id, prId: prNumber };
+  const api = await deploy(projects[0], {
+    ...source, overrides: { WEB_ORIGIN: webOrigin, PUBLIC_WEB_URL: webOrigin },
+  });
+  const web = await deploy(projects[1], {
+    ...source, overrides: { NEXT_PUBLIC_API_URL: apiOrigin },
+  });
+  await assignAlias(projects[0], api, apiOrigin);
+  await assignAlias(projects[1], web, webOrigin);
   const record = { pr: prNumber, sha, api, web };
   await writeRecord(previous?.comment, record, `Preview ready for \`${sha.slice(0, 7)}\`:\n\n- Web: ${webOrigin}\n- API: ${apiOrigin}`);
   if (previous) {
@@ -176,9 +166,12 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
 } else if (process.env.GITHUB_EVENT_NAME === 'pull_request' && event.pull_request.merged) {
   const sha = event.pull_request.merge_commit_sha;
   if (!sha) throw new Error('Merged PR has no merge commit SHA');
-  sourceAt(sha);
-  deploy(projects[0], sha, true);
-  deploy(projects[1], sha, true);
+  await Promise.all(projects.map(verifyProject));
+  const source = {
+    sha, ref: 'main', repoId: event.repository.id, production: true,
+  };
+  await deploy(projects[0], source);
+  await deploy(projects[1], source);
   const previous = await findRecord();
   if (previous) {
     await removeDeployment(previous.record.api, projects[0]);

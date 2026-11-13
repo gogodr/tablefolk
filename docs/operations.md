@@ -14,14 +14,14 @@ The workflow in `.github/workflows/vercel-deploy.yml` deploys both Vercel projec
 
 | Setting | Value |
 | --- | --- |
-| Secret `VERCEL_API_TOKEN` | Token used for API deployment, aliasing, and cleanup |
-| Secret `VERCEL_WEB_TOKEN` | Token used for web deployment, aliasing, and cleanup |
+| Secret `VERCEL_API_TOKEN` | Project-scoped Vercel token for `tablefolk-api`; needs deployment and alias access |
+| Secret `VERCEL_WEB_TOKEN` | Project-scoped Vercel token for `tablefolk-web`; needs deployment and alias access |
 | Variable `VERCEL_ORG_ID` | Vercel team ID (`team_...`) |
 | Variable `VERCEL_TEAM_SLUG` | The team's Vercel URL slug (for this repo, `gogodr`) |
 | Variable `VERCEL_API_PROJECT_ID` | ID of the `tablefolk-api` project (`prj_...`) |
 | Variable `VERCEL_WEB_PROJECT_ID` | ID of the `tablefolk-web` project (`prj_...`) |
 
-The workflow accepts a separate token for each project. Vercel dashboard tokens on Hobby are scoped to a team or account, not to individual projects. Two tokens with the same team scope let you rotate and revoke them independently, but each token still has access to other projects in that team. The workflow targets only the configured project IDs; that code check does not restrict what a stolen team token could access.
+The workflow accepts a separate project-scoped token for each project. It uses Vercel's REST API because the Vercel CLI performs user and team lookups that can fail with project-scoped tokens. The token for each project is used only for that project's deployment, alias assignment, and cleanup. The GitHub job still checks each token against its expected Vercel project before deploying.
 
 Both `/deploy` previews and merged-PR production deployments use the `Prod` GitHub environment to read these credentials. Any approval or branch rules configured on that environment apply to both events. GitHub's environment name does not select the Vercel deployment target; the workflow sends previews to Vercel Preview and merge commits to Vercel Production.
 
