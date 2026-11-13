@@ -168,6 +168,7 @@ model Event {
   manualHeadcount Int?
   status          String      @default("SCHEDULED")
   officialPickBggId Int?
+  officialPickCarrier String?
   officialLineup  Json?
   createdAt       DateTime    @default(now())
   group           Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)

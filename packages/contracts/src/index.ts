@@ -60,12 +60,14 @@ export const sessionPlanSchema = z.object({
 export const eventSetOfficialSchema = z.object({
   type: z.enum(["single", "lineup", "clear"]),
   bggId: z.number().int().positive().optional(),
+  carrierDisplayName: z.string().optional(),
   lineup: z.array(z.object({
     role: z.enum(["warmup", "main", "cooldown", "filler"]),
     label: z.string(),
     bggId: z.number().int().positive(),
     name: z.string(),
     estimatedMinutes: z.number().int().positive(),
+    carrierDisplayName: z.string().optional(),
   })).optional(),
 });
 
@@ -181,6 +183,7 @@ export interface OfficialLineupItem {
   bggId: number;
   name: string;
   estimatedMinutes: number;
+  carrierDisplayName?: string;
 }
 
 export interface EventDetail {
@@ -197,6 +200,7 @@ export interface EventDetail {
   status: "SCHEDULED" | "COMPLETED" | "CANCELLED";
   officialPickBggId?: number | null;
   officialPick?: Game | null;
+  officialPickCarrier?: string | null;
   officialLineup?: OfficialLineupItem[] | null;
   createdAt: string;
   rsvps: EventRsvpMember[];

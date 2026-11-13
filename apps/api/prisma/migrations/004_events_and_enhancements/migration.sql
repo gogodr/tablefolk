@@ -23,6 +23,7 @@ CREATE TABLE "Event" (
     "manualHeadcount" INTEGER,
     "status" TEXT NOT NULL DEFAULT 'SCHEDULED',
     "officialPickBggId" INTEGER,
+    "officialPickCarrier" TEXT,
     "officialLineup" JSONB,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT "Event_pkey" PRIMARY KEY ("id")

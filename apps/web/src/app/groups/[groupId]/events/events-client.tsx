@@ -261,6 +261,7 @@ export function EventsClient() {
                       <span className="official-game-name">
                         <strong>{event.officialPick.name}</strong>
                         {event.officialPick.weight && ` (Weight ${event.officialPick.weight.toFixed(1)})`}
+                        {event.officialPickCarrier && ` · 🎒 ${event.officialPickCarrier}`}
                       </span>
                     )}
                     {event.officialLineup && event.officialLineup.length > 0 && (
@@ -269,6 +270,7 @@ export function EventsClient() {
                           <span key={s.bggId} className="official-lineup-item">
                             {idx > 0 && " → "}
                             <strong>{s.name}</strong> ({s.label})
+                            {s.carrierDisplayName && ` [🎒 ${s.carrierDisplayName}]`}
                           </span>
                         ))}
                       </span>

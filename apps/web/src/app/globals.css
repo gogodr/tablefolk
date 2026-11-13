@@ -579,3 +579,56 @@ body { font-size: var(--text-md); }
 .official-lineup-item strong {
   color: var(--accent-ink);
 }
+
+.event-quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.official-pick-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.carrier-badge {
+  font-size: 12px;
+  background: var(--ground);
+  border: 1px solid var(--border);
+  padding: 3px 8px;
+  border-radius: var(--radius-input);
+  color: var(--text);
+}
+
+.carrier-badge strong {
+  color: var(--accent-ink);
+}
+
+.rules-video-link {
+  font-size: 12px;
+  color: #dc2626;
+  font-weight: 700;
+  text-decoration: underline;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.rules-video-link:hover {
+  color: #b91c1c;
+}
+
+.lineup-slot-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.lineup-slot-title-row h3 {
+  margin: 0;
+}

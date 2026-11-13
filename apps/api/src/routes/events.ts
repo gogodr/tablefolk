@@ -63,6 +63,7 @@ export async function eventRoutes(app: FastifyInstance) {
           status: e.status as "SCHEDULED" | "COMPLETED" | "CANCELLED",
           officialPickBggId: e.officialPickBggId,
           officialPick: e.officialPick ? gameDto(e.officialPick) : null,
+          officialPickCarrier: e.officialPickCarrier ?? null,
           officialLineup: (e.officialLineup as unknown as OfficialLineupItem[]) ?? null,
           createdAt: e.createdAt.toISOString(),
           rsvps: e.rsvps.map((r): EventRsvpMember => ({
@@ -130,6 +131,7 @@ export async function eventRoutes(app: FastifyInstance) {
         status: event.status,
         officialPickBggId: null,
         officialPick: null,
+        officialPickCarrier: null,
         officialLineup: null,
         createdAt: event.createdAt.toISOString(),
         rsvps: event.rsvps.map((r) => ({
@@ -186,6 +188,7 @@ export async function eventRoutes(app: FastifyInstance) {
         status: event.status as "SCHEDULED" | "COMPLETED" | "CANCELLED",
         officialPickBggId: event.officialPickBggId,
         officialPick: event.officialPick ? gameDto(event.officialPick) : null,
+        officialPickCarrier: event.officialPickCarrier ?? null,
         officialLineup: (event.officialLineup as unknown as OfficialLineupItem[]) ?? null,
         createdAt: event.createdAt.toISOString(),
         rsvps: event.rsvps.map((r) => ({
@@ -262,10 +265,11 @@ export async function eventRoutes(app: FastifyInstance) {
         where: { id: eventId },
         data: {
           officialPickBggId: null,
+          officialPickCarrier: null,
           officialLineup: Prisma.DbNull,
         },
       });
-      return { success: true, officialPickBggId: null, officialLineup: null };
+      return { success: true, officialPickBggId: null, officialPickCarrier: null, officialLineup: null };
     }
 
     if (body.type === "single") {
@@ -274,6 +278,7 @@ export async function eventRoutes(app: FastifyInstance) {
         where: { id: eventId },
         data: {
           officialPickBggId: body.bggId,
+          officialPickCarrier: body.carrierDisplayName ?? null,
           officialLineup: Prisma.DbNull,
         },
         include: { officialPick: true },
@@ -282,6 +287,7 @@ export async function eventRoutes(app: FastifyInstance) {
         success: true,
         officialPickBggId: updated.officialPickBggId,
         officialPick: updated.officialPick ? gameDto(updated.officialPick) : null,
+        officialPickCarrier: updated.officialPickCarrier ?? null,
         officialLineup: null,
       };
     }
@@ -294,6 +300,7 @@ export async function eventRoutes(app: FastifyInstance) {
         where: { id: eventId },
         data: {
           officialPickBggId: null,
+          officialPickCarrier: null,
           officialLineup: body.lineup as unknown as Prisma.InputJsonValue,
         },
       });
@@ -301,6 +308,7 @@ export async function eventRoutes(app: FastifyInstance) {
         success: true,
         officialPickBggId: null,
         officialPick: null,
+        officialPickCarrier: null,
         officialLineup: updated.officialLineup,
       };
     }
