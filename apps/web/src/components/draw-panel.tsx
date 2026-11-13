@@ -127,9 +127,9 @@ export function DrawPanel({ groupId }: { groupId: string }) {
   function handleCopyLineup() {
     if (!lineupResult || lineupResult.lineup.length === 0) return;
     const textLines = [
-      `🎲 *Lineup de Noche de Juegos · Tablefolk*`,
-      `⏱️ Tiempo planeado: ~${lineupResult.totalEstimatedMinutes} min${
-        lineupResult.transitionMinutes ? ` (incluye ${lineupResult.transitionMinutes}m de pausas y setup)` : ""
+      `🎲 *Game Night Lineup · Tablefolk*`,
+      `⏱️ Planned Time: ~${lineupResult.totalEstimatedMinutes} min${
+        lineupResult.transitionMinutes ? ` (includes ${lineupResult.transitionMinutes}m setup & breaks)` : ""
       }`,
       ``,
       ...lineupResult.lineup.flatMap((s, idx) => [

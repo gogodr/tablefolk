@@ -219,7 +219,7 @@ export function planSessionLineup(
 
     selectedLineup.push({
       role: "main",
-      label: hasHeavyGame ? "👑 Plato Fuerte (Juego Pesado)" : "🎯 Juego Principal",
+      label: hasHeavyGame ? "👑 Main Event (Heavy Game)" : "🎯 Main Event",
       game: mainGame,
       estimatedMinutes: mainDuration,
     });
@@ -288,7 +288,7 @@ export function planSessionLineup(
         remainingMinutes -= (duration + warmupBuffer);
         selectedLineup.unshift({
           role: "warmup",
-          label: "🍕 Warm-up / Apertura",
+          label: "🍕 Warm-up",
           game: fillerGame,
           estimatedMinutes: duration,
         });
@@ -297,7 +297,7 @@ export function planSessionLineup(
         remainingMinutes -= (duration + cooldownBuffer);
         selectedLineup.push({
           role: "cooldown",
-          label: "☕ Cooldown / Despedida",
+          label: "☕ Cooldown",
           game: fillerGame,
           estimatedMinutes: duration,
         });

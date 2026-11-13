@@ -45,10 +45,10 @@ flowchart TD
     end
 
     subgraph PickerEngine["2. Smart Selection Engine"]
-        D["🎯 Plato Fuerte (Main Game Anchor)\nPriority: Substantial titles >= 45m or Weight >= 2.0"]
+        D["🎯 Main Event (Anchor Game)\nPriority: Substantial titles >= 45m or Weight >= 2.0"]
         E["☕ Dynamic Setup & Transition Buffer\n15m - 30m scaled by BGG complexity & duration"]
-        F["🍕 Warm-up / Apertura (Optional)\nStrictly <= 35m, Weight <= 2.2, lighter & shorter than Main"]
-        G["☕ Cooldown / Despedida (Optional)\nStrictly <= 45m, anti-fatigue relaxed closer"]
+        F["🍕 Warm-up (Optional)\nStrictly <= 35m, Weight <= 2.2, lighter & shorter than Main"]
+        G["☕ Cooldown (Optional)\nStrictly <= 45m, anti-fatigue relaxed closer"]
     end
 
     subgraph Outputs["3. Result & Persistence"]
@@ -73,9 +73,9 @@ flowchart TD
 To prevent unbalanced sessions (e.g., an intense 60-minute cooperative game being suggested as a "Warm-up" before a 30-minute party game), the engine enforces strict structural rules:
 
 > ⚡ **Session Architecture Rules:**
-> - **🎯 Plato Fuerte (Main Game Anchor):** In sessions $\ge 90$ min, substantial games ($\ge 45$ min or weight $\ge 2.0$) take absolute priority as the centerpiece.
-> - **🍕 Warm-up / Apertura:** Strictly capped at $\le 35$ min and weight $\le 2.2$ (Light). It must always be shorter and lighter than the Main Game ($duration \le mainDuration$ and $weight \le mainWeight$).
-> - **☕ Cooldown / Despedida:** Capped at $\le 45$ min. If the Main Game was Heavy ($weight > 3.2$), the Cooldown is strictly restricted to light games ($weight \le 2.0$) to prevent brain burn.
+> - **🎯 Main Event (Anchor Game):** In sessions $\ge 90$ min, substantial games ($\ge 45$ min or weight $\ge 2.0$) take absolute priority as the centerpiece.
+> - **🍕 Warm-up:** Strictly capped at $\le 35$ min and weight $\le 2.2$ (Light). It must always be shorter and lighter than the Main Game ($duration \le mainDuration$ and $weight \le mainWeight$).
+> - **☕ Cooldown:** Capped at $\le 45$ min. If the Main Game was Heavy ($weight > 3.2$), the Cooldown is strictly restricted to light games ($weight \le 2.0$) to prevent brain burn.
 > - **🛡️ Anti-Fatigue Limit:** Never more than **1 Heavy game** per session, and a maximum of **3 games** total per gathering.
 
 ---
