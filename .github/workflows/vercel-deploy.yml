@@ -18,7 +18,6 @@ jobs:
        github.event.issue.pull_request &&
        github.event.comment.body == '/deploy') ||
       (github.event_name == 'pull_request' &&
-       github.event.pull_request.merged == true &&
        github.event.pull_request.base.ref == 'main')
     environment: Prod
     runs-on: ubuntu-latest
@@ -26,14 +25,6 @@ jobs:
     concurrency:
       group: vercel-pr-${{ github.event.issue.number || github.event.pull_request.number }}
       cancel-in-progress: false
-    env:
-      GH_TOKEN: ${{ github.token }}
-      VERCEL_API_TOKEN: ${{ secrets.VERCEL_API_TOKEN }}
-      VERCEL_WEB_TOKEN: ${{ secrets.VERCEL_WEB_TOKEN }}
-      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-      VERCEL_API_PROJECT_ID: ${{ vars.VERCEL_API_PROJECT_ID }}
-      VERCEL_WEB_PROJECT_ID: ${{ vars.VERCEL_WEB_PROJECT_ID }}
-      VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
     steps:
       # The deploy script is always loaded from the trusted default branch.
       - uses: actions/checkout@v4
@@ -44,8 +35,55 @@ jobs:
           ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || github.event.pull_request.merge_commit_sha }}
           path: deploy-source
           persist-credentials: false
+        if: github.event_name == 'issue_comment' || github.event.pull_request.merged == true
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Authorize preview request
+        if: github.event_name == 'issue_comment'
+        run: node .github/scripts/vercel-deploy.mjs --authorize-preview
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Check Preview parent branch
+        if: github.event_name == 'issue_comment'
+        id: parent
+        continue-on-error: true
+        env:
+          NEON_PREVIEW_PARENT_BRANCH: ${{ vars.NEON_PREVIEW_PARENT_BRANCH }}
+        run: |
+          if [ -z "$NEON_PREVIEW_PARENT_BRANCH" ]; then
+            echo 'Set NEON_PREVIEW_PARENT_BRANCH to the existing dev branch name or ID.' >&2
+            exit 1
+          fi
+      - name: Create or reuse PR database branch
+        if: github.event_name == 'issue_comment' && steps.parent.outcome == 'success'
+        id: neon
+        continue-on-error: true
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+          parent_branch: ${{ vars.NEON_PREVIEW_PARENT_BRANCH }}
+          branch_name: tablefolk-pr-${{ github.event.issue.number }}
+          database: ${{ vars.NEON_DATABASE_NAME || 'neondb' }}
+          role: ${{ vars.NEON_DATABASE_ROLE || 'neondb_owner' }}
       - name: Deploy API and web
+        id: deploy
         run: node .github/scripts/vercel-deploy.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERCEL_API_TOKEN: ${{ secrets.VERCEL_API_TOKEN }}
+          VERCEL_WEB_TOKEN: ${{ secrets.VERCEL_WEB_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_API_PROJECT_ID: ${{ vars.VERCEL_API_PROJECT_ID }}
+          VERCEL_WEB_PROJECT_ID: ${{ vars.VERCEL_WEB_PROJECT_ID }}
+          VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
+          PREVIEW_DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
+          PREVIEW_DIRECT_URL: ${{ steps.neon.outputs.db_url }}
+      - name: Delete PR database branch
+        if: github.event_name == 'pull_request' && steps.deploy.outcome == 'success'
+        run: node .github/scripts/neon-cleanup.mjs
+        env:
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}

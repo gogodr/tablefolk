@@ -60,12 +60,17 @@ async function reactToCommand() {
   });
 }
 
-function failureBody(error) {
-  let trace = error instanceof Error ? (error.stack ?? error.message) : String(error);
-  for (const key of ['GH_TOKEN', 'VERCEL_API_TOKEN', 'VERCEL_WEB_TOKEN']) {
+function redactSecrets(value) {
+  let text = String(value);
+  for (const key of ['GH_TOKEN', 'VERCEL_API_TOKEN', 'VERCEL_WEB_TOKEN', 'PREVIEW_DATABASE_URL', 'PREVIEW_DIRECT_URL']) {
     const secret = process.env[key];
-    if (secret) trace = trace.replaceAll(secret, '[redacted]');
+    if (secret) text = text.replaceAll(secret, '[redacted]');
   }
+  return text;
+}
+
+function failureBody(error) {
+  let trace = redactSecrets(error instanceof Error ? (error.stack ?? error.message) : String(error));
   trace = trace.replaceAll('```', "'''\u200b").slice(0, 12_000);
   const action = process.env.GITHUB_RUN_ID
     ? `\n\n[Full workflow logs](https://github.com/${repo}/actions/runs/${process.env.GITHUB_RUN_ID})`
@@ -109,7 +114,13 @@ async function writeRecord(existing, record, message) {
 async function removeDeployment(entry, project) {
   if (!entry?.id || !/^dpl_[a-zA-Z0-9]+$/.test(entry.id)) return;
   const path = `/v13/deployments/${entry.id}?teamId=${encodeURIComponent(process.env.VERCEL_ORG_ID)}`;
-  const deployment = await vercel(project, path);
+  let deployment;
+  try {
+    deployment = await vercel(project, path);
+  } catch (error) {
+    if (error.status === 404) return;
+    throw error;
+  }
   if (deployment.projectId !== project.id || `https://${deployment.url}` !== entry.url) {
     throw new Error(`Refusing to remove deployment ${entry.id}: project or URL differs`);
   }
@@ -140,6 +151,32 @@ async function sourceFiles(expectedSha) {
   }
   console.log(`Prepared ${files.length} tracked application files from ${expectedSha}`);
   return files;
+}
+
+function migratePreviewDatabase() {
+  const directUrl = process.env.PREVIEW_DIRECT_URL;
+  const pooledUrl = process.env.PREVIEW_DATABASE_URL;
+  if (!directUrl || !pooledUrl) throw new Error('Neon did not return both PR database connection URLs');
+  const safeEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+    !/(TOKEN|KEY|SECRET|PASSWORD)/i.test(key) && !key.startsWith('VERCEL_') &&
+    !key.startsWith('PREVIEW_') && !key.startsWith('GITHUB_')));
+  const runPnpm = (args, env) => {
+    try {
+      const output = execFileSync('corepack', ['pnpm', ...args], {
+        cwd: sourceDir, env, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024,
+      });
+      if (output.trim()) console.log(redactSecrets(output.trim()));
+    } catch (error) {
+      const detail = [error.stdout, error.stderr].filter(Boolean).join('\n').slice(-6000);
+      throw new Error(`PR database migration command failed: corepack pnpm ${args.join(' ')}${detail ? `\n${detail}` : ''}`);
+    }
+  };
+  console.log('Installing PR dependencies for database migration');
+  runPnpm(['install', '--frozen-lockfile'], safeEnv);
+  console.log('Applying PR Prisma migrations to its Neon branch');
+  runPnpm(['--filter', '@tablefolk/api', 'db:deploy'], {
+    ...safeEnv, DIRECT_URL: directUrl, DATABASE_URL: pooledUrl,
+  });
 }
 
 async function uploadFiles(project, files) {
@@ -245,6 +282,19 @@ async function assignAlias(project, deployment, origin) {
   console.log(`${project.name} preview alias ready: ${origin}`);
 }
 
+async function authorizePreviewCommand() {
+  if (!process.env.GH_TOKEN || !repo || !prNumber) throw new Error('Missing GitHub preview context');
+  const actor = encodeURIComponent(event.comment.user.login);
+  const access = await github(`/repos/${repo}/collaborators/${actor}/permission`);
+  if (!['admin', 'maintain', 'write'].includes(access.permission)) {
+    throw new Error('Only repository collaborators with write access may deploy previews');
+  }
+  const pr = await github(`/repos/${repo}/pulls/${prNumber}`);
+  if (pr.state !== 'open' || pr.base.ref !== 'main') throw new Error('The PR must be open against main');
+  if (pr.head.repo?.full_name !== repo) throw new Error('Fork PR previews are not supported');
+  return pr;
+}
+
 async function main() {
 for (const key of required) {
   if (!process.env[key]) throw new Error(`Missing ${key}`);
@@ -256,42 +306,53 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
   } catch (reactionError) {
     console.warn(`Could not react to /deploy on PR #${prNumber}: ${reactionError}`);
   }
-  const actor = encodeURIComponent(event.comment.user.login);
-  const access = await github(`/repos/${repo}/collaborators/${actor}/permission`);
-  if (!['admin', 'maintain', 'write'].includes(access.permission)) {
-    throw new Error('Only repository collaborators with write access may deploy previews');
-  }
-  const pr = await github(`/repos/${repo}/pulls/${prNumber}`);
-  if (pr.state !== 'open' || pr.base.ref !== 'main') throw new Error('The PR must be open against main');
-  if (pr.head.repo?.full_name !== repo) throw new Error('Fork PR previews are not supported');
+  const pr = await authorizePreviewCommand();
   const sha = pr.head.sha;
   const previous = await findRecord();
-  if (previous?.record.sha === sha) {
-    const webOrigin = `https://tablefolk-web-pr-${prNumber}-${team}.vercel.app`;
-    const apiOrigin = `https://tablefolk-api-pr-${prNumber}-${team}.vercel.app`;
-    await comment(`✅ Preview already ready for \`${sha.slice(0, 7)}\`.\n\n- Web: ${webOrigin}\n- API: ${apiOrigin}`);
-    console.log('This PR commit already has a preview');
-    return;
-  }
   await Promise.all(projects.map(verifyProject));
   const files = await sourceFiles(sha);
+  if (!process.env.PREVIEW_DIRECT_URL || !process.env.PREVIEW_DATABASE_URL) {
+    throw new Error('Neon PR branch setup failed or returned no connection URLs; check the Neon setup steps in this workflow');
+  }
+  if (previous?.record.api || previous?.record.web) {
+    await removeDeployment(previous.record.api, projects[0]);
+    await removeDeployment(previous.record.web, projects[1]);
+    await writeRecord(previous.comment, { pr: prNumber, retired: previous.record.sha }, 'Previous preview removed. A new deployment is in progress.');
+    console.log(`Removed previous deployments for PR #${prNumber}`);
+  }
+  migratePreviewDatabase();
   const webOrigin = `https://tablefolk-web-pr-${prNumber}-${team}.vercel.app`;
   const apiOrigin = `https://tablefolk-api-pr-${prNumber}-${team}.vercel.app`;
   const source = { sha, ref: pr.head.ref, files };
-  const api = await deploy(projects[0], {
-    ...source, overrides: { WEB_ORIGIN: webOrigin, PUBLIC_WEB_URL: webOrigin },
-  });
-  const web = await deploy(projects[1], {
-    ...source, overrides: { NEXT_PUBLIC_API_URL: apiOrigin },
-  });
-  await assignAlias(projects[0], api, apiOrigin);
-  await assignAlias(projects[1], web, webOrigin);
-  const record = { pr: prNumber, sha, api, web };
-  if (previous) {
-    await removeDeployment(previous.record.api, projects[0]);
-    await removeDeployment(previous.record.web, projects[1]);
+  let api;
+  let web;
+  try {
+    api = await deploy(projects[0], {
+      ...source, overrides: {
+        WEB_ORIGIN: webOrigin, PUBLIC_WEB_URL: webOrigin,
+        DATABASE_URL: process.env.PREVIEW_DATABASE_URL,
+        DATABASE_URL_POOLED: process.env.PREVIEW_DATABASE_URL,
+        DIRECT_URL: process.env.PREVIEW_DIRECT_URL,
+        DATABASE_URL_UNPOOLED: process.env.PREVIEW_DIRECT_URL,
+        POSTGRES_URL_NON_POOLING: process.env.PREVIEW_DIRECT_URL,
+      },
+    });
+    web = await deploy(projects[1], {
+      ...source, overrides: { NEXT_PUBLIC_API_URL: apiOrigin },
+    });
+    await assignAlias(projects[0], api, apiOrigin);
+    await assignAlias(projects[1], web, webOrigin);
+    const record = { pr: prNumber, sha, api, web };
+    await writeRecord(previous?.comment, record, `✅ Preview deployment succeeded for \`${sha.slice(0, 7)}\`.\n\n- Web: ${webOrigin}\n- API: ${apiOrigin}`);
+  } catch (error) {
+    for (const [entry, project] of [[api, projects[0]], [web, projects[1]]]) {
+      if (entry) {
+        try { await removeDeployment(entry, project); }
+        catch (cleanupError) { console.warn(`Could not remove partial ${project.name} preview: ${redactSecrets(cleanupError)}`); }
+      }
+    }
+    throw error;
   }
-  await writeRecord(previous?.comment, record, `✅ Preview deployment succeeded for \`${sha.slice(0, 7)}\`.\n\n- Web: ${webOrigin}\n- API: ${apiOrigin}`);
 } else if (process.env.GITHUB_EVENT_NAME === 'pull_request' && event.pull_request.merged) {
   const sha = event.pull_request.merge_commit_sha;
   if (!sha) throw new Error('Merged PR has no merge commit SHA');
@@ -309,14 +370,21 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
     await writeRecord(previous.comment, { pr: prNumber, merged: sha }, 'Merged into main. The PR preview was removed after production deployment.');
   }
 } else {
-  throw new Error('Unsupported event');
+  if (process.env.GITHUB_EVENT_NAME !== 'pull_request') throw new Error('Unsupported event');
+  const previous = await findRecord();
+  if (previous) {
+    await removeDeployment(previous.record.api, projects[0]);
+    await removeDeployment(previous.record.web, projects[1]);
+    await writeRecord(previous.comment, { pr: prNumber, closed: true }, 'PR closed. The preview was removed.');
+  }
 }
 }
 
 try {
-  await main();
+  if (process.argv.includes('--authorize-preview')) await authorizePreviewCommand();
+  else await main();
 } catch (error) {
-  console.error(error);
+  console.error(failureBody(error));
   if (repo && prNumber && process.env.GH_TOKEN) {
     try {
       await comment(failureBody(error));
