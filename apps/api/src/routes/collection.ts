@@ -205,6 +205,15 @@ export async function collectionRoutes(app: FastifyInstance) {
     let updatedCount = 0;
 
     for (const item of bggItems) {
+      // Check if game already exists with a local cached cover (/v1/covers/:bggId)
+      const existingGame = await db().game.findUnique({
+        where: { bggId: item.bggId },
+        select: { coverUrl: true },
+      });
+      const coverUrlToUpdate = existingGame?.coverUrl?.startsWith("/v1/covers/")
+        ? existingGame.coverUrl
+        : (item.imageUrl ?? existingGame?.coverUrl ?? undefined);
+
       // Upsert game record including image URL and kind
       await db().game.upsert({
         where: { bggId: item.bggId },
@@ -218,7 +227,7 @@ export async function collectionRoutes(app: FastifyInstance) {
           minPlayingTime: item.minPlayingTime,
           maxPlayingTime: item.maxPlayingTime,
           weight: item.weight ?? undefined,
-          coverUrl: item.imageUrl ? item.imageUrl : undefined,
+          coverUrl: coverUrlToUpdate,
         },
         create: {
           bggId: item.bggId,
@@ -273,6 +282,37 @@ export async function collectionRoutes(app: FastifyInstance) {
       try {
         const enrichedDetails = await getBggGamesBatch(missingWeightIds);
         for (const [bggId, details] of enrichedDetails) {
+          const existingGame = await db().game.findUnique({
+            where: { bggId },
+            select: { coverUrl: true },
+          });
+
+          let coverUrl = existingGame?.coverUrl;
+
+          // Attempt to download and cache cover into Tablefolk's local DB if not yet cached
+          if (!coverUrl?.startsWith("/v1/covers/")) {
+            const targetUrl = details.imageUrl ?? coverUrl ?? null;
+            if (targetUrl) {
+              try {
+                const cover = await fetchCover(targetUrl);
+                if (cover) {
+                  await db().gameCover.upsert({
+                    where: { bggId },
+                    create: { bggId, contentType: cover.contentType, data: cover.data },
+                    update: { contentType: cover.contentType, data: cover.data },
+                  });
+                  coverUrl = `/v1/covers/${bggId}`;
+                }
+              } catch (coverErr) {
+                console.warn(`Could not cache cover for game ${bggId}:`, coverErr);
+              }
+            }
+          }
+
+          if (!coverUrl && details.imageUrl) {
+            coverUrl = details.imageUrl;
+          }
+
           await db().game.update({
             where: { bggId },
             data: {
@@ -280,7 +320,7 @@ export async function collectionRoutes(app: FastifyInstance) {
               weight: details.weight,
               baseGameBggId: details.baseGameBggId ?? undefined,
               baseGameTitle: details.baseGameTitle ?? undefined,
-              coverUrl: details.imageUrl ? details.imageUrl : undefined,
+              coverUrl: coverUrl ?? undefined,
               description: details.description ?? undefined,
               designers: details.designers.length ? details.designers : undefined,
               publishers: details.publishers.length ? details.publishers : undefined,
@@ -313,15 +353,51 @@ export async function collectionRoutes(app: FastifyInstance) {
     });
 
     const candidates = items
-      .filter((item) => item.game.weight === null || !item.game.coverUrl)
+      .filter(
+        (item) =>
+          item.game.weight === null ||
+          !item.game.coverUrl ||
+          !item.game.coverUrl.startsWith("/v1/covers/")
+      )
       .map((item) => item.bggId);
 
-    const batch = candidates.slice(0, 20);
+    const batch = candidates.slice(0, 15);
     let enrichedCount = 0;
 
     if (batch.length > 0) {
       const enrichedDetails = await getBggGamesBatch(batch);
       for (const [bggId, details] of enrichedDetails) {
+        const existingGame = await db().game.findUnique({
+          where: { bggId },
+          select: { coverUrl: true },
+        });
+
+        let coverUrl = existingGame?.coverUrl;
+
+        // Attempt to download and store cover into Tablefolk's local DB if not yet cached
+        if (!coverUrl?.startsWith("/v1/covers/")) {
+          const targetUrl = details.imageUrl ?? coverUrl ?? null;
+          if (targetUrl) {
+            try {
+              const cover = await fetchCover(targetUrl);
+              if (cover) {
+                await db().gameCover.upsert({
+                  where: { bggId },
+                  create: { bggId, contentType: cover.contentType, data: cover.data },
+                  update: { contentType: cover.contentType, data: cover.data },
+                });
+                coverUrl = `/v1/covers/${bggId}`;
+              }
+            } catch (coverErr) {
+              console.warn(`Could not cache cover for game ${bggId}:`, coverErr);
+            }
+          }
+        }
+
+        if (!coverUrl && details.imageUrl) {
+          coverUrl = details.imageUrl;
+        }
+
         await db().game.update({
           where: { bggId },
           data: {
@@ -329,7 +405,7 @@ export async function collectionRoutes(app: FastifyInstance) {
             weight: details.weight,
             baseGameBggId: details.baseGameBggId ?? undefined,
             baseGameTitle: details.baseGameTitle ?? undefined,
-            coverUrl: details.imageUrl ? details.imageUrl : undefined,
+            coverUrl: coverUrl ?? undefined,
             description: details.description ?? undefined,
             designers: details.designers.length ? details.designers : undefined,
             publishers: details.publishers.length ? details.publishers : undefined,
