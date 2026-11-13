@@ -108,7 +108,30 @@ async function writeRecord(existing, record, message) {
   const path = existing
     ? `/repos/${repo}/issues/comments/${existing.id}`
     : `/repos/${repo}/issues/${prNumber}/comments`;
-  await github(path, { method: existing ? 'PATCH' : 'POST', body: JSON.stringify({ body }) });
+  return github(path, { method: existing ? 'PATCH' : 'POST', body: JSON.stringify({ body }) });
+}
+
+async function deprecateOlderDeploymentComments(currentId) {
+  const failures = [];
+  for (const previous of await comments()) {
+    if (previous.id === currentId) continue;
+    let record;
+    try { record = readRecord(previous); }
+    catch { continue; }
+    const successful = previous.user?.login === 'github-actions[bot]' &&
+      /Preview deployment succeeded|Preview already ready/.test(previous.body ?? '');
+    const inProgress = record && (record.retired || previous.body.includes('Previous preview removed'));
+    if (!successful && !inProgress) continue;
+    try {
+      await github(`/repos/${repo}/issues/comments/${previous.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ body: 'Deployment deprecated in favour of the most recent one.' }),
+      });
+    } catch (error) {
+      failures.push(`#${previous.id}: ${redactSecrets(error)}`);
+    }
+  }
+  if (failures.length) throw new Error(failures.join('\n'));
 }
 
 async function removeDeployment(entry, project) {
@@ -317,7 +340,7 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
   if (previous?.record.api || previous?.record.web) {
     await removeDeployment(previous.record.api, projects[0]);
     await removeDeployment(previous.record.web, projects[1]);
-    await writeRecord(previous.comment, { pr: prNumber, retired: previous.record.sha }, 'Previous preview removed. A new deployment is in progress.');
+    await writeRecord(previous.comment, { pr: prNumber, retired: previous.record.sha ?? previous.record.retired ?? 'unknown' }, 'Previous preview removed. A new deployment is in progress.');
     console.log(`Removed previous deployments for PR #${prNumber}`);
   }
   migratePreviewDatabase();
@@ -343,7 +366,12 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
     await assignAlias(projects[0], api, apiOrigin);
     await assignAlias(projects[1], web, webOrigin);
     const record = { pr: prNumber, sha, api, web };
-    await writeRecord(previous?.comment, record, `✅ Preview deployment succeeded for \`${sha.slice(0, 7)}\`.\n\n- Web: ${webOrigin}\n- API: ${apiOrigin}`);
+    const latest = await writeRecord(undefined, record, `✅ Preview deployment succeeded for \`${sha.slice(0, 7)}\`.\n\n- Web: ${webOrigin}\n- API: ${apiOrigin}`);
+    try {
+      await deprecateOlderDeploymentComments(latest.id);
+    } catch (commentError) {
+      console.warn(`Preview succeeded, but older deployment comments could not all be updated: ${redactSecrets(commentError)}`);
+    }
   } catch (error) {
     for (const [entry, project] of [[api, projects[0]], [web, projects[1]]]) {
       if (entry) {

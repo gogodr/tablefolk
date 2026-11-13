@@ -55,7 +55,9 @@ globalThis.fetch = async (url, options = {}) => {
     state: 'open', base: { ref: 'main' },
     head: { sha: sourceSha, ref: 'feature', repo: { full_name: 'gogodr/tablefolk', id: 123 } },
   };
-  else if (path.endsWith('/issues/1/comments')) result = options.method === 'POST' ? { id: 1 } : previousRecord ? [previousRecord] : [];
+  else if (path.endsWith('/issues/1/comments')) result = options.method === 'POST' ? { id: 1 } : previousRecord ?? [];
+  else if (path.endsWith('/issues/comments/97')) result = { id: 97 };
+  else if (path.endsWith('/issues/comments/98')) result = { id: 98 };
   else if (path.endsWith('/issues/comments/99')) result = { id: 99 };
   else if (path.endsWith('/projects/prj_api')) result = { id: 'prj_api', name: 'tablefolk-api' };
   else if (path.endsWith('/projects/prj_web')) result = { id: 'prj_web', name: 'tablefolk-web' };
@@ -112,19 +114,35 @@ try {
   assert.match(success.body.body, /Preview deployment succeeded/);
   assert.match(success.body.body, /https:\/\/tablefolk-web-pr-1-gogodr\.vercel\.app/);
   calls.length = 0;
-  previousRecord = {
-    id: 99, user: { login: 'github-actions[bot]' },
-    body: `<!-- tablefolk-vercel-preview -->\n<!-- preview-record:${JSON.stringify({
-      pr: 1, sha: sourceSha,
-      api: { id: 'dpl_oldapi', url: 'https://old-api.vercel.app' },
-      web: { id: 'dpl_oldweb', url: 'https://old-web.vercel.app' },
-    })} -->`,
-  };
+  previousRecord = [
+    {
+      id: 97, user: { login: 'github-actions[bot]' },
+      body: '✅ Preview deployment succeeded for an older revision.\n\n- Web: https://old.example',
+    },
+    {
+      id: 98, user: { login: 'github-actions[bot]' },
+      body: `<!-- tablefolk-vercel-preview -->\nPreview deployment succeeded.\n<!-- preview-record:${JSON.stringify({ pr: 1, sha: 'b'.repeat(40) })} -->`,
+    },
+    {
+      id: 99, user: { login: 'github-actions[bot]' },
+      body: `<!-- tablefolk-vercel-preview -->\nPreview deployment succeeded.\n<!-- preview-record:${JSON.stringify({
+        pr: 1, sha: sourceSha,
+        api: { id: 'dpl_oldapi', url: 'https://old-api.vercel.app' },
+        web: { id: 'dpl_oldweb', url: 'https://old-web.vercel.app' },
+      })} -->`,
+    },
+  ];
   await import('./vercel-deploy.mjs?redeploy');
   const firstNewDeployment = calls.findIndex(call => call.path === '/v13/deployments' && call.body?.project === 'prj_api');
   assert.ok(firstNewDeployment > calls.findIndex(call => call.path.endsWith('/dpl_oldweb') && call.method === 'DELETE'));
   assert.equal(calls.filter(call => call.path.endsWith('/dpl_oldapi') && call.method === 'DELETE').length, 1);
   assert.equal(calls.filter(call => call.path.endsWith('/dpl_oldweb') && call.method === 'DELETE').length, 1);
+  const newSuccessIndex = calls.findIndex(call => call.path.endsWith('/issues/1/comments') && call.method === 'POST' && /Preview deployment succeeded/.test(call.body?.body ?? ''));
+  assert.ok(newSuccessIndex > firstNewDeployment);
+  for (const id of [97, 98, 99]) {
+    const deprecatedIndex = calls.findIndex(call => call.path.endsWith(`/issues/comments/${id}`) && call.body?.body === 'Deployment deprecated in favour of the most recent one.');
+    assert.ok(deprecatedIndex > newSuccessIndex);
+  }
   previousRecord = null;
   calls.length = 0;
   rateLimitOnce = true;
