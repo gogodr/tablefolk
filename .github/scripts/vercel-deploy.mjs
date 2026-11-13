@@ -1,3 +1,8 @@
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { readFile, lstat } from 'node:fs/promises';
+import { resolve, join } from 'node:path';
+
 const required = [
   'GH_TOKEN', 'VERCEL_API_TOKEN', 'VERCEL_WEB_TOKEN', 'VERCEL_ORG_ID', 'VERCEL_API_PROJECT_ID',
   'VERCEL_WEB_PROJECT_ID', 'VERCEL_TEAM_SLUG', 'GITHUB_REPOSITORY',
@@ -8,6 +13,7 @@ const repo = process.env.GITHUB_REPOSITORY;
 const prNumber = event.issue?.number ?? event.pull_request?.number;
 const marker = '<!-- tablefolk-vercel-preview -->';
 const team = process.env.VERCEL_TEAM_SLUG;
+const sourceDir = resolve(process.env.VERCEL_SOURCE_DIR ?? 'deploy-source');
 const projects = [
   { name: 'tablefolk-api', id: process.env.VERCEL_API_PROJECT_ID, token: process.env.VERCEL_API_TOKEN },
   { name: 'tablefolk-web', id: process.env.VERCEL_WEB_PROJECT_ID, token: process.env.VERCEL_WEB_TOKEN },
@@ -112,6 +118,41 @@ async function removeDeployment(entry, project) {
 
 const teamQuery = `teamId=${encodeURIComponent(process.env.VERCEL_ORG_ID)}`;
 
+async function sourceFiles(expectedSha) {
+  const actualSha = execFileSync('git', ['-C', sourceDir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  if (actualSha !== expectedSha) throw new Error(`Checked out source is ${actualSha}, expected ${expectedSha}; retry /deploy`);
+  const tracked = execFileSync('git', ['-C', sourceDir, 'ls-files', '-z'])
+    .toString('utf8').split('\0').filter(Boolean);
+  const included = tracked.filter(file =>
+    (file.startsWith('apps/') || file.startsWith('packages/') ||
+    ['package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'tsconfig.base.json', '.vercelignore', 'vercel.json'].includes(file)) &&
+    !file.split('/').some(part => part === '.env' || part.startsWith('.env.')));
+  if (!included.includes('package.json') || !included.some(file => file.startsWith('apps/api/')) || !included.some(file => file.startsWith('apps/web/'))) {
+    throw new Error('Checked out source is missing required workspace files');
+  }
+  const files = [];
+  for (const file of included) {
+    const absolute = join(sourceDir, file);
+    if (!(await lstat(absolute)).isFile()) throw new Error(`Unsupported source entry: ${file}`);
+    const contents = await readFile(absolute);
+    files.push({ file, sha: createHash('sha1').update(contents).digest('hex'), size: contents.length, contents });
+  }
+  console.log(`Prepared ${files.length} tracked application files from ${expectedSha}`);
+  return files;
+}
+
+async function uploadFiles(project, files) {
+  console.log(`Uploading source files for ${project.name}`);
+  for (const [index, file] of files.entries()) {
+    await vercel(project, `/v2/files?${teamQuery}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(file.size), 'x-vercel-digest': file.sha },
+      body: file.contents,
+    });
+    if ((index + 1) % 25 === 0 || index + 1 === files.length) console.log(`${project.name}: uploaded ${index + 1}/${files.length} files`);
+  }
+}
+
 async function verifyProject(project) {
   console.log(`Checking access to ${project.name}`);
   const settings = await vercel(project, `/v9/projects/${project.id}?${teamQuery}`);
@@ -120,14 +161,15 @@ async function verifyProject(project) {
   }
 }
 
-async function deploy(project, { sha, ref, repoId, production, overrides = {}, prId }) {
+async function deploy(project, { sha, ref, production, overrides = {}, files }) {
+  await uploadFiles(project, files);
   const body = {
     name: project.name,
     project: project.id,
-    gitSource: { type: 'github', repoId, ref, sha, ...(prId ? { prId } : {}) },
+    files: files.map(({ file, sha: digest, size }) => ({ file, sha: digest, size })),
     ...(production ? { target: 'production' } : {}),
     ...(Object.keys(overrides).length ? { env: overrides, build: { env: overrides } } : {}),
-    meta: { tablefolkPr: String(prNumber) },
+    meta: { tablefolkPr: String(prNumber), commitSha: sha, commitRef: ref },
   };
   const retryDeadline = Date.now() + 5 * 60 * 1000;
   let created;
@@ -214,9 +256,10 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
     return;
   }
   await Promise.all(projects.map(verifyProject));
+  const files = await sourceFiles(sha);
   const webOrigin = `https://tablefolk-web-pr-${prNumber}-${team}.vercel.app`;
   const apiOrigin = `https://tablefolk-api-pr-${prNumber}-${team}.vercel.app`;
-  const source = { sha, ref: pr.head.ref, repoId: pr.head.repo.id, prId: prNumber };
+  const source = { sha, ref: pr.head.ref, files };
   const api = await deploy(projects[0], {
     ...source, overrides: { WEB_ORIGIN: webOrigin, PUBLIC_WEB_URL: webOrigin },
   });
@@ -235,8 +278,9 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
   const sha = event.pull_request.merge_commit_sha;
   if (!sha) throw new Error('Merged PR has no merge commit SHA');
   await Promise.all(projects.map(verifyProject));
+  const files = await sourceFiles(sha);
   const source = {
-    sha, ref: 'main', repoId: event.repository.id, production: true,
+    sha, ref: 'main', production: true, files,
   };
   await deploy(projects[0], source);
   await deploy(projects[1], source);

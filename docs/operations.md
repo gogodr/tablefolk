@@ -29,6 +29,8 @@ Keep both projects' root directories set to `apps/api` and `apps/web` and enable
 
 Once the workflow file is on `main`, a repository collaborator with write access can comment exactly `/deploy` on an open same-repository PR targeting `main`. The workflow reacts to the command with 👀, deploys that PR's current commit, assigns stable per-PR API and web aliases, and posts a success comment with both links. If deployment fails, it posts a failure comment with a redacted stack trace and a link to the workflow logs. Comment `/deploy` again after pushing more commits to refresh the preview. Fork PRs are deliberately excluded because deployment builds receive Preview environment credentials. The workflow runs the orchestration script from `main`, never from the PR checkout.
 
+The workflow checks out the PR or merge commit separately, verifies its SHA, and uploads tracked application files to Vercel with each project's token. Deployment creation uses those uploaded files, so Vercel does not need to fetch the source from GitHub. The upload includes the `apps` and `packages` workspaces and their root package configuration; it excludes environment files and unrelated repository content.
+
 The job requests `pull-requests: write` as well as `issues: write`. GitHub checks PR conversation comments and reactions against the pull-request permission even though their REST paths use `/issues`. A reaction failure is logged but does not stop the deployment.
 
 If Vercel returns HTTP 429 while creating a deployment, the workflow retries for up to five minutes per project, using `Retry-After` or `X-RateLimit-Reset` when supplied. If the limit persists, it posts the failure on the PR; retry `/deploy` after the quota resets.
