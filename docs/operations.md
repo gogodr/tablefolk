@@ -31,6 +31,8 @@ Once the workflow file is on `main`, a repository collaborator with write access
 
 The job requests `pull-requests: write` as well as `issues: write`. GitHub checks PR conversation comments and reactions against the pull-request permission even though their REST paths use `/issues`. A reaction failure is logged but does not stop the deployment.
 
+If Vercel returns HTTP 429 while creating a deployment, the workflow retries for up to five minutes per project, using `Retry-After` or `X-RateLimit-Reset` when supplied. If the limit persists, it posts the failure on the PR; retry `/deploy` after the quota resets.
+
 Merging a PR into `main` deploys the merge commit to both Production projects. After both deploys succeed, the workflow removes the two PR preview deployments and updates its PR comment. A failed production deployment leaves the preview available for investigation. Schema migrations remain a separate release step. If Vercel's Git integration is also set to deploy every push, disable those automatic deployments for these two projects to avoid duplicate Preview and Production builds.
 
 ## Common failures

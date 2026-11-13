@@ -27,7 +27,11 @@ async function request(base, path, token, options = {}) {
   const body = raw ? JSON.parse(raw) : null;
   if (!response.ok) {
     const accepted = response.headers?.get?.('x-accepted-github-permissions');
-    throw new Error(`${options.method ?? 'GET'} ${path}: ${response.status} ${JSON.stringify(body)}${accepted ? ` (accepted GitHub permissions: ${accepted})` : ''}`);
+    const error = new Error(`${options.method ?? 'GET'} ${path}: ${response.status} ${JSON.stringify(body)}${accepted ? ` (accepted GitHub permissions: ${accepted})` : ''}`);
+    error.status = response.status;
+    error.retryAfter = response.headers?.get?.('retry-after');
+    error.rateLimitReset = response.headers?.get?.('x-ratelimit-reset');
+    throw error;
   }
   return body;
 }
@@ -125,10 +129,34 @@ async function deploy(project, { sha, ref, repoId, production, overrides = {}, p
     ...(Object.keys(overrides).length ? { env: overrides, build: { env: overrides } } : {}),
     meta: { tablefolkPr: String(prNumber) },
   };
-  const created = await vercel(project, `/v13/deployments?${teamQuery}&forceNew=1`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  const retryDeadline = Date.now() + 5 * 60 * 1000;
+  let created;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      created = await vercel(project, `/v13/deployments?${teamQuery}&forceNew=1`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      break;
+    } catch (error) {
+      if (error.status !== 429) throw error;
+      const retryAfter = error.retryAfter;
+      const headerDelay = retryAfter == null ? NaN : /^\d+$/.test(retryAfter)
+        ? Number(retryAfter) * 1000
+        : Date.parse(retryAfter) - Date.now();
+      const resetDelay = error.rateLimitReset == null ? NaN
+        : Number(error.rateLimitReset) * 1000 - Date.now();
+      const fallbackDelay = Math.min(30_000 * 2 ** (attempt - 1), 60_000);
+      const delay = Number.isFinite(headerDelay) ? Math.max(1_000, headerDelay)
+        : Number.isFinite(resetDelay) ? Math.max(1_000, resetDelay)
+          : fallbackDelay;
+      if (Date.now() + delay >= retryDeadline) {
+        throw new Error(`${project.name} deployment creation could not be retried within five minutes; retry /deploy later. Last response: ${error.message}`);
+      }
+      console.warn(`${project.name} deployment creation rate limited; retrying in ${Math.ceil(delay / 1000)}s (attempt ${attempt + 1})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
   if (!created.id) throw new Error(`${project.name} deployment response has no ID`);
   console.log(`${project.name} deployment ${created.id} started`);
   const deadline = Date.now() + 18 * 60 * 1000;

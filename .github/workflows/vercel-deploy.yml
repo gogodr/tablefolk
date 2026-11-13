@@ -22,7 +22,7 @@ jobs:
        github.event.pull_request.base.ref == 'main')
     environment: Prod
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     concurrency:
       group: vercel-pr-${{ github.event.issue.number || github.event.pull_request.number }}
       cancel-in-progress: false
