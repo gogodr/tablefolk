@@ -29,6 +29,8 @@ Keep both projects' root directories set to `apps/api` and `apps/web` and enable
 
 Once the workflow file is on `main`, a repository collaborator with write access can comment exactly `/deploy` on an open same-repository PR targeting `main`. The workflow reacts to the command with 👀, deploys that PR's current commit, assigns stable per-PR API and web aliases, and posts a success comment with both links. If deployment fails, it posts a failure comment with a redacted stack trace and a link to the workflow logs. Comment `/deploy` again after pushing more commits to refresh the preview. Fork PRs are deliberately excluded because deployment builds receive Preview environment credentials. The workflow runs the orchestration script from `main`, never from the PR checkout.
 
+The job requests `pull-requests: write` as well as `issues: write`. GitHub checks PR conversation comments and reactions against the pull-request permission even though their REST paths use `/issues`. A reaction failure is logged but does not stop the deployment.
+
 Merging a PR into `main` deploys the merge commit to both Production projects. After both deploys succeed, the workflow removes the two PR preview deployments and updates its PR comment. A failed production deployment leaves the preview available for investigation. Schema migrations remain a separate release step. If Vercel's Git integration is also set to deploy every push, disable those automatic deployments for these two projects to avoid duplicate Preview and Production builds.
 
 ## Common failures

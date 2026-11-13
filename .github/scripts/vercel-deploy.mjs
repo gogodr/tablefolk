@@ -25,7 +25,10 @@ async function request(base, path, token, options = {}) {
   });
   const raw = await response.text();
   const body = raw ? JSON.parse(raw) : null;
-  if (!response.ok) throw new Error(`${options.method ?? 'GET'} ${path}: ${response.status} ${JSON.stringify(body)}`);
+  if (!response.ok) {
+    const accepted = response.headers?.get?.('x-accepted-github-permissions');
+    throw new Error(`${options.method ?? 'GET'} ${path}: ${response.status} ${JSON.stringify(body)}${accepted ? ` (accepted GitHub permissions: ${accepted})` : ''}`);
+  }
   return body;
 }
 
@@ -159,8 +162,12 @@ for (const key of required) {
   if (!process.env[key]) throw new Error(`Missing ${key}`);
 }
 if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
-  await reactToCommand();
-  console.log(`Acknowledged /deploy on PR #${prNumber}`);
+  try {
+    await reactToCommand();
+    console.log(`Acknowledged /deploy on PR #${prNumber}`);
+  } catch (reactionError) {
+    console.warn(`Could not react to /deploy on PR #${prNumber}: ${reactionError}`);
+  }
   const actor = encodeURIComponent(event.comment.user.login);
   const access = await github(`/repos/${repo}/collaborators/${actor}/permission`);
   if (!['admin', 'maintain', 'write'].includes(access.permission)) {
