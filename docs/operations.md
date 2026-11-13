@@ -6,7 +6,7 @@ Use separate PostgreSQL databases and service settings for development, preview,
 
 The Vercel Preview projects are `gogodr/tablefolk-api` and `gogodr/tablefolk-web`. The API Preview has its own Neon database. Stable preview aliases are `tablefolk-api-preview-gogodr.vercel.app` and `tablefolk-web-preview-gogodr.vercel.app`; after each successful CLI preview deployment, move the matching alias to the new deployment URL with `vercel alias set`. Use those stable addresses for the cross-project environment variables and invitation links. The web Preview retains Vercel Authentication; the API project does not, so the browser can reach its Clerk-protected routes.
 
-Review migration SQL before production use. A merged PR or a manual production deployment applies the checked-out main migrations to the production database and then the dev database before deploying the API and web. The `/deploy` preview command applies migrations to its isolated Neon branch.
+Review migration SQL before production use. A merged PR or a manual production deployment applies the checked-out main migrations to the production database and then the Neon `dev` database branch before deploying the API and web. This `dev` branch is the database base for new PR branches; there is no dev app deployment. The `/deploy` preview command applies migrations to its isolated Neon branch.
 
 ## GitHub deployment workflow
 
@@ -21,8 +21,8 @@ The workflow in `.github/workflows/vercel-deploy.yml` deploys both Vercel projec
 | Variable `VERCEL_API_PROJECT_ID` | ID of the `tablefolk-api` project (`prj_...`) |
 | Variable `VERCEL_WEB_PROJECT_ID` | ID of the `tablefolk-web` project (`prj_...`) |
 | Secret `NEON_API_KEY` | Neon API key with access to the Preview database project |
-| Secret `PRODUCTION_DIRECT_URL` | Direct, unpooled connection URL for the production database used by the API Vercel Production environment |
-| Secret `DEV_DIRECT_URL` | Direct, unpooled connection URL for the dev database |
+| Secret `PRODUCTION_DIRECT_URL` | PostgreSQL direct, unpooled connection string for the production database used by the API Vercel Production environment; not a Vercel website URL |
+| Secret `DEV_DIRECT_URL` | PostgreSQL direct, unpooled connection string for the Neon `dev` branch named by `NEON_PREVIEW_PARENT_BRANCH`; this branch is the base for new PR databases, not a deployed app |
 | Variable `NEON_PROJECT_ID` | ID of the Neon project containing the existing Preview branch |
 | Variable `NEON_PREVIEW_PARENT_BRANCH` | Name or ID of the non-production parent branch (for this setup, `dev`); required so PR databases never copy Production by default |
 | Variable `NEON_DATABASE_NAME` | Database name on the Preview branch; defaults to `neondb` |

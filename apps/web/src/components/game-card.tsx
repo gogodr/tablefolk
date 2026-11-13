@@ -26,6 +26,7 @@ export function weightLabel(weight: number | null): string | null {
 
 interface GameCardProps {
   game: Game | CollectionGame;
+  eagerCover?: boolean;
   owners?: (GameOwner | Member)[];
   actions?: React.ReactNode;
   interestScore?: number;
@@ -33,17 +34,18 @@ interface GameCardProps {
   canVote?: boolean;
 }
 
-export function GameCard({ game, owners, actions, interestScore, onVote, canVote }: GameCardProps) {
+export function GameCard({ game, eagerCover = false, owners, actions, interestScore, onVote, canVote }: GameCardProps) {
   const complexity = weightLabel(game.weight);
   const versionName = "versionName" in game ? (game as CollectionGame).versionName : null;
   const isAvailable = "isAvailable" in game ? (game as CollectionGame).isAvailable : true;
   const unavailableReason = "unavailableReason" in game ? (game as CollectionGame).unavailableReason : null;
+  const expansions = "expansions" in game ? game.expansions : undefined;
 
   return (
     <article className="game-card">
       <div className="game-cover">
         {game.coverUrl ? (
-          <img src={gameCoverSrc(game.coverUrl)} alt={`${game.name} cover`} loading="lazy" />
+          <img src={gameCoverSrc(game.coverUrl)} alt={`${game.name} cover`} loading={eagerCover ? "eager" : "lazy"} fetchPriority={eagerCover ? "high" : undefined} />
         ) : (
           <img className="cover-placeholder" src="/brand/tablefolk-mark.png" alt="" />
         )}
@@ -55,7 +57,7 @@ export function GameCard({ game, owners, actions, interestScore, onVote, canVote
         </div>
         <p className="game-meta">
           <span className="meta-pill meta-players">{playerRange(game)}</span>
-          {game.playingTime && <span className="meta-pill meta-time">⏱️ {game.playingTime} min</span>}
+          {game.playingTime && <span className="meta-pill meta-time">{game.playingTime} min</span>}
           {complexity && (
             <span
               className={`meta-pill meta-weight ${
@@ -66,38 +68,23 @@ export function GameCard({ game, owners, actions, interestScore, onVote, canVote
                   : "weight-light"
               }`}
             >
-              ⚖️ {complexity}
+              {complexity}
             </span>
           )}
-          {game.yearPublished && <span className="meta-pill meta-year">📅 {game.yearPublished}</span>}
-          {versionName && (
-            <span className="meta-pill meta-version" title={`Edition: ${versionName}`}>
-              🏷️ {versionName}
+          {game.yearPublished && <span className="meta-pill meta-year">{game.yearPublished}</span>}
+          {versionName && <span className="meta-pill meta-version" title={`Edition: ${versionName}`}>{versionName}</span>}
+          {game.baseGameTitle && <span className="meta-pill meta-basegame" title={`Expansion for ${game.baseGameTitle}`}>For {game.baseGameTitle}</span>}
+          {expansions && expansions.length > 0 && (
+            <span className="meta-pill meta-expansions-badge" title={expansions.map((expansion) => `${expansion.name} (up to ${expansion.maxPlayers ?? "?"} players)`).join(", ")}>
+              {expansions.length} {expansions.length === 1 ? "expansion" : "expansions"}
             </span>
           )}
-          {game.baseGameTitle && (
-            <span className="meta-pill meta-basegame" title={`Expansion for ${game.baseGameTitle}`}>
-              🔗 For: {game.baseGameTitle}
-            </span>
-          )}
-          {"expansions" in game && (game as CollectionGame).expansions && (game as CollectionGame).expansions!.length > 0 && (
-            <span
-              className="meta-pill meta-expansions-badge"
-              title={(game as CollectionGame).expansions!.map((e) => `${e.name} (up to ${e.maxPlayers ?? "?"}p)`).join(", ")}
-            >
-              🧩 {(game as CollectionGame).expansions!.length} {(game as CollectionGame).expansions!.length === 1 ? "expansion" : "expansions"}
-            </span>
-          )}
-          {!isAvailable && (
-            <span className="meta-pill meta-unavailable" title={unavailableReason || "Unavailable to travel"}>
-              ⚠ {unavailableReason || "Home only"}
-            </span>
-          )}
+          {!isAvailable && <span className="meta-pill meta-unavailable" title={unavailableReason || "Unavailable to travel"}>{unavailableReason || "Home only"}</span>}
         </p>
 
         {interestScore !== undefined && interestScore > 0 && (
           <div className="game-interest-badge">
-            <span>⭐ {interestScore} {interestScore === 1 ? "want point" : "want points"}</span>
+            <span>{interestScore} {interestScore === 1 ? "want point" : "want points"}</span>
             {canVote && onVote && (
               <button type="button" className="button-quiet button-small" onClick={onVote}>
                 + Add vote

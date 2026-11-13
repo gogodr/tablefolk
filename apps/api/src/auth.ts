@@ -4,8 +4,17 @@ import { db } from "./db.js";
 import { AppError, forbidden, notFound } from "./lib/errors.js";
 
 export async function requireUser(request: FastifyRequest) {
+  if (!process.env.CLERK_PUBLISHABLE_KEY || !process.env.CLERK_SECRET_KEY) {
+    throw new AppError(503, "AUTH_NOT_CONFIGURED", "Clerk is not configured for this API");
+  }
   const auth = getAuth(request);
   if (!auth.isAuthenticated || !auth.userId) {
+    if (request.headers.authorization?.startsWith("Bearer ")) {
+      const candidate = auth.debug().reason;
+      const reason = typeof candidate === "string" && /^[a-z-]{1,80}$/.test(candidate)
+        ? candidate : "unknown";
+      request.log.warn({ reason }, "Clerk rejected a bearer token");
+    }
     throw new AppError(401, "UNAUTHENTICATED", "Sign in to continue");
   }
 

@@ -920,8 +920,8 @@ body { font-size: var(--text-md); }
 
 .collection-search-input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-focus) 22%, transparent);
 }
 
 .collection-search-clear {

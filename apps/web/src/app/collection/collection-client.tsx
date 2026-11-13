@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CollectionGame, GroupSummary, BggSyncResult } from "@tablefolk/contracts";
 import { GameCard } from "@/components/game-card";
 import { GameSearch } from "@/components/game-search";
@@ -36,6 +36,7 @@ export function CollectionClient() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [confirmId, setConfirmId] = useState<number | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const inspectorRef = useRef<HTMLDialogElement>(null);
 
   // BGG Sync & Enrich State
   const [bggUsername, setBggUsername] = useState("");
@@ -69,6 +70,28 @@ export function CollectionClient() {
     else if (isLoaded) setLoading(false);
   }, [isLoaded, isSignedIn, load]);
 
+  const selectedId = sharingId ?? editingId;
+  const selectedGame = games.find((game) => game.bggId === selectedId);
+
+  useEffect(() => {
+    const inspector = inspectorRef.current;
+    if (!inspector) return;
+    if (selectedGame && !inspector.open) inspector.showModal();
+    if (!selectedGame && inspector.open) inspector.close();
+  }, [selectedGame]);
+
+  function closeInspector() {
+    setSharingId(null);
+    setEditingId(null);
+    setConfirmId(null);
+  }
+
+  function openInspector(bggId: number, section: "share" | "details") {
+    setSharingId(section === "share" ? bggId : null);
+    setEditingId(section === "details" ? bggId : null);
+    setConfirmId(null);
+  }
+
   async function removeGame(bggId: number) {
     setRemovingId(bggId);
     try {
@@ -96,7 +119,6 @@ export function CollectionClient() {
         body: JSON.stringify({ isAvailable, unavailableReason, versionName, maxPlayersOverride }),
       });
       await load();
-      setEditingId(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not update availability.");
     }
@@ -245,61 +267,59 @@ export function CollectionClient() {
     );
   }
 
+  const game = selectedGame;
+
   return (
-    <div className="page">
-      <div className="page-header">
+    <div className="page collection-page">
+      <div className="page-header collection-heading">
         <div>
           <h1>My collection</h1>
           <p>Keep the games you own close, manage what can travel, and share them with your groups.</p>
         </div>
-        <Link href="/groups" className="button-secondary">View groups</Link>
+        <Link href="/groups" className="collection-groups-link">View groups</Link>
       </div>
 
-      {/* BGG Auto-Sync Section */}
-      <section className="panel bgg-sync-panel">
-        <div className="panel-header">
-          <div>
-            <h2>Import from BoardGameGeek</h2>
+      <div className="collection-tools">
+        <details className="collection-tool collection-tool-add">
+          <summary>Add a game</summary>
+          <div className="collection-tool-content"><GameSearch onAdded={() => void load()} /></div>
+        </details>
+        <details className="collection-tool">
+          <summary>Import from BoardGameGeek</summary>
+          <div className="collection-tool-content">
             <p>Connect your BGG account to automatically import and refresh your owned collection.</p>
+            <form onSubmit={handleSyncBgg} className="inline-form">
+              <div className="field">
+                <label htmlFor="bgg-user">BGG Username</label>
+                <input
+                  id="bgg-user"
+                  type="text"
+                  placeholder="e.g. Rahdo"
+                  value={bggUsername}
+                  onChange={(e) => setBggUsername(e.target.value)}
+                  disabled={syncing}
+                />
+              </div>
+              <button type="submit" className="button" disabled={syncing || !bggUsername.trim()}>
+                {syncing ? "Syncing with BGG…" : "Sync BGG Collection"}
+              </button>
+            </form>
+            {syncStatus && <p className="form-success">{syncStatus}</p>}
           </div>
-        </div>
-        <form onSubmit={handleSyncBgg} className="inline-form">
-          <div className="field">
-            <label htmlFor="bgg-user">BGG Username</label>
-            <input
-              id="bgg-user"
-              type="text"
-              placeholder="e.g. Rahdo"
-              value={bggUsername}
-              onChange={(e) => setBggUsername(e.target.value)}
-              disabled={syncing}
-            />
-          </div>
-          <button type="submit" className="button" disabled={syncing || !bggUsername.trim()}>
-            {syncing ? "Syncing with BGG…" : "Sync BGG Collection"}
-          </button>
-        </form>
-        {syncStatus && <p className="form-success">{syncStatus}</p>}
-
-        {pendingEnrichmentCount > 0 && (
-          <div className="enrich-banner">
-            <p>
-              💡 <strong>{pendingEnrichmentCount} {pendingEnrichmentCount === 1 ? "game has" : "games have"}</strong> pending BGG enrichment (local cover cache or complexity weight).
-            </p>
-            <button
-              type="button"
-              className="button-secondary button-small"
-              onClick={() => void handleEnrich()}
-              disabled={enriching}
-            >
-              {enriching ? "Enriching…" : "⚡ Cache & Enrich in Tablefolk"}
-            </button>
-          </div>
+        </details>
+        {(pendingEnrichmentCount > 0 || enrichStatus) && (
+          <details className="collection-tool">
+            <summary>Refresh game details{pendingEnrichmentCount > 0 ? ` (${pendingEnrichmentCount})` : ""}</summary>
+            <div className="collection-tool-content">
+              <p>Cache covers locally and fill in missing complexity weights for your games.</p>
+              <button type="button" className="button-secondary" onClick={() => void handleEnrich()} disabled={enriching || pendingEnrichmentCount === 0}>
+                {enriching ? "Refreshing…" : "Refresh game details"}
+              </button>
+              {enrichStatus && <p className="form-success" role="status">{enrichStatus}</p>}
+            </div>
+          </details>
         )}
-        {enrichStatus && <p className="form-success">{enrichStatus}</p>}
-      </section>
-
-      <GameSearch onAdded={() => void load()} />
+      </div>
 
       <div className="section-title">
         <h2>Your games</h2>
@@ -338,6 +358,7 @@ export function CollectionClient() {
             [
               { id: "all", label: "All games", count: games.length },
               { id: "available", label: "Available to travel", count: games.filter((g) => g.isAvailable).length },
+              { id: "unavailable", label: "Unavailable", count: games.filter((g) => !g.isAvailable).length },
               { id: "boardgame", label: "Base games", count: games.filter((g) => g.kind === "boardgame").length },
               { id: "boardgameexpansion", label: "Expansions", count: games.filter((g) => g.kind === "boardgameexpansion").length },
               {
@@ -461,80 +482,97 @@ export function CollectionClient() {
           </div>
         </div>
       ) : (
-        <div className="game-grid">
-          {shown.map((game) => (
+        <div className="game-grid collection-grid">
+          {shown.map((game, index) => (
             <div className="collection-card-wrap" key={game.bggId}>
               <GameCard
                 game={game}
+                eagerCover={index === 0}
                 actions={
-                  <div className="game-actions">
+                  <div className="collection-card-actions">
                     <button
                       type="button"
-                      className={`button-quiet ${!game.isAvailable ? "status-flag" : ""}`}
-                      onClick={() => {
-                        setEditingId(editingId === game.bggId ? null : game.bggId);
-                        setSharingId(null);
-                      }}
+                      className="collection-action"
+                      onClick={() => openInspector(game.bggId, "share")}
+                      aria-label={`Share ${game.name} with groups`}
                     >
-                      {game.isAvailable ? "✓ Available" : `⚠ ${game.unavailableReason || "Unavailable"}`}
+                      Share {game.sharedGroupIds.length > 0 && <span>{game.sharedGroupIds.length}</span>}
                     </button>
                     <button
                       type="button"
-                      className="button-quiet"
-                      onClick={() => {
-                        setSharingId(sharingId === game.bggId ? null : game.bggId);
-                        setEditingId(null);
-                      }}
+                      className="collection-action"
+                      onClick={() => openInspector(game.bggId, "details")}
+                      aria-label={`Manage ${game.name}`}
                     >
-                      Share ({game.sharedGroupIds.length})
-                    </button>
-                    <button
-                      type="button"
-                      className="button-quiet"
-                      onClick={() => setConfirmId(game.bggId)}
-                    >
-                      Remove
+                      Manage
                     </button>
                   </div>
                 }
               />
+              <span className={`collection-status ${game.isAvailable ? "" : "collection-status-unavailable"}`}>
+                {game.isAvailable ? "Available to travel" : game.unavailableReason || "Unavailable"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
-              {/* Modern Availability & Version Editor */}
-              {editingId === game.bggId && (
-                <div className="availability-panel panel">
-                  <div className="availability-header">
-                    <h4>Availability & Edition</h4>
-                    <button
-                      type="button"
-                      className="button-quiet button-small"
-                      onClick={() => setEditingId(null)}
-                    >
-                      ✕ Close
-                    </button>
-                  </div>
+      <dialog
+        ref={inspectorRef}
+        className="collection-inspector"
+        aria-label={game ? `Manage ${game.name}` : "Manage game"}
+        onClose={closeInspector}
+        onClick={(event) => {
+          const bounds = event.currentTarget.getBoundingClientRect();
+          if (event.target === event.currentTarget &&
+              (event.clientX < bounds.left || event.clientX > bounds.right ||
+               event.clientY < bounds.top || event.clientY > bounds.bottom)) {
+            event.currentTarget.close();
+          }
+        }}
+      >
+        {game && (
+          <div className="collection-inspector-inner">
+            <div className="collection-inspector-head">
+              <div>
+                <h2>{game.name}</h2>
+                <p>{game.isAvailable ? "Available to travel" : game.unavailableReason || "Unavailable"}</p>
+              </div>
+              <button type="button" className="collection-close" onClick={() => inspectorRef.current?.close()} aria-label="Close game details">Close</button>
+            </div>
+            <div className="collection-inspector-tabs" role="group" aria-label="Game settings">
+              <button type="button" className={sharingId === game.bggId ? "active" : ""} aria-pressed={sharingId === game.bggId} onClick={() => openInspector(game.bggId, "share")}>Share</button>
+              <button type="button" className={editingId === game.bggId ? "active" : ""} aria-pressed={editingId === game.bggId} onClick={() => openInspector(game.bggId, "details")}>Details</button>
+            </div>
 
-                  <div className="availability-toggle-row">
-                    <label className="toggle-switch-label">
-                      <span className="toggle-switch">
-                        <input
-                          type="checkbox"
-                          checked={game.isAvailable}
-                          onChange={(e) =>
-                            void updateAvailability(
-                              game.bggId,
-                              e.target.checked,
-                              e.target.checked ? null : (game.unavailableReason || "Lent out"),
-                              game.versionName
-                            )
-                          }
-                        />
-                        <span className="toggle-slider"></span>
-                      </span>
-                      <span>
-                        {game.isAvailable
-                          ? "✓ Available to bring to Game Nights"
-                          : "⚠ Kept at home (Unavailable to travel)"}
-                      </span>
+            {sharingId === game.bggId ? (
+              <section className="collection-inspector-section">
+                <h3>Share with groups</h3>
+                <ShareControl
+                  bggId={game.bggId}
+                  sharedGroupIds={game.sharedGroupIds}
+                  groups={groups}
+                  onChanged={() => void load()}
+                />
+              </section>
+            ) : (
+              <section className="collection-inspector-section">
+                <h3>Game Availability &amp; Version</h3>
+                  <div className="field">
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={game.isAvailable}
+                        onChange={(e) =>
+                          void updateAvailability(
+                            game.bggId,
+                            e.target.checked,
+                            e.target.checked ? null : (game.unavailableReason || "Lent out"),
+                            game.versionName
+                          )
+                        }
+                      />
+                      {" "}Available to bring to Game Nights
                     </label>
                   </div>
 
@@ -565,6 +603,7 @@ export function CollectionClient() {
                   <div className="field version-field">
                     <label htmlFor={`version-${game.bggId}`}>Specific Edition / Version Name</label>
                     <input
+                      key={game.bggId}
                       id={`version-${game.bggId}`}
                       type="text"
                       placeholder="e.g. 25th Anniversary, 2nd Edition, Deluxe Kickstarter"
@@ -580,69 +619,39 @@ export function CollectionClient() {
                       }
                     />
                   </div>
-
-                  <div className="field max-players-field" style={{ marginTop: "12px" }}>
-                    <label htmlFor={`max-players-${game.bggId}`}>
-                      Max players (with expansions)
-                      {game.effectiveMaxPlayers && game.effectiveMaxPlayers > (game.maxPlayers ?? 0) && (
-                        <span className="field-hint"> · Calculated with expansions: {game.effectiveMaxPlayers}p</span>
-                      )}
-                    </label>
+                  <div className="field max-players-field">
+                    <label htmlFor={`max-players-${game.bggId}`}>Max players with expansions</label>
+                    {game.effectiveMaxPlayers && game.effectiveMaxPlayers > (game.maxPlayers ?? 0) && (
+                      <span className="field-hint">Calculated from your expansions: {game.effectiveMaxPlayers} players</span>
+                    )}
                     <input
+                      key={`max-players-${game.bggId}`}
                       id={`max-players-${game.bggId}`}
                       type="number"
                       min="1"
                       max="99"
                       placeholder={String(game.effectiveMaxPlayers || game.maxPlayers || "")}
                       defaultValue={game.maxPlayersOverride || ""}
-                      onBlur={(e) => {
-                        const parsed = e.target.value.trim() ? parseInt(e.target.value, 10) : null;
-                        void updateAvailability(
-                          game.bggId,
-                          game.isAvailable,
-                          game.unavailableReason,
-                          game.versionName,
-                          Number.isInteger(parsed) && parsed! > 0 ? parsed : null
-                        );
+                      onBlur={(event) => {
+                        const value = event.target.value.trim();
+                        const parsed = value ? Number(value) : null;
+                        if (parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > 99)) return;
+                        void updateAvailability(game.bggId, game.isAvailable, game.unavailableReason, game.versionName, parsed);
                       }}
                     />
                   </div>
-
                   {game.expansions && game.expansions.length > 0 && (
                     <div className="owned-expansions-list">
-                      <span className="owned-expansions-title">🧩 Owned Expansions ({game.expansions.length}):</span>
-                      <ul>
-                        {game.expansions.map((exp) => (
-                          <li key={exp.bggId}>
-                            {exp.name} {exp.maxPlayers && exp.maxPlayers > (game.maxPlayers ?? 0) ? `(supports up to ${exp.maxPlayers} players)` : ""}
-                          </li>
-                        ))}
-                      </ul>
+                      <strong className="owned-expansions-title">Owned expansions ({game.expansions.length})</strong>
+                      <ul>{game.expansions.map((expansion) => (
+                        <li key={expansion.bggId}>{expansion.name}{expansion.maxPlayers && expansion.maxPlayers > (game.maxPlayers ?? 0) ? ` · Up to ${expansion.maxPlayers} players` : ""}</li>
+                      ))}</ul>
                     </div>
                   )}
-
-                  {game.baseGameTitle && (
-                    <div className="base-game-reference">
-                      <span>🔗 Expansion for: <strong>{game.baseGameTitle}</strong></span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Modern Group Share Panel */}
-              {sharingId === game.bggId && (
-                <ShareControl
-                  bggId={game.bggId}
-                  gameName={game.name}
-                  sharedGroupIds={game.sharedGroupIds}
-                  groups={groups}
-                  onChanged={() => void load()}
-                  onClose={() => setSharingId(null)}
-                />
-              )}
-
-              {confirmId === game.bggId && (
-                <div className="confirm-strip">
+                  {game.baseGameTitle && <p className="base-game-reference">Expansion for <strong>{game.baseGameTitle}</strong></p>}
+                <div className="collection-remove">
+                  {confirmId !== game.bggId && <button type="button" className="collection-remove-trigger" onClick={() => setConfirmId(game.bggId)}>Remove from collection</button>}
+                  {confirmId === game.bggId && <div className="confirm-strip">
                   <span>
                     Remove {game.name}? This also stops sharing your copy with{" "}
                     {game.sharedGroupIds.length}{" "}
@@ -661,12 +670,13 @@ export function CollectionClient() {
                   >
                     Cancel
                   </button>
+                  </div>}
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+              </section>
+            )}
+          </div>
+        )}
+      </dialog>
     </div>
   );
 }
