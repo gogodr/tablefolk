@@ -165,6 +165,84 @@ describe("game night picker", () => {
       expect(result.status).toBe("success");
       expect(result.totalEstimatedMinutes).toBeLessThanOrEqual(180 + 20);
       expect(result.lineup.length).toBeGreaterThanOrEqual(2);
+      expect(result.transitionMinutes).toBeGreaterThan(0);
+    });
+
+    it("ensures warm-up is never longer or heavier than the main game (hierarchy rule)", () => {
+      const hierarchyGames: GroupGame[] = [
+        {
+          bggId: 101,
+          name: "World of Warcraft: Wrath of the Lich King",
+          kind: "boardgame",
+          minPlayers: 1,
+          maxPlayers: 5,
+          playingTime: 60,
+          minPlayingTime: 60,
+          maxPlayingTime: 60,
+          weight: 2.3, // Medium
+          yearPublished: 2021,
+          description: null,
+          minAge: 14,
+          coverUrl: null,
+          sourceUrl: "https://bgg.com/101",
+          designers: [],
+          publishers: [],
+          categories: [],
+          owners: [],
+        },
+        {
+          bggId: 102,
+          name: "The Resistance: Avalon",
+          kind: "boardgame",
+          minPlayers: 5,
+          maxPlayers: 10,
+          playingTime: 30,
+          minPlayingTime: 30,
+          maxPlayingTime: 30,
+          weight: 1.7, // Light filler
+          yearPublished: 2012,
+          description: null,
+          minAge: 13,
+          coverUrl: null,
+          sourceUrl: "https://bgg.com/102",
+          designers: [],
+          publishers: [],
+          categories: [],
+          owners: [],
+        },
+      ];
+
+      const result = planSessionLineup(hierarchyGames, {
+        playerCount: 5,
+        totalMinutes: 180,
+      });
+
+      expect(result.status).toBe("success");
+      const mainSlot = result.lineup.find((s) => s.role === "main");
+      const warmupSlot = result.lineup.find((s) => s.role === "warmup");
+
+      expect(mainSlot).toBeDefined();
+      expect(mainSlot!.game.bggId).toBe(101); // WoW is the substantial Main Game!
+
+      if (warmupSlot) {
+        expect(warmupSlot.game.bggId).toBe(102); // Avalon is Warm-up, NOT WoW!
+        expect(warmupSlot.estimatedMinutes).toBeLessThanOrEqual(mainSlot!.estimatedMinutes);
+        expect(warmupSlot.game.weight ?? 0).toBeLessThanOrEqual(mainSlot!.game.weight ?? 5);
+      }
+    });
+
+    it("calculates 15-minute transition dead time between games", () => {
+      const result = planSessionLineup(sampleGroupGames, {
+        playerCount: 4,
+        totalMinutes: 180,
+      });
+
+      if (result.lineup.length > 1) {
+        const expectedTransitions = (result.lineup.length - 1) * 15;
+        expect(result.transitionMinutes).toBe(expectedTransitions);
+        const gameSum = result.lineup.reduce((sum, s) => sum + s.estimatedMinutes, 0);
+        expect(result.totalEstimatedMinutes).toBe(gameSum + expectedTransitions);
+      }
     });
   });
 });

@@ -98,6 +98,8 @@ export function chooseWeightedGameId(
   return pool[pool.length - 1]!;
 }
 
+export const TRANSITION_BUFFER_MINUTES = 15;
+
 export interface LineupPlannerOptions {
   playerCount: number;
   totalMinutes: number;
@@ -133,36 +135,46 @@ export function planSessionLineup(
       status: availableGames.length === 0 ? "empty" : "no_match",
       lineup: [],
       totalEstimatedMinutes: 0,
+      transitionMinutes: 0,
       targetMinutes: totalMinutes,
       hasHeavy: false,
     };
   }
 
-  // Partition into categories:
-  // Heavy: weight > 3.2
-  // Medium: 2.2 <= weight <= 3.2 (or default medium if weight null)
-  // Light / Filler: weight < 2.2 or playingTime <= 35
+  // Helper classification
   const isHeavy = (g: GroupGame) => (g.weight ?? 0) > 3.2;
-  const isLight = (g: GroupGame) => (g.weight ?? 2.0) <= 2.2 || (g.playingTime ?? 60) <= 35;
+  const isLight = (g: GroupGame) => (g.weight ?? 2.0) <= 2.2;
+  const getDuration = (g: GroupGame) => g.playingTime ?? 45;
 
   let remainingMinutes = totalMinutes;
   let hasHeavyGame = false;
   const selectedLineup: SessionGameSlot[] = [];
   const pickedIds = new Set<number>();
 
-  // 1. Choose Main Event
-  // If session is >= 90 mins, we pick a main game
-  const mainCandidates = eligible.filter((g) => {
+  // 1. Choose Main Event (Centerpiece / Anchor)
+  // Look for candidates that fit within the total session time (with room for at least 15m transition if not the only game)
+  let mainCandidates = eligible.filter((g) => {
     if (!allowHeavy && isHeavy(g)) return false;
-    const duration = g.playingTime ?? 60;
-    return duration <= remainingMinutes + 20; // Allow 20m tolerance
+    const duration = getDuration(g);
+    return duration <= totalMinutes + 15;
   });
+
+  // If session is long (>= 90m) and substantial games (>= 45m or weight >= 2.0) are available,
+  // enforce that the Main Game must be substantial so that a 15-30m micro filler isn't crowned
+  // as the "Main Game" when meaty games are available.
+  if (totalMinutes >= 90) {
+    const substantial = mainCandidates.filter((g) => getDuration(g) >= 45 || (g.weight ?? 0) >= 2.0);
+    if (substantial.length > 0) {
+      mainCandidates = substantial;
+    }
+  }
 
   if (mainCandidates.length > 0) {
     const candidateIds = mainCandidates.map((g) => g.bggId);
     const mainId = chooseWeightedGameId(candidateIds, weightsMap, undefined, random);
     const mainGame = mainCandidates.find((g) => g.bggId === mainId)!;
-    const mainDuration = mainGame.playingTime ?? 60;
+    const mainDuration = getDuration(mainGame);
+    const mainWeight = mainGame.weight ?? 2.0;
 
     hasHeavyGame = isHeavy(mainGame);
     pickedIds.add(mainId);
@@ -174,59 +186,93 @@ export function planSessionLineup(
       game: mainGame,
       estimatedMinutes: mainDuration,
     });
-  }
 
-  // 2. Anti-fatigue filler selection
-  // If we have remaining time (>= 20 mins) and games left:
-  // RULE: If main game was heavy, strictly ONLY allow light / filler games!
-  while (remainingMinutes >= 20) {
-    const fillerCandidates = eligible.filter((g) => {
-      if (pickedIds.has(g.bggId)) return false;
-      if (hasHeavyGame && !isLight(g)) return false; // Strict anti-fatigue rule
-      if (isHeavy(g)) return false; // Never a second heavy game
-      const duration = g.playingTime ?? 30;
-      return duration <= remainingMinutes + 15;
-    });
+    // 2. Anti-fatigue & Hierarchy Filler Selection
+    // Each additional game requires its duration + TRANSITION_BUFFER_MINUTES (15m buffer)
+    // Anti-fatigue & Hierarchy rules:
+    // - Warm-up: strictly <= 35 min, weight <= 2.2, duration <= mainDuration, weight <= mainWeight.
+    // - Cooldown: strictly <= 45 min, duration <= mainDuration.
+    //   If Main was heavy, weight <= 2.0. Otherwise weight <= 2.4 and <= mainWeight.
+    // - Never more than 3 games per session.
+    while (remainingMinutes >= (15 + TRANSITION_BUFFER_MINUTES) && selectedLineup.length < 3) {
+      const hasWarmup = selectedLineup.some((s) => s.role === "warmup");
+      const hasCooldown = selectedLineup.some((s) => s.role === "cooldown");
 
-    if (fillerCandidates.length === 0) break;
+      const fillerCandidates = eligible.filter((g) => {
+        if (pickedIds.has(g.bggId)) return false;
+        if (isHeavy(g)) return false; // Never a second heavy game
 
-    const fillerIds = fillerCandidates.map((g) => g.bggId);
-    const chosenId = chooseWeightedGameId(fillerIds, weightsMap, undefined, random);
-    const fillerGame = fillerCandidates.find((g) => g.bggId === chosenId)!;
-    const duration = fillerGame.playingTime ?? 30;
+        const duration = getDuration(g);
+        const weight = g.weight ?? 2.0;
 
-    pickedIds.add(chosenId);
-    remainingMinutes -= duration;
+        // Needs to fit in remaining time including transition buffer (with 15m grace)
+        if (duration + TRANSITION_BUFFER_MINUTES > remainingMinutes + 15) return false;
 
-    // Determine role: if only 1 game selected so far, warmup or cooldown
-    const role = selectedLineup.length === 1 && remainingMinutes >= 20 ? "warmup" : "cooldown";
-    const label = role === "warmup" ? "🍕 Warm-up / Apertura" : "☕ Cooldown / Despedida";
+        // Warm-up eligibility (quick opener)
+        const canBeWarmup =
+          !hasWarmup &&
+          duration <= 35 &&
+          duration <= mainDuration &&
+          isLight(g) &&
+          weight <= mainWeight;
 
-    if (role === "warmup") {
-      selectedLineup.unshift({
-        role,
-        label,
-        game: fillerGame,
-        estimatedMinutes: duration,
+        // Cooldown eligibility (wind-down closer)
+        const canBeCooldown =
+          !hasCooldown &&
+          duration <= 45 &&
+          duration <= mainDuration &&
+          (hasHeavyGame ? weight <= 2.0 : weight <= 2.4 && weight <= mainWeight);
+
+        return canBeWarmup || canBeCooldown;
       });
-    } else {
-      selectedLineup.push({
-        role,
-        label,
-        game: fillerGame,
-        estimatedMinutes: duration,
-      });
+
+      if (fillerCandidates.length === 0) break;
+
+      const fillerIds = fillerCandidates.map((g) => g.bggId);
+      const chosenId = chooseWeightedGameId(fillerIds, weightsMap, undefined, random);
+      const fillerGame = fillerCandidates.find((g) => g.bggId === chosenId)!;
+      const duration = getDuration(fillerGame);
+      const weight = fillerGame.weight ?? 2.0;
+
+      pickedIds.add(chosenId);
+      remainingMinutes -= (duration + TRANSITION_BUFFER_MINUTES);
+
+      const canBeWarmup =
+        !hasWarmup &&
+        duration <= 35 &&
+        duration <= mainDuration &&
+        isLight(fillerGame) &&
+        weight <= mainWeight;
+
+      // Assign role: prefer warmup first if not present, otherwise cooldown
+      if (canBeWarmup && !hasWarmup) {
+        selectedLineup.unshift({
+          role: "warmup",
+          label: "🍕 Warm-up / Apertura",
+          game: fillerGame,
+          estimatedMinutes: duration,
+        });
+      } else {
+        selectedLineup.push({
+          role: "cooldown",
+          label: "☕ Cooldown / Despedida",
+          game: fillerGame,
+          estimatedMinutes: duration,
+        });
+      }
     }
-
-    if (selectedLineup.length >= 3) break; // Maximum 3 games per evening session
   }
 
-  const totalEstimated = selectedLineup.reduce((sum, slot) => sum + slot.estimatedMinutes, 0);
+  const gameMinutes = selectedLineup.reduce((sum, slot) => sum + slot.estimatedMinutes, 0);
+  const transitions = Math.max(0, selectedLineup.length - 1);
+  const transitionMinutes = transitions * TRANSITION_BUFFER_MINUTES;
+  const totalEstimated = gameMinutes + transitionMinutes;
 
   return {
     status: selectedLineup.length > 0 ? "success" : "no_match",
     lineup: selectedLineup,
     totalEstimatedMinutes: totalEstimated,
+    transitionMinutes,
     targetMinutes: totalMinutes,
     hasHeavy: hasHeavyGame,
   };

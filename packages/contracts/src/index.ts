@@ -171,6 +171,7 @@ export interface SessionLineupResult {
   status: "success" | "empty" | "no_match";
   lineup: SessionGameSlot[];
   totalEstimatedMinutes: number;
+  transitionMinutes?: number;
   targetMinutes: number;
   hasHeavy: boolean;
 }
