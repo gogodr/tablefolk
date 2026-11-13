@@ -8,6 +8,29 @@ The Vercel Preview projects are `gogodr/tablefolk-api` and `gogodr/tablefolk-web
 
 Run `corepack pnpm --filter @tablefolk/api db:deploy` against the target database before promoting a release that requires the new schema. Then deploy the API and web projects. Review migration SQL before production use. Do not run migrations automatically on every preview build.
 
+## GitHub deployment workflow
+
+The workflow in `.github/workflows/vercel-deploy.yml` deploys both Vercel projects. Add these secrets and variables to the GitHub `Prod` environment before enabling it:
+
+| Setting | Value |
+| --- | --- |
+| Secret `VERCEL_API_TOKEN` | Token used for API deployment, aliasing, and cleanup |
+| Secret `VERCEL_WEB_TOKEN` | Token used for web deployment, aliasing, and cleanup |
+| Variable `VERCEL_ORG_ID` | Vercel team ID (`team_...`) |
+| Variable `VERCEL_TEAM_SLUG` | The team's Vercel URL slug (for this repo, `gogodr`) |
+| Variable `VERCEL_API_PROJECT_ID` | ID of the `tablefolk-api` project (`prj_...`) |
+| Variable `VERCEL_WEB_PROJECT_ID` | ID of the `tablefolk-web` project (`prj_...`) |
+
+The workflow accepts a separate token for each project. Vercel dashboard tokens on Hobby are scoped to a team or account, not to individual projects. Two tokens with the same team scope let you rotate and revoke them independently, but each token still has access to other projects in that team. The workflow targets only the configured project IDs; that code check does not restrict what a stolen team token could access.
+
+Both `/deploy` previews and merged-PR production deployments use the `Prod` GitHub environment to read these credentials. Any approval or branch rules configured on that environment apply to both events. GitHub's environment name does not select the Vercel deployment target; the workflow sends previews to Vercel Preview and merge commits to Vercel Production.
+
+Keep both projects' root directories set to `apps/api` and `apps/web` and enable access to files outside those directories for the shared workspace package. Set Preview and Production environment variables separately in Vercel, including separate databases. The workflow overrides only the three cross-project URLs for each PR preview. The API and web projects must be on the same Vercel team. The team must be able to claim `tablefolk-api-pr-N-gogodr.vercel.app` and `tablefolk-web-pr-N-gogodr.vercel.app` aliases, where `N` is a PR number. If the team slug differs, the workflow uses `VERCEL_TEAM_SLUG` in place of `gogodr`.
+
+Once the workflow file is on `main`, a repository collaborator with write access can comment exactly `/deploy` on an open same-repository PR targeting `main`. The workflow deploys that PR's current commit, assigns stable per-PR API and web aliases, and posts the links on the PR. Comment `/deploy` again after pushing more commits to refresh them. Fork PRs are deliberately excluded because deployment builds receive Preview environment credentials. The workflow runs the orchestration script from `main`, never from the PR checkout.
+
+Merging a PR into `main` deploys the merge commit to both Production projects. After both deploys succeed, the workflow removes the two PR preview deployments and updates its PR comment. A failed production deployment leaves the preview available for investigation. Schema migrations remain a separate release step. If Vercel's Git integration is also set to deploy every push, disable those automatic deployments for these two projects to avoid duplicate Preview and Production builds.
+
 ## Common failures
 
 - BGG search or import errors affect adding games. Existing collections, group views, and game night draws continue from stored data.
