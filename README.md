@@ -2,14 +2,42 @@
 
 A friendly place to catalog board games, share selected games with a group, and draw a game for the number of people at game night.
 
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue.svg)](https://www.typescriptlang.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
+[![Fastify](https://img.shields.io/badge/Fastify-5-black.svg)](https://fastify.dev/)
+[![Prisma](https://img.shields.io/badge/Prisma-7-2D3748.svg)](https://www.prisma.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791.svg)](https://www.postgresql.org/)
+
+---
+
 ## What is here
 
-- `apps/web`: Next.js app with design tokens, meeple illustrations, events room, and collection sync.
-- `apps/api`: Fastify API, Prisma schema, BGG sync, event RSVPs, weighted picker, and invitations.
+- `apps/web`: Next.js 16 app with design tokens, meeple illustrations, events room, and collection sync.
+- `apps/api`: Fastify 5 API, Prisma schema, BGG sync, event RSVPs, weighted picker, and invitations.
 - `packages/contracts`: shared input schemas, response types, and domain interfaces.
 - `docs/designs/board-game-group-picker.md`: approved product and technical design.
 
 The group collection shows each BGG game once and lists all members who share it. A game stays available while at least one member shares it. Expansions are independent choices. BGG is called only when searching for or syncing a collection; normal use reads the app database.
+
+---
+
+## How It Works
+
+```mermaid
+flowchart LR
+    A["1. Sync with BGG"] --> B["2. Share in Group"]
+    B --> C["3. Schedule Event"]
+    C --> D["4. Vote Want-to-Play"]
+    D --> E["5. Draw & Play!"]
+```
+
+1. **Catalog & Sync**: Search BoardGameGeek or import your entire owned collection with one click, storing playtimes, player counts, edition names, and complexity ratings.
+2. **Curate Group Shelves**: Share games into group tables. Copies are deduplicated automatically so each title appears once with all sharing owners and edition variants listed.
+3. **Schedule Game Nights**: Any member can create an event with date, time, location, and host assignment. Attending members RSVP with guest counts (`+Guests`).
+4. **Build Hype (Want-to-Play)**: Members allocate voting points to games they are excited to play (theirs or friends'). Points persist across sessions if a title is not drawn.
+5. **Contextual Headcount Picker**: The picker filters games based on who is actually attending and which games can travel (host's home games are auto-eligible), applying duration and complexity filters with weighted odds. Winning games decay their points to rotate the library naturally!
+
+---
 
 ## Key Features
 
@@ -18,6 +46,8 @@ The group collection shows each BGG game once and lists all members who share it
 - **BGG Collection Sync**: Connect your BoardGameGeek username to import or refresh your entire owned collection with one click, preserving BGG complexity ratings (weight), playtimes, and editions.
 - **"Want to Play" Wishlist & Weighted Draw**: Members earn voting points to back games they want to see on table. Points accumulate across weeks and increase the game's odds in the event draw, resetting only upon victory to rotate the group's library naturally.
 - **Contextual Event Picker**: Filters candidate games based on who is actually attending, excluding games that cannot travel unless hosted at the owner's home, with optional duration (`≤45m`, `≤90m`, `≤2h`) and BGG complexity filters.
+
+---
 
 ## Local setup
 
@@ -61,6 +91,8 @@ corepack pnpm dev:web
 
 Open `http://localhost:3000`. The home page and setup notice work before credentials are configured; collection and group actions require the services above.
 
+---
+
 ## Checks
 
 ```sh
@@ -70,6 +102,8 @@ corepack pnpm build
 ```
 
 The tests cover picker filtering (headcount, duration, BGG weight), deduplication, weighted draws, rerolls, and BGG parsing. Full signed-in and email flows require test accounts and service credentials.
+
+---
 
 ## Vercel
 
