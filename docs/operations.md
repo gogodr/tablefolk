@@ -6,7 +6,7 @@ Use separate PostgreSQL databases and service settings for development, preview,
 
 The Vercel Preview projects are `gogodr/tablefolk-api` and `gogodr/tablefolk-web`. The API Preview has its own Neon database. Stable preview aliases are `tablefolk-api-preview-gogodr.vercel.app` and `tablefolk-web-preview-gogodr.vercel.app`; after each successful CLI preview deployment, move the matching alias to the new deployment URL with `vercel alias set`. Use those stable addresses for the cross-project environment variables and invitation links. The web Preview retains Vercel Authentication; the API project does not, so the browser can reach its Clerk-protected routes.
 
-Run `corepack pnpm --filter @tablefolk/api db:deploy` against the target database before promoting a release that requires the new schema. Then deploy the API and web projects. Review migration SQL before production use. The `/deploy` workflow runs migrations only on the PR's isolated Neon branch; production migrations remain a separate release step.
+Review migration SQL before production use. A merged PR or a manual production deployment applies the checked-out main migrations to the production database and then the dev database before deploying the API and web. The `/deploy` preview command applies migrations to its isolated Neon branch.
 
 ## GitHub deployment workflow
 
@@ -21,6 +21,8 @@ The workflow in `.github/workflows/vercel-deploy.yml` deploys both Vercel projec
 | Variable `VERCEL_API_PROJECT_ID` | ID of the `tablefolk-api` project (`prj_...`) |
 | Variable `VERCEL_WEB_PROJECT_ID` | ID of the `tablefolk-web` project (`prj_...`) |
 | Secret `NEON_API_KEY` | Neon API key with access to the Preview database project |
+| Secret `PRODUCTION_DIRECT_URL` | Direct, unpooled connection URL for the production database used by the API Vercel Production environment |
+| Secret `DEV_DIRECT_URL` | Direct, unpooled connection URL for the dev database |
 | Variable `NEON_PROJECT_ID` | ID of the Neon project containing the existing Preview branch |
 | Variable `NEON_PREVIEW_PARENT_BRANCH` | Name or ID of the non-production parent branch (for this setup, `dev`); required so PR databases never copy Production by default |
 | Variable `NEON_DATABASE_NAME` | Database name on the Preview branch; defaults to `neondb` |
@@ -28,7 +30,7 @@ The workflow in `.github/workflows/vercel-deploy.yml` deploys both Vercel projec
 
 The workflow accepts a separate project-scoped token for each project. It uses Vercel's REST API because the Vercel CLI performs user and team lookups that can fail with project-scoped tokens. The token for each project is used only for that project's deployment, alias assignment, and cleanup. The GitHub job still checks each token against its expected Vercel project before deploying.
 
-Both `/deploy` previews and merged-PR production deployments use the `Prod` GitHub environment to read these credentials. Any approval or branch rules configured on that environment apply to both events. GitHub's environment name does not select the Vercel deployment target; the workflow sends previews to Vercel Preview and merge commits to Vercel Production.
+`/deploy` previews, merged-PR production deployments, and manual production deployments use the `Prod` GitHub environment to read these credentials. Any approval or branch rules configured on that environment apply to all three events. GitHub's environment name does not select the Vercel deployment target; the workflow sends previews to Vercel Preview and production runs to Vercel Production.
 
 Keep both projects' root directories set to `apps/api` and `apps/web` and enable access to files outside those directories for the shared workspace package. Set Preview and Production environment variables separately in Vercel. For each `/deploy`, the workflow creates or reuses `tablefolk-pr-N` from the existing Neon Preview branch, applies the PR's Prisma migrations to that branch, and overrides the API deployment's database URLs with that branch's pooled and direct URLs. Each PR keeps its own data across redeploys. The API and web projects must be on the same Vercel team. The team must be able to claim `tablefolk-api-pr-N-gogodr.vercel.app` and `tablefolk-web-pr-N-gogodr.vercel.app` aliases, where `N` is a PR number. If the team slug differs, the workflow uses `VERCEL_TEAM_SLUG` in place of `gogodr`.
 
@@ -40,7 +42,7 @@ The job requests `pull-requests: write` as well as `issues: write`. GitHub check
 
 If Vercel returns HTTP 429 while creating a deployment, the workflow retries for up to five minutes per project, using `Retry-After` or `X-RateLimit-Reset` when supplied. If the limit persists, it posts the failure on the PR; retry `/deploy` after the quota resets.
 
-Merging a PR into `main` deploys the merge commit to both Production projects. After both deploys succeed, the workflow removes the two PR preview deployments and deletes its Neon branch. A failed production deployment leaves the preview and database available for investigation. Closing an unmerged PR removes its preview deployments and Neon branch without deploying Production. Production schema migrations remain a separate release step. If Vercel's Git integration is also set to deploy every push, disable those automatic deployments for these two projects to avoid duplicate Preview and Production builds.
+Merging a PR into `main` deploys the latest checked-out main commit to both Production projects. To rerun or catch up a release, open **Actions → Vercel deploy → Run workflow**, select `main`, and run it. Production runs are serialized. They apply Prisma migrations from that main checkout to production and dev, then deploy API and web in that order. A missing database secret or failed migration stops deployment. After a merged-PR deployment succeeds, the workflow removes the two PR preview deployments and deletes its Neon branch. A failed production deployment leaves the preview and database available for investigation. Closing an unmerged PR removes its preview deployments and Neon branch without deploying Production. If Vercel's Git integration is also set to deploy every push, disable those automatic deployments for these two projects to avoid duplicate Preview and Production builds.
 
 ## Common failures
 

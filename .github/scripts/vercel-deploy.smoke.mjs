@@ -7,10 +7,13 @@ const eventPath = '.github/scripts/.preview-smoke-event.json';
 const sourceDir = process.cwd();
 const sourceSha = 'a'.repeat(40);
 const commands = [];
+const timeline = [];
+let migrationFailureUrl = null;
 childProcess.execFileSync = (_command, args, options) => args.includes('rev-parse')
   ? sourceSha
   : _command === 'corepack'
-    ? (commands.push({ args, env: options.env }), '')
+    ? (commands.push({ args, env: options.env }), timeline.push(args.includes('db:deploy') ? `migrate:${options.env.DIRECT_URL}` : 'install'),
+      options.env.DIRECT_URL === migrationFailureUrl ? (() => { throw new Error('migration failed'); })() : '')
     : Buffer.from('package.json\0pnpm-lock.yaml\0pnpm-workspace.yaml\0apps/api/package.json\0apps/web/package.json\0');
 syncBuiltinESMExports();
 writeFileSync(eventPath, JSON.stringify({
@@ -32,6 +35,9 @@ Object.assign(process.env, {
   VERCEL_SOURCE_DIR: sourceDir,
   PREVIEW_DATABASE_URL: 'postgresql://preview:pooled@preview-pooler.test/db',
   PREVIEW_DIRECT_URL: 'postgresql://preview:direct@preview.test/db',
+  PRODUCTION_DIRECT_URL: 'postgresql://production:direct@production.test/db',
+  DEV_DIRECT_URL: 'postgresql://dev:direct@dev.test/db',
+  DEPLOY_SOURCE_SHA: sourceSha,
 });
 
 const calls = [];
@@ -45,6 +51,7 @@ globalThis.fetch = async (url, options = {}) => {
   const token = options.headers.Authorization;
   const body = options.body && options.headers['Content-Type'] === 'application/json' ? JSON.parse(options.body) : null;
   calls.push({ path, token, body, headers: options.headers, method: options.method ?? 'GET' });
+  if (path === '/v13/deployments' && body?.project) timeline.push(`deploy:${body.project}`);
   let result;
   if (path.endsWith('/comments/42/reactions') && failReaction) {
     return { ok: false, status: 403, text: async () => JSON.stringify({ message: 'Resource not accessible by integration' }) };
@@ -190,9 +197,52 @@ try {
   calls.length = 0;
   writeFileSync(eventPath, JSON.stringify({ pull_request: { number: 1, merged: true, merge_commit_sha: sourceSha } }));
   process.env.GITHUB_EVENT_NAME = 'pull_request';
+  const mergeTimelineStart = timeline.length;
   await import('./vercel-deploy.mjs?merge');
   assert.equal(calls.filter(call => call.path === '/v13/deployments' && call.body?.target === 'production').length, 2);
   assert.equal(calls.filter(call => call.path.endsWith('/aliases')).length, 0);
+  assert.deepEqual(timeline.slice(mergeTimelineStart).filter(item => item.startsWith('migrate:') || item.startsWith('deploy:')), [
+    `migrate:${process.env.PRODUCTION_DIRECT_URL}`,
+    `migrate:${process.env.DEV_DIRECT_URL}`,
+    'deploy:prj_api', 'deploy:prj_web',
+  ]);
+  assert.equal(commands.at(-1).env.DIRECT_URL, process.env.DEV_DIRECT_URL);
+  assert.equal(commands.at(-1).env.DATABASE_URL, process.env.DEV_DIRECT_URL);
+  calls.length = 0;
+  writeFileSync(eventPath, '{}');
+  process.env.GITHUB_EVENT_NAME = 'workflow_dispatch';
+  process.env.GITHUB_REF = 'refs/heads/main';
+  const manualTimelineStart = timeline.length;
+  await import('./vercel-deploy.mjs?manual');
+  assert.deepEqual(timeline.slice(manualTimelineStart).filter(item => item.startsWith('migrate:') || item.startsWith('deploy:')), [
+    `migrate:${process.env.PRODUCTION_DIRECT_URL}`,
+    `migrate:${process.env.DEV_DIRECT_URL}`,
+    'deploy:prj_api', 'deploy:prj_web',
+  ]);
+  assert.equal(calls.filter(call => call.path === '/v13/deployments' && call.body?.target === 'production').length, 2);
+  assert.equal(calls.some(call => call.path.includes('/issues/')), false);
+  calls.length = 0;
+  migrationFailureUrl = process.env.DEV_DIRECT_URL;
+  const originalMigrationError = console.error;
+  console.error = () => {};
+  try {
+    await import('./vercel-deploy.mjs?dev-migration-failure');
+  } finally {
+    console.error = originalMigrationError;
+    migrationFailureUrl = null;
+    process.exitCode = 0;
+  }
+  assert.equal(calls.some(call => call.path === '/v13/deployments'), false);
+  calls.length = 0;
+  process.env.GITHUB_REF = 'refs/heads/feature';
+  console.error = () => {};
+  try {
+    await import('./vercel-deploy.mjs?manual-wrong-branch');
+  } finally {
+    console.error = originalMigrationError;
+    process.exitCode = 0;
+  }
+  assert.equal(calls.some(call => call.path === '/v13/deployments'), false);
   console.log('Preview API smoke test passed');
 } finally {
   process.exitCode = 0;

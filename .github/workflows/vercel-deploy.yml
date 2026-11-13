@@ -5,6 +5,7 @@ on:
     types: [created]
   pull_request:
     types: [closed]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,12 +19,13 @@ jobs:
        github.event.issue.pull_request &&
        github.event.comment.body == '/deploy') ||
       (github.event_name == 'pull_request' &&
-       github.event.pull_request.base.ref == 'main')
+       github.event.pull_request.base.ref == 'main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
     environment: Prod
     runs-on: ubuntu-latest
     timeout-minutes: 60
     concurrency:
-      group: vercel-pr-${{ github.event.issue.number || github.event.pull_request.number }}
+      group: ${{ (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.merged)) && 'vercel-production' || format('vercel-pr-{0}', github.event.issue.number || github.event.pull_request.number) }}
       cancel-in-progress: false
     steps:
       # The deploy script is always loaded from the trusted default branch.
@@ -32,10 +34,14 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || github.event.pull_request.merge_commit_sha }}
+          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || 'main' }}
           path: deploy-source
           persist-credentials: false
-        if: github.event_name == 'issue_comment' || github.event.pull_request.merged == true
+        if: github.event_name == 'issue_comment' || github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+      - name: Record production source revision
+        if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+        id: production_source
+        run: echo "sha=$(git -C deploy-source rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -80,6 +86,9 @@ jobs:
           VERCEL_TEAM_SLUG: ${{ vars.VERCEL_TEAM_SLUG }}
           PREVIEW_DATABASE_URL: ${{ steps.neon.outputs.db_url_pooled }}
           PREVIEW_DIRECT_URL: ${{ steps.neon.outputs.db_url }}
+          PRODUCTION_DIRECT_URL: ${{ secrets.PRODUCTION_DIRECT_URL }}
+          DEV_DIRECT_URL: ${{ secrets.DEV_DIRECT_URL }}
+          DEPLOY_SOURCE_SHA: ${{ steps.production_source.outputs.sha }}
       - name: Delete PR database branch
         if: github.event_name == 'pull_request' && steps.deploy.outcome == 'success'
         run: node .github/scripts/neon-cleanup.mjs

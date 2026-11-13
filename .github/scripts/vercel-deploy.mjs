@@ -62,7 +62,7 @@ async function reactToCommand() {
 
 function redactSecrets(value) {
   let text = String(value);
-  for (const key of ['GH_TOKEN', 'VERCEL_API_TOKEN', 'VERCEL_WEB_TOKEN', 'PREVIEW_DATABASE_URL', 'PREVIEW_DIRECT_URL']) {
+  for (const key of ['GH_TOKEN', 'VERCEL_API_TOKEN', 'VERCEL_WEB_TOKEN', 'PREVIEW_DATABASE_URL', 'PREVIEW_DIRECT_URL', 'PRODUCTION_DIRECT_URL', 'DEV_DIRECT_URL']) {
     const secret = process.env[key];
     if (secret) text = text.replaceAll(secret, '[redacted]');
   }
@@ -176,13 +176,12 @@ async function sourceFiles(expectedSha) {
   return files;
 }
 
-function migratePreviewDatabase() {
-  const directUrl = process.env.PREVIEW_DIRECT_URL;
-  const pooledUrl = process.env.PREVIEW_DATABASE_URL;
-  if (!directUrl || !pooledUrl) throw new Error('Neon did not return both PR database connection URLs');
+function migrateDatabase({ directUrl, databaseUrl, label, installDependencies = true }) {
+  if (!directUrl || !databaseUrl) throw new Error(`Missing ${label} database connection URL`);
   const safeEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
-    !/(TOKEN|KEY|SECRET|PASSWORD)/i.test(key) && !key.startsWith('VERCEL_') &&
-    !key.startsWith('PREVIEW_') && !key.startsWith('GITHUB_')));
+    !/(TOKEN|KEY|SECRET|PASSWORD|DATABASE|POSTGRES|DIRECT_URL)/i.test(key) &&
+    !key.startsWith('VERCEL_') && !key.startsWith('PREVIEW_') &&
+    !key.startsWith('PRODUCTION_') && !key.startsWith('GITHUB_')));
   const runPnpm = (args, env) => {
     try {
       const output = execFileSync('corepack', ['pnpm', ...args], {
@@ -191,14 +190,16 @@ function migratePreviewDatabase() {
       if (output.trim()) console.log(redactSecrets(output.trim()));
     } catch (error) {
       const detail = [error.stdout, error.stderr].filter(Boolean).join('\n').slice(-6000);
-      throw new Error(`PR database migration command failed: corepack pnpm ${args.join(' ')}${detail ? `\n${detail}` : ''}`);
+      throw new Error(`${label} database migration command failed: corepack pnpm ${args.join(' ')}${detail ? `\n${redactSecrets(detail)}` : ''}`);
     }
   };
-  console.log('Installing PR dependencies for database migration');
-  runPnpm(['install', '--frozen-lockfile'], safeEnv);
-  console.log('Applying PR Prisma migrations to its Neon branch');
+  if (installDependencies) {
+    console.log(`Installing dependencies for ${label} database migration`);
+    runPnpm(['install', '--frozen-lockfile'], safeEnv);
+  }
+  console.log(`Applying ${label} Prisma migrations`);
   runPnpm(['--filter', '@tablefolk/api', 'db:deploy'], {
-    ...safeEnv, DIRECT_URL: directUrl, DATABASE_URL: pooledUrl,
+    ...safeEnv, DIRECT_URL: directUrl, DATABASE_URL: databaseUrl,
   });
 }
 
@@ -241,7 +242,7 @@ async function deploy(project, { sha, ref, production, overrides = {}, files }) 
     gitMetadata: { rootDirectory: '', commitRef: ref, commitSha: sha },
     ...(production ? { target: 'production' } : {}),
     ...(Object.keys(overrides).length ? { env: overrides, build: { env: overrides } } : {}),
-    meta: { tablefolkPr: String(prNumber), commitSha: sha, commitRef: ref },
+    meta: { ...(prNumber ? { tablefolkPr: String(prNumber) } : {}), commitSha: sha, commitRef: ref },
   };
   const retryDeadline = Date.now() + 5 * 60 * 1000;
   let created;
@@ -343,7 +344,7 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
     await writeRecord(previous.comment, { pr: prNumber, retired: previous.record.sha ?? previous.record.retired ?? 'unknown' }, 'Previous preview removed. A new deployment is in progress.');
     console.log(`Removed previous deployments for PR #${prNumber}`);
   }
-  migratePreviewDatabase();
+  migrateDatabase({ directUrl: process.env.PREVIEW_DIRECT_URL, databaseUrl: process.env.PREVIEW_DATABASE_URL, label: 'PR' });
   const webOrigin = `https://tablefolk-web-pr-${prNumber}-${team}.vercel.app`;
   const apiOrigin = `https://tablefolk-api-pr-${prNumber}-${team}.vercel.app`;
   const source = { sha, ref: pr.head.ref, files };
@@ -381,21 +382,35 @@ if (process.env.GITHUB_EVENT_NAME === 'issue_comment') {
     }
     throw error;
   }
-} else if (process.env.GITHUB_EVENT_NAME === 'pull_request' && event.pull_request.merged) {
-  const sha = event.pull_request.merge_commit_sha;
-  if (!sha) throw new Error('Merged PR has no merge commit SHA');
+} else if ((process.env.GITHUB_EVENT_NAME === 'pull_request' && event.pull_request.merged) ||
+           process.env.GITHUB_EVENT_NAME === 'workflow_dispatch') {
+  if (process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' && process.env.GITHUB_REF !== 'refs/heads/main') {
+    throw new Error('Manual production deployments must run from main');
+  }
+  const sha = process.env.DEPLOY_SOURCE_SHA;
+  if (!sha) throw new Error('Production checkout has no commit SHA');
   await Promise.all(projects.map(verifyProject));
   const files = await sourceFiles(sha);
+  if (!process.env.PRODUCTION_DIRECT_URL || !process.env.DEV_DIRECT_URL) {
+    throw new Error('Missing PRODUCTION_DIRECT_URL or DEV_DIRECT_URL in the GitHub Prod environment');
+  }
+  if (process.env.PRODUCTION_DIRECT_URL === process.env.DEV_DIRECT_URL) {
+    throw new Error('Production and dev database URLs must differ');
+  }
+  migrateDatabase({ directUrl: process.env.PRODUCTION_DIRECT_URL, databaseUrl: process.env.PRODUCTION_DIRECT_URL, label: 'production' });
+  migrateDatabase({ directUrl: process.env.DEV_DIRECT_URL, databaseUrl: process.env.DEV_DIRECT_URL, label: 'dev', installDependencies: false });
   const source = {
     sha, ref: 'main', production: true, files,
   };
   await deploy(projects[0], source);
   await deploy(projects[1], source);
-  const previous = await findRecord();
-  if (previous) {
-    await removeDeployment(previous.record.api, projects[0]);
-    await removeDeployment(previous.record.web, projects[1]);
-    await writeRecord(previous.comment, { pr: prNumber, merged: sha }, 'Merged into main. The PR preview was removed after production deployment.');
+  if (prNumber) {
+    const previous = await findRecord();
+    if (previous) {
+      await removeDeployment(previous.record.api, projects[0]);
+      await removeDeployment(previous.record.web, projects[1]);
+      await writeRecord(previous.comment, { pr: prNumber, merged: sha }, 'Merged into main. The PR preview was removed after production deployment.');
+    }
   }
 } else {
   if (process.env.GITHUB_EVENT_NAME !== 'pull_request') throw new Error('Unsupported event');
