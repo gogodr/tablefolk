@@ -1,0 +1,16 @@
+.git
+.github
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+.vercel
+.bin
+.npm-cache
+.taste-skill
+.hallmark
+playwright-report
+test-results

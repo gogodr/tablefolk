@@ -1,0 +1,96 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: tablefolk
+      POSTGRES_USER: tablefolk
+      POSTGRES_PASSWORD: tablefolk
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tablefolk -d tablefolk"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  contracts:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    command: sh -c "corepack pnpm --filter @tablefolk/contracts build && corepack pnpm --filter @tablefolk/contracts exec tsc -p tsconfig.json --watch --preserveWatchOutput"
+    environment:
+      TSC_WATCHFILE: FixedPollingInterval
+      TSC_WATCHDIRECTORY: FixedPollingInterval
+    volumes:
+      - ./packages/contracts/src:/app/packages/contracts/src
+      - contracts_dist:/app/packages/contracts/dist
+    healthcheck:
+      test: ["CMD", "test", "-f", "/app/packages/contracts/dist/index.js"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    command: sh -c "corepack pnpm --filter @tablefolk/api db:generate && corepack pnpm --filter @tablefolk/api db:deploy && corepack pnpm --filter @tablefolk/api exec tsx watch --include ../../packages/contracts/dist src/server.ts"
+    environment:
+      PORT: "4000"
+      DATABASE_URL: postgresql://tablefolk:tablefolk@db:5432/tablefolk?schema=public
+      DIRECT_URL: postgresql://tablefolk:tablefolk@db:5432/tablefolk?schema=public
+      WEB_ORIGIN: http://localhost:3000
+      PUBLIC_WEB_URL: http://localhost:3000
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      BGG_TOKEN: ${BGG_TOKEN:-}
+      BGG_COVER_STORAGE_ALLOWED: ${BGG_COVER_STORAGE_ALLOWED:-false}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-}
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "127.0.0.1:4000:4000"
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+      - ./apps/api/prisma:/app/apps/api/prisma
+      - api_prisma_generated:/app/apps/api/src/generated
+      - contracts_dist:/app/packages/contracts/dist:ro
+    depends_on:
+      db:
+        condition: service_healthy
+      contracts:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    working_dir: /app
+    command: corepack pnpm --filter @tablefolk/web exec next dev -H 0.0.0.0
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./apps/web/src:/app/apps/web/src
+      - ./apps/web/public:/app/apps/web/public
+      - contracts_dist:/app/packages/contracts/dist:ro
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  contracts_dist:
+  api_prisma_generated:

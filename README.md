@@ -13,6 +13,22 @@ The group collection shows each BGG game once and lists all members who share it
 
 ## Local setup
 
+### Docker Compose
+
+Install Docker with Compose, then run from the repository root:
+
+```sh
+docker compose up --build
+```
+
+Open `http://localhost:3000`. Compose starts PostgreSQL, applies Prisma migrations, starts the API at `http://localhost:4000`, and runs the Next.js app. Source edits in `apps/web/src`, `apps/api/src`, and `packages/contracts/src` reload automatically. Database data persists in a Docker volume. The PostgreSQL port is available on `localhost:5432` with database, user, and password all set to `tablefolk` for local testing.
+
+For signed-in features, copy `.env.example` to the root `.env` and fill in `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_PUBLISHABLE_KEY`, and `CLERK_SECRET_KEY` from a Clerk development instance. Compose reads these values from the root `.env`; values in `apps/web/.env.local` are used only by the non-Docker workflow. Set `BGG_TOKEN` to test game searches and `RESEND_API_KEY` plus `RESEND_FROM_EMAIL` to test invitation emails. Clerk, BGG, and Resend remain external services. Register `http://localhost:3000` in Clerk as an allowed local origin and redirect target. Compose always uses its own PostgreSQL service, regardless of database URLs in `.env`.
+
+Stop the stack with `docker compose down`. To discard its local database and regenerate the development volumes, run `docker compose down -v`. Rebuild with `docker compose up --build` after changing dependencies or files outside the mounted source and Prisma directories.
+
+### Without Docker
+
 Use Node 22 and Corepack. Install dependencies from the repository root:
 
 ```sh
