@@ -8,16 +8,22 @@ datasource db {
 }
 
 model User {
-  id             String           @id
-  displayName    String
-  email          String
-  createdAt      DateTime         @default(now())
-  collection     CollectionItem[]
-  createdGroups  Group[]          @relation("GroupCreator")
-  memberships    GroupMember[]
-  shares         GroupShare[]
-  sentInvites    Invitation[]     @relation("InviteSender")
+  id                 String           @id
+  displayName        String
+  email              String
+  bggUsername        String?
+  lastBggSyncAt      DateTime?
+  votingPoints       Int              @default(5)
+  createdAt          DateTime         @default(now())
+  collection         CollectionItem[]
+  createdGroups      Group[]          @relation("GroupCreator")
+  memberships        GroupMember[]
+  shares             GroupShare[]
+  sentInvites        Invitation[]     @relation("InviteSender")
   createdInviteLinks GroupInviteLink[] @relation("InviteLinkCreator")
+  hostedEvents       Event[]          @relation("EventHost")
+  eventRsvps         EventRsvp[]
+  gameInterests      GameInterest[]
 }
 
 model Game {
@@ -32,6 +38,7 @@ model Game {
   playingTime    Int?
   minPlayingTime Int?
   maxPlayingTime Int?
+  weight         Float?
   minAge         Int?
   designers      String[]         @default([])
   publishers     String[]         @default([])
@@ -42,6 +49,9 @@ model Game {
   cover          GameCover?
   collection     CollectionItem[]
   shares         GroupShare[]
+  eventPicks     EventPick[]
+  officialForEvents Event[]      @relation("EventOfficialPick")
+  interests      GameInterest[]
 }
 
 model GameCover {
@@ -52,27 +62,32 @@ model GameCover {
 }
 
 model CollectionItem {
-  userId     String
-  bggId      Int
-  addedAt    DateTime     @default(now())
-  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  game       Game         @relation(fields: [bggId], references: [bggId], onDelete: Restrict)
-  shares     GroupShare[]
+  userId            String
+  bggId             Int
+  versionName       String?
+  isAvailable       Boolean      @default(true)
+  unavailableReason String?
+  addedAt           DateTime     @default(now())
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game              Game         @relation(fields: [bggId], references: [bggId], onDelete: Restrict)
+  shares            GroupShare[]
 
   @@id([userId, bggId])
   @@index([bggId])
 }
 
 model Group {
-  id          String        @id @default(uuid())
-  name        String
-  creatorId   String
-  createdAt   DateTime      @default(now())
-  creator     User          @relation("GroupCreator", fields: [creatorId], references: [id])
-  members     GroupMember[]
-  shares      GroupShare[]
-  invitations Invitation[]
-  inviteLinks GroupInviteLink[]
+  id            String            @id @default(uuid())
+  name          String
+  creatorId     String
+  createdAt     DateTime          @default(now())
+  creator       User              @relation("GroupCreator", fields: [creatorId], references: [id])
+  members       GroupMember[]
+  shares        GroupShare[]
+  invitations   Invitation[]
+  inviteLinks   GroupInviteLink[]
+  events        Event[]
+  gameInterests GameInterest[]
 }
 
 model GroupMember {
@@ -140,4 +155,67 @@ model GroupInviteLink {
   creator   User      @relation("InviteLinkCreator", fields: [creatorId], references: [id])
 
   @@index([groupId, createdAt])
+}
+
+model Event {
+  id              String      @id @default(uuid())
+  groupId         String
+  title           String
+  description     String?
+  scheduledDate   DateTime
+  location        String?
+  hostUserId      String?
+  manualHeadcount Int?
+  status          String      @default("SCHEDULED")
+  officialPickBggId Int?
+  officialPickCarrier String?
+  officialLineup  Json?
+  createdAt       DateTime    @default(now())
+  group           Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  host            User?       @relation("EventHost", fields: [hostUserId], references: [id])
+  officialPick    Game?       @relation("EventOfficialPick", fields: [officialPickBggId], references: [bggId], onDelete: SetNull)
+  rsvps           EventRsvp[]
+  picks           EventPick[]
+
+  @@index([groupId, scheduledDate])
+}
+
+model EventRsvp {
+  id               String   @id @default(uuid())
+  eventId          String
+  userId           String
+  status           String   @default("ATTENDING")
+  additionalGuests Int      @default(0)
+  updatedAt        DateTime @updatedAt
+  event            Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+}
+
+model GameInterest {
+  id        String   @id @default(uuid())
+  groupId   String
+  userId    String
+  bggId     Int
+  points    Int      @default(1)
+  updatedAt DateTime @updatedAt
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game      Game     @relation(fields: [bggId], references: [bggId], onDelete: Restrict)
+
+  @@unique([groupId, userId, bggId])
+  @@index([groupId, bggId])
+}
+
+model EventPick {
+  id          String   @id @default(uuid())
+  eventId     String
+  bggId       Int
+  playerCount Int
+  pickedAt    DateTime @default(now())
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  game        Game     @relation(fields: [bggId], references: [bggId], onDelete: Restrict)
+
+  @@index([eventId])
 }
