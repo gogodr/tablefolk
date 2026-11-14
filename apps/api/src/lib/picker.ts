@@ -90,9 +90,11 @@ export function chooseWeightedGameId(
 
   const getWeight = (id: number): number => {
     if (weights instanceof Map) {
-      return Math.max(1, weights.get(id) ?? 1);
+      const val = weights.get(id);
+      return typeof val === "number" && Number.isFinite(val) && val > 0 ? val : 1;
     }
-    return Math.max(1, weights[id] ?? 1);
+    const val = weights[id];
+    return typeof val === "number" && Number.isFinite(val) && val > 0 ? val : 1;
   };
 
   const totalWeight = pool.reduce((sum, id) => sum + getWeight(id), 0);
@@ -154,6 +156,7 @@ export interface LineupPlannerOptions {
   allowHeavy?: boolean;
   weightsMap?: Map<number, number>;
   excludeBggIds?: number[];
+  mechanicsAffinity?: number;
   random?: () => number;
 }
 
@@ -167,6 +170,7 @@ export function planSessionLineup(
     allowHeavy = true,
     weightsMap = new Map<number, number>(),
     excludeBggIds = [],
+    mechanicsAffinity = 0,
     random = Math.random,
   } = options;
 
@@ -283,8 +287,36 @@ export function planSessionLineup(
 
       if (fillerCandidates.length === 0) break;
 
+      // Adjust weights based on mechanics affinity relative to mainGame
+      const fillerWeights = new Map<number, number>();
+      const mainMechanics = new Set(mainGame.mechanics ?? []);
+      const mainCategories = new Set(mainGame.categories ?? []);
+
+      for (const g of fillerCandidates) {
+        const baseW = weightsMap.get(g.bggId) ?? 1;
+        const sharedM = (g.mechanics ?? []).filter((m) => mainMechanics.has(m));
+        const sharedC = (g.categories ?? []).filter((c) => mainCategories.has(c));
+        const matchScore = sharedM.length * 2 + sharedC.length * 0.5;
+
+        let multiplier = 1;
+        if (mechanicsAffinity > 0) {
+          // Boost games that share mechanics / themes with Main Game
+          multiplier = matchScore > 0
+            ? 1 + mechanicsAffinity * (2 + matchScore * 1.5)
+            : Math.max(0.15, 1 - mechanicsAffinity * 0.7);
+        } else if (mechanicsAffinity < 0) {
+          // Boost games that differ in mechanics / themes from Main Game
+          const diversityStrength = Math.abs(mechanicsAffinity);
+          multiplier = matchScore === 0
+            ? 1 + diversityStrength * 3
+            : Math.max(0.1, 1 / (1 + diversityStrength * matchScore * 1.5));
+        }
+
+        fillerWeights.set(g.bggId, Math.max(0.1, baseW * multiplier));
+      }
+
       const fillerIds = fillerCandidates.map((g) => g.bggId);
-      const chosenId = chooseWeightedGameId(fillerIds, weightsMap, undefined, random);
+      const chosenId = chooseWeightedGameId(fillerIds, fillerWeights, undefined, random);
       const fillerGame = fillerCandidates.find((g) => g.bggId === chosenId)!;
       const duration = getDuration(fillerGame);
       const weight = fillerGame.weight ?? 2.0;
@@ -300,6 +332,8 @@ export function planSessionLineup(
         weight <= mainWeight &&
         duration + warmupBuffer <= remainingMinutes + 15;
 
+      const sharedWithMain = (fillerGame.mechanics ?? []).filter((m) => mainMechanics.has(m));
+
       // Assign role: prefer warmup first if not present and eligible, otherwise cooldown
       if (canBeWarmup && !hasWarmup) {
         pickedIds.add(chosenId);
@@ -309,6 +343,7 @@ export function planSessionLineup(
           label: "🍕 Warm-up",
           game: fillerGame,
           estimatedMinutes: duration,
+          sharedMechanics: sharedWithMain.length > 0 ? sharedWithMain : undefined,
         });
       } else {
         pickedIds.add(chosenId);
@@ -318,6 +353,7 @@ export function planSessionLineup(
           label: "☕ Cooldown",
           game: fillerGame,
           estimatedMinutes: duration,
+          sharedMechanics: sharedWithMain.length > 0 ? sharedWithMain : undefined,
         });
       }
     }
@@ -343,6 +379,23 @@ export function planSessionLineup(
   );
   const totalEstimated = gameMinutes + transitionMinutes;
 
+  let themeNotice: string | undefined;
+  if (selectedLineup.length > 1) {
+    if (mechanicsAffinity > 0.2) {
+      const allShared = selectedLineup
+        .filter((s) => s.role !== "main")
+        .flatMap((s) => s.sharedMechanics ?? []);
+      const uniqueShared = Array.from(new Set(allShared));
+      if (uniqueShared.length > 0) {
+        themeNotice = `🎯 Themed Night: features ${uniqueShared.slice(0, 3).join(", ")}`;
+      } else {
+        themeNotice = "🎯 Themed Night: aligned mechanics & style";
+      }
+    } else if (mechanicsAffinity < -0.2) {
+      themeNotice = "🌈 Diverse Menu: contrasting mechanics to prevent mental fatigue";
+    }
+  }
+
   return {
     status: selectedLineup.length > 0 ? "success" : "no_match",
     lineup: selectedLineup,
@@ -350,5 +403,6 @@ export function planSessionLineup(
     transitionMinutes,
     targetMinutes: totalMinutes,
     hasHeavy: hasHeavyGame,
+    themeNotice,
   };
 }

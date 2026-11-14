@@ -406,5 +406,93 @@ describe("game night picker", () => {
       // The expansion 302 must NEVER be chosen as a slot in the lineup
       expect(result.lineup.some((s) => s.game.bggId === 302)).toBe(false);
     });
+
+    it("favors similar mechanics when mechanicsAffinity is positive", () => {
+      const socialDeductionMain: GroupGame = {
+        bggId: 501,
+        name: "Blood on the Clocktower",
+        kind: "boardgame",
+        minPlayers: 5,
+        maxPlayers: 10,
+        playingTime: 90,
+        weight: 3.1,
+        yearPublished: 2022,
+        description: null,
+        minAge: 14,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/501",
+        designers: [],
+        publishers: [],
+        categories: ["Bluffing", "Deduction"],
+        mechanics: ["Social Deduction", "Hidden Roles", "Voting"],
+        owners: [],
+      };
+
+      const deductionFiller: GroupGame = {
+        bggId: 502,
+        name: "Secret Hitler",
+        kind: "boardgame",
+        minPlayers: 5,
+        maxPlayers: 10,
+        playingTime: 30,
+        weight: 1.7,
+        yearPublished: 2016,
+        description: null,
+        minAge: 13,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/502",
+        designers: [],
+        publishers: [],
+        categories: ["Bluffing", "Deduction"],
+        mechanics: ["Social Deduction", "Hidden Roles"],
+        owners: [],
+      };
+
+      const dexterityFiller: GroupGame = {
+        bggId: 503,
+        name: "Junk Art",
+        kind: "boardgame",
+        minPlayers: 2,
+        maxPlayers: 6,
+        playingTime: 30,
+        weight: 1.2,
+        yearPublished: 2016,
+        description: null,
+        minAge: 8,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/503",
+        designers: [],
+        publishers: [],
+        categories: ["Action / Dexterity"],
+        mechanics: ["Stacking and Balancing"],
+        owners: [],
+      };
+
+      const games = [socialDeductionMain, deductionFiller, dexterityFiller];
+
+      // Positive affinity: should strongly favor Secret Hitler as warmup/cooldown
+      const similarResult = planSessionLineup(games, {
+        playerCount: 6,
+        totalMinutes: 150,
+        mechanicsAffinity: 1.0,
+        random: () => 0.5,
+      });
+
+      expect(similarResult.status).toBe("success");
+      expect(similarResult.lineup.some((s) => s.game.bggId === 502)).toBe(true);
+      expect(similarResult.themeNotice).toContain("Themed Night");
+
+      // Negative affinity: should favor Junk Art over Secret Hitler
+      const diverseResult = planSessionLineup(games, {
+        playerCount: 6,
+        totalMinutes: 150,
+        mechanicsAffinity: -1.0,
+        random: () => 0.5,
+      });
+
+      expect(diverseResult.status).toBe("success");
+      expect(diverseResult.lineup.some((s) => s.game.bggId === 503)).toBe(true);
+      expect(diverseResult.themeNotice).toContain("Diverse Menu");
+    });
   });
 });

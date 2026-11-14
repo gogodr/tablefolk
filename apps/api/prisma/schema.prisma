@@ -45,9 +45,11 @@ model Game {
   designers      String[]         @default([])
   publishers     String[]         @default([])
   categories     String[]         @default([])
+  mechanics      String[]         @default([])
   coverUrl       String?
   sourceUrl      String
   importedAt     DateTime         @default(now())
+  lastEnrichedAt DateTime?
   cover          GameCover?
   collection     CollectionItem[]
   shares         GroupShare[]

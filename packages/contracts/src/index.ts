@@ -57,6 +57,7 @@ export const sessionPlanSchema = z.object({
   totalMinutes: z.number().int().min(30).max(720).default(180),
   allowHeavy: z.boolean().default(true),
   excludeBggIds: z.array(z.number().int().positive()).optional(),
+  mechanicsAffinity: z.number().min(-1).max(1).default(0),
 });
 
 export const eventSetOfficialSchema = z.object({
@@ -99,6 +100,7 @@ export interface Game {
   designers: string[];
   publishers: string[];
   categories: string[];
+  mechanics: string[];
 }
 
 export interface CollectionGame extends Game {
@@ -178,6 +180,7 @@ export interface SessionGameSlot {
   estimatedMinutes: number;
   transitionBeforeMinutes?: number;
   transitionReason?: string;
+  sharedMechanics?: string[];
 }
 
 export interface SessionLineupResult {
@@ -187,6 +190,7 @@ export interface SessionLineupResult {
   transitionMinutes?: number;
   targetMinutes: number;
   hasHeavy: boolean;
+  themeNotice?: string;
 }
 
 export interface EventRsvpMember {

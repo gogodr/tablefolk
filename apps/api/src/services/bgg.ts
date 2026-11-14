@@ -155,6 +155,7 @@ export interface BggGameDetails {
   designers: string[];
   publishers: string[];
   categories: string[];
+  mechanics: string[];
   sourceUrl: string;
   imageUrl: string | null;
 }
@@ -190,6 +191,7 @@ function parseRawItem(item: RawItem): BggGameDetails | null {
     designers: linked("boardgamedesigner"),
     publishers: linked("boardgamepublisher"),
     categories: linked("boardgamecategory"),
+    mechanics: linked("boardgamemechanic"),
     sourceUrl: `https://boardgamegeek.com/boardgame/${bggId}`,
     imageUrl: textOrNull(item.image) ?? textOrNull(item.thumbnail),
   };

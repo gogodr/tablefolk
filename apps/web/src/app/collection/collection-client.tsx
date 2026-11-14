@@ -30,6 +30,7 @@ export function CollectionClient() {
   const [weightFilter, setWeightFilter] = useState<WeightFilter>("all");
   const [sharedFilter, setSharedFilter] = useState<SharedFilter>("all");
   const [sortBy, setSortBy] = useState<SortOption>("name-asc");
+  const [viewMode, setViewMode] = useState<"grouped" | "flat">("grouped");
 
   // Interaction Modals / Panels
   const [sharingId, setSharingId] = useState<number | null>(null);
@@ -40,22 +41,38 @@ export function CollectionClient() {
 
   // BGG Sync & Enrich State
   const [bggUsername, setBggUsername] = useState("");
+  const [savedBggUsername, setSavedBggUsername] = useState<string | null>(null);
+  const [lastBggSyncAt, setLastBggSyncAt] = useState<string | null>(null);
+  const [editingBggUser, setEditingBggUser] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [enriching, setEnriching] = useState(false);
   const [enrichStatus, setEnrichStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const cached = localStorage.getItem("tablefolk_bgg_user");
+      if (cached) {
+        setSavedBggUsername(cached);
+        setBggUsername(cached);
+      }
+    } catch {}
+  }, []);
 
   const load = useCallback(async () => {
     try {
       const [collection, groupData, bggProfile] = await Promise.all([
         api<{ games: CollectionGame[] }>("/v1/collection"),
         api<{ groups: GroupSummary[] }>("/v1/groups"),
-        api<{ bggUsername: string | null }>("/v1/user/bgg-profile").catch(() => ({ bggUsername: null })),
+        api<{ bggUsername: string | null; lastBggSyncAt: string | null }>("/v1/user/bgg-profile").catch(() => ({ bggUsername: null, lastBggSyncAt: null })),
       ]);
       setGames(collection.games);
       setGroups(groupData.groups);
       if (bggProfile.bggUsername) {
+        setSavedBggUsername(bggProfile.bggUsername);
         setBggUsername(bggProfile.bggUsername);
+        setLastBggSyncAt(bggProfile.lastBggSyncAt);
+        try { localStorage.setItem("tablefolk_bgg_user", bggProfile.bggUsername); } catch {}
       }
       setError("");
     } catch (cause) {
@@ -125,18 +142,24 @@ export function CollectionClient() {
     }
   }
 
-  async function handleSyncBgg(e: React.FormEvent) {
-    e.preventDefault();
-    if (!bggUsername.trim()) return;
+  async function handleSyncBgg(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    const targetUser = (bggUsername || savedBggUsername || "").trim();
+    if (!targetUser) return;
     setSyncing(true);
-    setSyncStatus("Saving BGG profile and syncing games…");
+    setSyncStatus("Connecting to BoardGameGeek and syncing collection…");
     setError("");
 
     try {
-      await api("/v1/user/bgg-profile", {
-        method: "PUT",
-        body: JSON.stringify({ bggUsername: bggUsername.trim() }),
-      });
+      if (targetUser !== savedBggUsername) {
+        await api("/v1/user/bgg-profile", {
+          method: "PUT",
+          body: JSON.stringify({ bggUsername: targetUser }),
+        });
+        setSavedBggUsername(targetUser);
+        setEditingBggUser(false);
+        try { localStorage.setItem("tablefolk_bgg_user", targetUser); } catch {}
+      }
 
       const res = await api<BggSyncResult>("/v1/collection/sync-bgg", {
         method: "POST",
@@ -207,7 +230,21 @@ export function CollectionClient() {
       );
     }
 
-    // 2. Kind & Availability
+    // 2. View Mode (Grouped under Base Game vs Flat view)
+    const ownedBaseGameIds = new Set(
+      games.filter((g) => g.kind !== "boardgameexpansion").map((g) => g.bggId)
+    );
+    if (viewMode === "grouped" && filter !== "boardgameexpansion") {
+      list = list.filter((g) => {
+        if (g.kind !== "boardgameexpansion") return true;
+        if (g.isStandalone) return true;
+        // Keep orphan expansions whose base game is not in the collection
+        if (g.baseGameBggId && !ownedBaseGameIds.has(g.baseGameBggId)) return true;
+        return false;
+      });
+    }
+
+    // 3. Kind & Availability
     if (filter === "available") {
       list = list.filter((g) => g.isAvailable);
     } else if (filter === "unavailable") {
@@ -286,25 +323,80 @@ export function CollectionClient() {
           <div className="collection-tool-content"><GameSearch onAdded={() => void load()} /></div>
         </details>
         <details className="collection-tool">
-          <summary>Import from BoardGameGeek</summary>
+          <summary>
+            {savedBggUsername ? `BoardGameGeek (@${savedBggUsername})` : "Import from BoardGameGeek"}
+          </summary>
           <div className="collection-tool-content">
-            <p>Connect your BGG account to automatically import and refresh your owned collection.</p>
-            <form onSubmit={handleSyncBgg} className="inline-form">
-              <div className="field">
-                <label htmlFor="bgg-user">BGG Username</label>
-                <input
-                  id="bgg-user"
-                  type="text"
-                  placeholder="e.g. Rahdo"
-                  value={bggUsername}
-                  onChange={(e) => setBggUsername(e.target.value)}
-                  disabled={syncing}
-                />
+            {savedBggUsername && !editingBggUser ? (
+              <div className="bgg-connected-card">
+                <div className="bgg-connected-header">
+                  <span className="bgg-status-dot" aria-hidden="true">●</span>
+                  <div>
+                    <strong>Connected as @{savedBggUsername}</strong>
+                    {lastBggSyncAt && (
+                      <span className="bgg-last-sync">
+                        {" "}· Last synced {new Date(lastBggSyncAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p>One-click sync of your owned games from BoardGameGeek.</p>
+                <div className="bgg-connected-actions">
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => void handleSyncBgg()}
+                    disabled={syncing}
+                  >
+                    {syncing ? "Syncing with BGG…" : "🔄 Sync BGG Collection Now"}
+                  </button>
+                  <button
+                    type="button"
+                    className="button-quiet button-small"
+                    onClick={() => setEditingBggUser(true)}
+                    disabled={syncing}
+                  >
+                    Change username
+                  </button>
+                </div>
               </div>
-              <button type="submit" className="button" disabled={syncing || !bggUsername.trim()}>
-                {syncing ? "Syncing with BGG…" : "Sync BGG Collection"}
-              </button>
-            </form>
+            ) : (
+              <>
+                <p>Connect your BGG account to automatically import and refresh your owned collection.</p>
+                <form onSubmit={handleSyncBgg} className="inline-form">
+                  <div className="field">
+                    <label htmlFor="bgg-user">BGG Username</label>
+                    <input
+                      id="bgg-user"
+                      type="text"
+                      placeholder="e.g. Rahdo"
+                      value={bggUsername}
+                      onChange={(e) => setBggUsername(e.target.value)}
+                      disabled={syncing}
+                      autoFocus={editingBggUser}
+                    />
+                  </div>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
+                    <button type="submit" className="button" disabled={syncing || !bggUsername.trim()}>
+                      {syncing ? "Connecting…" : savedBggUsername ? "Save & Sync" : "Connect & Sync BGG"}
+                    </button>
+                    {savedBggUsername && (
+                      <button
+                        type="button"
+                        className="button-secondary"
+                        onClick={() => {
+                          setBggUsername(savedBggUsername);
+                          setEditingBggUser(false);
+                        }}
+                        disabled={syncing}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </>
+            )}
             {syncStatus && <p className="form-success">{syncStatus}</p>}
           </div>
         </details>
@@ -424,8 +516,27 @@ export function CollectionClient() {
             </select>
           </div>
 
-          {/* Sort By Dropdown */}
+          {/* Sort By Dropdown & View Mode */}
           <div className="collection-select-group">
+            <div className="view-mode-toggle" role="group" aria-label="Expansions view mode">
+              <button
+                type="button"
+                className={`view-mode-btn ${viewMode === "grouped" ? "active" : ""}`}
+                onClick={() => setViewMode("grouped")}
+                title="Group expansions under base games"
+              >
+                🧩 Grouped
+              </button>
+              <button
+                type="button"
+                className={`view-mode-btn ${viewMode === "flat" ? "active" : ""}`}
+                onClick={() => setViewMode("flat")}
+                title="Show all individual expansion cards"
+              >
+                📄 All boxes
+              </button>
+            </div>
+
             <label htmlFor="collection-sort" style={{ fontSize: "13px", fontWeight: 700 }}>
               Sort:
             </label>

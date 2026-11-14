@@ -1,5 +1,9 @@
+"use client";
+
+import { useState } from "react";
 import type { Game, CollectionGame, GroupGame, GameOwner, Member } from "@tablefolk/contracts";
 import { gameCoverSrc } from "@/lib/assets";
+import { GameDetailModal } from "@/components/game-detail-modal";
 
 export function cleanExpansionName(baseGameName: string, expansionName: string): string {
   const escaped = baseGameName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -42,6 +46,7 @@ interface GameCardProps {
 }
 
 export function GameCard({ game, eagerCover = false, owners, actions, interestScore, onVote, canVote }: GameCardProps) {
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const complexity = weightLabel(game.weight);
   const versionName = "versionName" in game ? (game as CollectionGame).versionName : null;
   const isAvailable = "isAvailable" in game ? (game as CollectionGame).isAvailable : true;
@@ -49,30 +54,52 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
   const expansions = "expansions" in game ? game.expansions : undefined;
 
   return (
-    <article className="game-card">
-      <div className="game-cover">
-        {game.coverUrl ? (
-          <img src={gameCoverSrc(game.coverUrl)} alt={`${game.name} cover`} loading={eagerCover ? "eager" : "lazy"} fetchPriority={eagerCover ? "high" : undefined} />
-        ) : (
-          <img className="cover-placeholder" src="/brand/tablefolk-mark.png" alt="" />
-        )}
-      </div>
-      <div className="game-card-body">
-        <div className="game-card-heading">
-          <h3>
-            {game.name}
-            {expansions && expansions.length > 0 && (
-              <span className="game-attached-expansions-tag" title={expansions.map((e) => e.name).join(", ")}>
-                {" + "}{expansions.map((e) => cleanExpansionName(game.name, e.name)).join(", ")}
-              </span>
-            )}
-          </h3>
-          {game.kind === "boardgameexpansion" && (
-            <span className={`game-kind ${"isStandalone" in game && game.isStandalone ? "game-kind-standalone" : ""}`}>
-              {"isStandalone" in game && game.isStandalone ? "Standalone Expansion" : "Expansion"}
-            </span>
+    <>
+      <article
+        className="game-card game-card-clickable"
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("a, button, input, select, textarea, label")) {
+            return;
+          }
+          setIsDetailsOpen(true);
+        }}
+        title="Click to view full game details, mechanics & synopsis"
+      >
+        <div className="game-cover">
+          {game.coverUrl ? (
+            <img src={gameCoverSrc(game.coverUrl)} alt={`${game.name} cover`} loading={eagerCover ? "eager" : "lazy"} fetchPriority={eagerCover ? "high" : undefined} />
+          ) : (
+            <img className="cover-placeholder" src="/brand/tablefolk-mark.png" alt="" />
           )}
         </div>
+        <div className="game-card-body">
+          <div className="game-card-heading">
+            <h3>
+              {game.name}
+              {expansions && expansions.length > 0 && (
+                <span className="game-attached-expansions-tag" title={expansions.map((e) => e.name).join(", ")}>
+                  {" + "}
+                  {expansions.length <= 2
+                    ? expansions.map((e) => cleanExpansionName(game.name, e.name)).join(", ")
+                    : `${expansions.slice(0, 2).map((e) => cleanExpansionName(game.name, e.name)).join(", ")} (+${expansions.length - 2} more)`}
+                </span>
+              )}
+            </h3>
+            {game.kind === "boardgameexpansion" && (
+              <span className={`game-kind ${"isStandalone" in game && game.isStandalone ? "game-kind-standalone" : ""}`}>
+                {"isStandalone" in game && game.isStandalone ? "Standalone Expansion" : "Expansion"}
+              </span>
+            )}
+            <button
+              type="button"
+              className="game-info-trigger"
+              onClick={() => setIsDetailsOpen(true)}
+              title="View full mechanics, categories & details"
+              aria-label="View game details"
+            >
+              ℹ️
+            </button>
+          </div>
         <p className="game-meta">
           <span className="meta-pill meta-players">{playerRange(game)}</span>
           {game.playingTime && <span className="meta-pill meta-time">{game.playingTime} min</span>}
@@ -118,7 +145,7 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
           <div className="game-attached-expansions-box">
             <span className="attached-expansions-label">
               📦 <strong>Included Expansions ({expansions.length}):</strong>{" "}
-              {expansions.map((exp, i) => (
+              {expansions.slice(0, 3).map((exp, i) => (
                 <span key={exp.bggId} className="attached-expansion-chip">
                   {i > 0 && ", "}
                   {cleanExpansionName(game.name, exp.name)}
@@ -127,6 +154,11 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
                   )}
                 </span>
               ))}
+              {expansions.length > 3 && (
+                <span className="attached-expansions-more-tag" title="Click card to view all expansions in details">
+                  {" "}…+{expansions.length - 3} more
+                </span>
+              )}
             </span>
           </div>
         )}
@@ -171,5 +203,13 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
         </div>
       </div>
     </article>
+
+    <GameDetailModal
+      game={game}
+      owners={owners}
+      isOpen={isDetailsOpen}
+      onClose={() => setIsDetailsOpen(false)}
+    />
+  </>
   );
 }

@@ -127,9 +127,12 @@ flowchart LR
 
 - **Game Night Events & RSVPs**: Any group member can schedule game nights with date, time, location, and host assignment. Members RSVP (`Attending`, `Maybe`, `Declined`) with guest counts (`+Guests`), automatically calculating total table headcount.
 - **Physical Availability & Edition Tracking**: Mark personal copies as available to travel, "Home only" (which automatically become eligible when hosting!), or unavailable (lent out, too heavy, under repair), plus track specific edition names.
-- **BGG Collection Sync**: Connect your BoardGameGeek username to import or refresh your entire owned collection with one click, preserving BGG complexity ratings (weight), playtimes, and editions.
+- **BGG Collection Sync & Smart Enrichment**: Connect your BoardGameGeek username with 1-click remembered sync. Imports owned games, expansions, playtimes, player counts, categories, and mechanics. Manual enrichment processes up to 30 games per batch with a 30-day cooldown to prevent unrated titles from stalling the queue.
+- **Rich Game Detail Modal & Clean Cards**: Keep shelves and tables visually clean while providing deep metadata on tap: high-resolution box art, player counts with expansion support, BGG weight, categories, mechanics chips, multi-paragraph synopsis, credits, and an included expansions showcase.
+- **Session Menu Planner with Mechanics Affinity Slider**: Curate 2 to 5-hour multi-game evenings with dynamic setup and cooldown buffers. Fine-tune selection with the **Mechanics & Style Affinity slider**—steer the table toward a themed night (`🎯 Themed`, e.g., secret roles/social deduction) or maximize variety across genres (`🌈 Variety`).
 - **"Want to Play" Wishlist & Weighted Draw**: Members earn voting points to back games they want to see on table. Points accumulate across weeks and increase the game's odds in the event draw, resetting only upon victory to rotate the group's library naturally.
 - **Contextual Event Picker**: Filters candidate games based on who is actually attending, excluding games that cannot travel unless hosted at the owner's home, with optional duration (`≤45m`, `≤90m`, `≤2h`) and BGG complexity filters.
+- **Unified Search, Filters & Expansion Views**: Search instantly, filter by ownership, wishlist popularity, player count (with expansion boosts), complexity, and toggle between `🧩 Grouped` and `📄 All boxes` view modes in both personal collection and shared group shelves.
 
 ---
 
@@ -213,7 +216,7 @@ See [operations](docs/operations.md) for deployment and recovery details.
 
 Tablefolk continues to evolve from a game picker into a complete Game Night Operating System. Key features envisioned for future releases include:
 
-- **📊 Play Logger & Group Leaderboards**: Record winners, final scores, and play durations after each game night; automatically sync sessions to BGG Plays (`/xmlapi2/plays`) and maintain group win-rate leaderboards.
+- **📊 Internal Group Records & Leaderboards**: Record winners and play durations after each game night to maintain friendly group win-rate leaderboards.
 - **🪑 Multi-Table Splitter (*Split Tables*)**: Intelligent auto-division for large gatherings (8–16+ attendees) into balanced parallel tables (e.g., 4-player strategy heavy game + 6-player social party game).
 - **🍕 Potluck / Snack Board**: Collaborative RSVP checklists for food and drinks to coordinate table snacks.
 - **🧙‍♂️ Campaign & Legacy Tracker**: Episodic progress saving for campaign games (*Gloomhaven*, *Pandemic Legacy*, *Arkham Horror LCG*), keeping track of the table lineup.
