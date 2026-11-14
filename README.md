@@ -10,14 +10,97 @@ A friendly place to catalog board games, share selected games with a group, and 
 
 ---
 
+## 📑 Quick Navigation
+
+- [🍱 Evening Session Menu Planner](#-evening-session-menu-planner--anti-fatigue-engine)
+  - [🧠 Hierarchy & Anti-Fatigue Rules](#-hierarchy--anti-fatigue-engine) · [☕ Dynamic Setup & Transition Buffers](#-dynamic-setup--intermission-buffers) · [💾 Saving & Sharing Lineups](#-saving-and-sharing-the-approved-lineup)
+- [🗺️ How It Works](#how-it-works) · [✨ Key Features](#key-features)
+- [📦 Local Setup](#local-setup)
+  - [🐳 Docker Compose](#docker-compose) · [💻 Without Docker](#without-docker) · [🧪 Checks](#checks)
+- [🚀 Deployment](#vercel) · [🎯 Future Roadmap](#️-future-roadmap--ideas)
+
+---
+
 ## What is here
 
-- `apps/web`: Next.js 16 app with design tokens, meeple illustrations, events room, and collection sync.
-- `apps/api`: Fastify 5 API, Prisma schema, BGG sync, event RSVPs, weighted picker, and invitations.
+- `apps/web`: Next.js 16 app with design tokens, meeple illustrations, events room, session planner, and collection sync.
+- `apps/api`: Fastify 5 API, Prisma schema, BGG sync, event RSVPs, weighted picker, dynamic buffer scheduler, and invitations.
 - `packages/contracts`: shared input schemas, response types, and domain interfaces.
 - `docs/designs/board-game-group-picker.md`: approved product and technical design.
 
 The group collection shows each BGG game once and lists all members who share it. A game stays available while at least one member shares it. Expansions are independent choices. BGG is called only when searching for or syncing a collection; normal use reads the app database.
+
+---
+
+## 🍱 Evening Session Menu Planner & Anti-Fatigue Engine
+
+Tablefolk includes an intelligent multi-game session orchestrator designed to plan a balanced 2 to 5-hour tabletop evening without cognitive burn. It structures the night into a satisfying narrative arc:
+
+```mermaid
+flowchart TD
+    subgraph Inputs["1. Gathering Inputs"]
+        A["👥 Headcount (RSVPs + Guests)"]
+        B["⏱️ Total Gathering Duration (2h - 5h)"]
+        C["🛡️ Allow Heavy Game (Checkbox)"]
+    end
+
+    subgraph PickerEngine["2. Smart Selection Engine"]
+        D["🎯 Main Event (Anchor Game)\nPriority: Substantial titles >= 45m or Weight >= 2.0"]
+        E["☕ Dynamic Setup & Transition Buffer\n15m - 30m scaled by BGG complexity & duration"]
+        F["🍕 Warm-up (Optional)\nStrictly <= 35m, Weight <= 2.2, lighter & shorter than Main"]
+        G["☕ Cooldown (Optional)\nStrictly <= 45m, anti-fatigue relaxed closer"]
+    end
+
+    subgraph Outputs["3. Result & Persistence"]
+        H["✨ Tonight's Lineup Menu\nAccurate playtimes + transition buffers"]
+        I["📌 Lock as Official Event Lineup\n(Publishes to attendees with rules videos)"]
+        J["📋 1-Click WhatsApp / Discord Share\n(Formatted with emojis & times)"]
+    end
+
+    Inputs --> PickerEngine
+    D --> E
+    E --> F
+    E --> G
+    PickerEngine --> Outputs
+    H --> I
+    H --> J
+```
+
+---
+
+### 🧠 Hierarchy & Anti-Fatigue Rules
+
+To prevent unbalanced sessions (e.g., an intense 60-minute cooperative game being suggested as a "Warm-up" before a 30-minute party game), the engine enforces strict structural rules:
+
+> ⚡ **Session Architecture Rules:**
+> - **🎯 Main Event (Anchor Game):** In sessions $\ge 90$ min, substantial games ($\ge 45$ min or weight $\ge 2.0$) take absolute priority as the centerpiece.
+> - **🍕 Warm-up:** Strictly capped at $\le 35$ min and weight $\le 2.2$ (Light). It must always be shorter and lighter than the Main Game ($duration \le mainDuration$ and $weight \le mainWeight$).
+> - **☕ Cooldown:** Capped at $\le 45$ min. If the Main Game was Heavy ($weight > 3.2$), the Cooldown is strictly restricted to light games ($weight \le 2.0$) to prevent brain burn.
+> - **🛡️ Anti-Fatigue Limit:** Never more than **1 Heavy game** per session, and a maximum of **3 games** total per gathering.
+
+---
+
+### ☕ Dynamic Setup & Intermission Buffers
+
+Real board game nights require downtime between boxes: packing up the previous game, setting up modular boards, dealing cards, grabbing snacks, and teaching rules. Tablefolk dynamically scales this buffer before each upcoming title:
+
+| Category | BGG Criteria | Real Tabletop Overhead | UI Badge & Reason |
+| :--- | :--- | :--- | :--- |
+| 🔴 **Heavy / Epic** | Weight $\ge 3.2$ or Duration $\ge 90$m | Miniatures, multi-boards, draft screens & full rules teach (*Rising Sun*, *Brass*, *Scythe*) | `☕ 30m Setup & Rules Teach (Heavy game)` |
+| 🟡 **Medium-Heavy** | Weight $\ge 2.6$ or Duration $\ge 70$m | Board setup & rules refresh (*Wingspan*, *Clank!*, *Catan* 5-6p) | `☕ 25m Table Setup & Rules Overview` |
+| 🟢 **Medium Standard** | Weight $\ge 2.0$ or Duration $\ge 45$m | Standard board placement & shuffling (*WoW: Lich King*, *Ticket to Ride*) | `☕ 20m Intermission & Board Setup` |
+| 🍕 **Light / Filler** | Weight $< 2.0$ and Duration $< 45$m | Fast deck shuffle, snack break & quick rules (*Avalon*, *Sushi Go!*) | `☕ 15m Quick Reset & Snack buffer` |
+
+---
+
+### 💾 Saving and Sharing the Approved Lineup
+
+1. **Inside an Event (`/groups/[groupId]/events/[eventId]`):**
+   - Click **`📌 Set as Official Event Lineup`**.
+   - Locks the schedule to the top of the event page for all confirmed attendees with assigned carriers (`🎒 Bringer: [Member]`) and YouTube rules video links (`▶ Rules Video`).
+2. **In Direct Group Game Night (`/groups/[groupId]/game-night`):**
+   - Click **`📌 Save as Group Event`** to generate a group event with today's date and lock the lineup in 1 click.
+   - Click **`📋 Copy Menu`** to copy a formatted roster with emojis and exact times directly into your WhatsApp, Discord, or Telegram group chat.
 
 ---
 

@@ -492,6 +492,7 @@ export async function eventRoutes(app: FastifyInstance) {
         status: "no_match",
         lineup: [],
         totalEstimatedMinutes: 0,
+        transitionMinutes: 0,
         targetMinutes: body.totalMinutes,
         hasHeavy: false,
       };
@@ -519,6 +520,7 @@ export async function eventRoutes(app: FastifyInstance) {
         status: "empty",
         lineup: [],
         totalEstimatedMinutes: 0,
+        transitionMinutes: 0,
         targetMinutes: body.totalMinutes,
         hasHeavy: false,
       };
@@ -536,7 +538,28 @@ export async function eventRoutes(app: FastifyInstance) {
       interestMap.set(interest.bggId, (interestMap.get(interest.bggId) ?? 0) + interest.points);
     }
 
-    const availableGroupGames = groupGames(activeShares, { interestMap });
+    // Map expansions brought by attendees to base games
+    const attendeeExpansions = new Map<number, number>();
+    for (const share of activeShares) {
+      if (share.game.baseGameBggId && share.game.maxPlayers) {
+        const current = attendeeExpansions.get(share.game.baseGameBggId) ?? 0;
+        attendeeExpansions.set(share.game.baseGameBggId, Math.max(current, share.game.maxPlayers));
+      }
+    }
+
+    const availableGroupGames = groupGames(activeShares, { interestMap }).map((g) => {
+      const matchingShares = activeShares.filter((s) => s.bggId === g.bggId);
+      const ownerOverride = matchingShares.reduce(
+        (max, s) => Math.max(max, s.collection?.maxPlayersOverride ?? 0),
+        0
+      );
+      const expansionMax = attendeeExpansions.get(g.bggId) ?? 0;
+      const effectiveMax = Math.max(g.maxPlayers ?? 0, ownerOverride, expansionMax);
+      return {
+        ...g,
+        effectiveMaxPlayers: effectiveMax > (g.maxPlayers ?? 0) ? effectiveMax : g.maxPlayers,
+      };
+    });
 
     const weightsMap = new Map<number, number>();
     for (const game of availableGroupGames) {

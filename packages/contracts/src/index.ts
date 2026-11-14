@@ -165,12 +165,15 @@ export interface SessionGameSlot {
   label: string;
   game: GroupGame;
   estimatedMinutes: number;
+  transitionBeforeMinutes?: number;
+  transitionReason?: string;
 }
 
 export interface SessionLineupResult {
   status: "success" | "empty" | "no_match";
   lineup: SessionGameSlot[];
   totalEstimatedMinutes: number;
+  transitionMinutes?: number;
   targetMinutes: number;
   hasHeavy: boolean;
 }

@@ -165,6 +165,130 @@ describe("game night picker", () => {
       expect(result.status).toBe("success");
       expect(result.totalEstimatedMinutes).toBeLessThanOrEqual(180 + 20);
       expect(result.lineup.length).toBeGreaterThanOrEqual(2);
+      expect(result.transitionMinutes).toBeGreaterThan(0);
+    });
+
+    it("ensures warm-up is never longer or heavier than the main game (hierarchy rule)", () => {
+      const hierarchyGames: GroupGame[] = [
+        {
+          bggId: 101,
+          name: "World of Warcraft: Wrath of the Lich King",
+          kind: "boardgame",
+          minPlayers: 1,
+          maxPlayers: 5,
+          playingTime: 60,
+          minPlayingTime: 60,
+          maxPlayingTime: 60,
+          weight: 2.3, // Medium
+          yearPublished: 2021,
+          description: null,
+          minAge: 14,
+          coverUrl: null,
+          sourceUrl: "https://bgg.com/101",
+          designers: [],
+          publishers: [],
+          categories: [],
+          owners: [],
+        },
+        {
+          bggId: 102,
+          name: "The Resistance: Avalon",
+          kind: "boardgame",
+          minPlayers: 5,
+          maxPlayers: 10,
+          playingTime: 30,
+          minPlayingTime: 30,
+          maxPlayingTime: 30,
+          weight: 1.7, // Light filler
+          yearPublished: 2012,
+          description: null,
+          minAge: 13,
+          coverUrl: null,
+          sourceUrl: "https://bgg.com/102",
+          designers: [],
+          publishers: [],
+          categories: [],
+          owners: [],
+        },
+      ];
+
+      const result = planSessionLineup(hierarchyGames, {
+        playerCount: 5,
+        totalMinutes: 180,
+      });
+
+      expect(result.status).toBe("success");
+      const mainSlot = result.lineup.find((s) => s.role === "main");
+      const warmupSlot = result.lineup.find((s) => s.role === "warmup");
+
+      expect(mainSlot).toBeDefined();
+      expect(mainSlot!.game.bggId).toBe(101); // WoW is the substantial Main Game!
+
+      if (warmupSlot) {
+        expect(warmupSlot.game.bggId).toBe(102); // Avalon is Warm-up, NOT WoW!
+        expect(warmupSlot.estimatedMinutes).toBeLessThanOrEqual(mainSlot!.estimatedMinutes);
+        expect(warmupSlot.game.weight ?? 0).toBeLessThanOrEqual(mainSlot!.game.weight ?? 5);
+      }
+    });
+
+    it("calculates dynamic transition dead time based on game complexity & duration (e.g. 30m for Rising Sun)", () => {
+      const risingSunAndFillers: GroupGame[] = [
+        {
+          bggId: 201,
+          name: "Rising Sun",
+          kind: "boardgame",
+          minPlayers: 3,
+          maxPlayers: 5,
+          playingTime: 120,
+          minPlayingTime: 90,
+          maxPlayingTime: 120,
+          weight: 3.3, // Heavy epic game
+          yearPublished: 2018,
+          description: null,
+          minAge: 14,
+          coverUrl: null,
+          sourceUrl: "https://bgg.com/201",
+          designers: [],
+          publishers: [],
+          categories: [],
+          owners: [],
+        },
+        {
+          bggId: 202,
+          name: "Sushi Go!",
+          kind: "boardgame",
+          minPlayers: 2,
+          maxPlayers: 5,
+          playingTime: 20,
+          minPlayingTime: 15,
+          maxPlayingTime: 20,
+          weight: 1.2, // Light filler
+          yearPublished: 2013,
+          description: null,
+          minAge: 8,
+          coverUrl: null,
+          sourceUrl: "https://bgg.com/202",
+          designers: [],
+          publishers: [],
+          categories: [],
+          owners: [],
+        },
+      ];
+
+      const result = planSessionLineup(risingSunAndFillers, {
+        playerCount: 4,
+        totalMinutes: 180,
+      });
+
+      expect(result.status).toBe("success");
+      expect(result.lineup.length).toBe(2);
+
+      // Warm-up is Sushi Go!, Main is Rising Sun
+      const risingSunSlot = result.lineup.find((s) => s.game.bggId === 201);
+      expect(risingSunSlot).toBeDefined();
+      expect(risingSunSlot!.transitionBeforeMinutes).toBe(30); // 30 min buffer for Rising Sun!
+      expect(result.transitionMinutes).toBe(30);
+      expect(result.totalEstimatedMinutes).toBe(20 + 30 + 120); // 170 min
     });
   });
 });

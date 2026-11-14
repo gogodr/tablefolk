@@ -426,83 +426,84 @@ export function EventClient() {
       <div className="draw-layout">
         {/* Draw Controls */}
         <section className="draw-card">
-          <h2>{mode === "lineup" ? "Session Menu Planner" : "Single Pick Filters"}</h2>
-          <p>
-            {mode === "lineup"
-              ? "Plan a balanced evening matching your total gathering duration, pairing a main game with warm-up/cooldown fillers (max 1 heavy game)."
-              : "Draw 1 title matching your attendees headcount, duration, and complexity."}
-          </p>
-
-          <div className="field">
-            <label htmlFor="headcount">Attendees Headcount</label>
-            <input
-              id="headcount"
-              type="number"
-              min={1}
-              max={100}
-              value={playerCount}
-              onChange={(e) => setPlayerCount(Number(e.target.value))}
-            />
-            <span className="field-hint">Defaults to attending RSVPs + guests</span>
+          <div className="draw-card-header">
+            <h2>{mode === "lineup" ? "Session Menu Planner" : "Single Pick Filters"}</h2>
+            <p>
+              {mode === "lineup"
+                ? "Plan a balanced evening matching your total gathering duration, pairing a main game with warm-up/cooldown fillers (max 1 heavy game)."
+                : "Draw 1 title matching your attendees headcount, duration, and complexity."}
+            </p>
           </div>
 
-          {mode === "lineup" ? (
-            <>
-              <div className="field">
-                <label>Total Gathering Duration</label>
-                <div className="filter-pill-group">
-                  <button
-                    type="button"
-                    className={`filter-pill ${totalMinutes === 120 ? "active" : ""}`}
-                    onClick={() => setTotalMinutes(120)}
-                  >
-                    2 hours (120m)
-                  </button>
-                  <button
-                    type="button"
-                    className={`filter-pill ${totalMinutes === 180 ? "active" : ""}`}
-                    onClick={() => setTotalMinutes(180)}
-                  >
-                    3 hours (180m)
-                  </button>
-                  <button
-                    type="button"
-                    className={`filter-pill ${totalMinutes === 240 ? "active" : ""}`}
-                    onClick={() => setTotalMinutes(240)}
-                  >
-                    4 hours (240m)
-                  </button>
-                  <button
-                    type="button"
-                    className={`filter-pill ${totalMinutes === 300 ? "active" : ""}`}
-                    onClick={() => setTotalMinutes(300)}
-                  >
-                    5 hours (300m)
-                  </button>
-                </div>
-              </div>
+          <div className="draw-card-form">
+            <div className="field">
+              <label htmlFor="headcount">Attendees Headcount</label>
+              <input
+                id="headcount"
+                type="number"
+                min={1}
+                max={100}
+                value={playerCount}
+                onChange={(e) => setPlayerCount(Number(e.target.value))}
+              />
+              <span className="field-hint">Defaults to attending RSVPs + guests</span>
+            </div>
 
-              <div className="field">
-                <label>
+            {mode === "lineup" ? (
+              <>
+                <div className="field">
+                  <label>Total Gathering Duration</label>
+                  <div className="filter-pill-group">
+                    <button
+                      type="button"
+                      className={`filter-pill ${totalMinutes === 120 ? "active" : ""}`}
+                      onClick={() => setTotalMinutes(120)}
+                    >
+                      2 hours (120m)
+                    </button>
+                    <button
+                      type="button"
+                      className={`filter-pill ${totalMinutes === 180 ? "active" : ""}`}
+                      onClick={() => setTotalMinutes(180)}
+                    >
+                      3 hours (180m)
+                    </button>
+                    <button
+                      type="button"
+                      className={`filter-pill ${totalMinutes === 240 ? "active" : ""}`}
+                      onClick={() => setTotalMinutes(240)}
+                    >
+                      4 hours (240m)
+                    </button>
+                    <button
+                      type="button"
+                      className={`filter-pill ${totalMinutes === 300 ? "active" : ""}`}
+                      onClick={() => setTotalMinutes(300)}
+                    >
+                      5 hours (300m)
+                    </button>
+                  </div>
+                </div>
+
+                <label className="field-checkbox">
                   <input
                     type="checkbox"
                     checked={allowHeavy}
                     onChange={(e) => setAllowHeavy(e.target.checked)}
                   />
-                  {" "}Allow a Heavy game (Weight &gt; 3.2 · Anti-fatigue rule limits to max 1)
+                  <span>Allow a Heavy game (Weight &gt; 3.2 · Anti-fatigue rule limits to max 1)</span>
                 </label>
-              </div>
 
-              <button
-                type="button"
-                className="button button-large"
-                disabled={picking || playerCount <= 0}
-                onClick={() => void handlePlanLineup(false)}
-              >
-                {picking ? "Composing Lineup…" : "✨ Plan Evening Session Menu"}
-              </button>
-            </>
-          ) : (
+                <button
+                  type="button"
+                  className="button button-large"
+                  disabled={picking || playerCount <= 0}
+                  onClick={() => void handlePlanLineup(false)}
+                >
+                  {picking ? "Composing Lineup…" : "✨ Plan Evening Session Menu"}
+                </button>
+              </>
+            ) : (
             <>
               <div className="field">
                 <label>Maximum Playing Time</label>
@@ -577,6 +578,7 @@ export function EventClient() {
           )}
 
           {error && <p className="form-error" role="alert">{error}</p>}
+          </div>
         </section>
 
         {/* Results Section */}
@@ -600,17 +602,25 @@ export function EventClient() {
               <div>
                 <span className="draw-result-intro">
                   ✨ Tonight&apos;s Lineup · Estimated {lineupResult.totalEstimatedMinutes} min of {lineupResult.targetMinutes} min planned
+                  {lineupResult.transitionMinutes ? ` (${lineupResult.transitionMinutes}m buffer included)` : ""}
                 </span>
                 <h2>Game Night Menu</h2>
 
                 <div className="lineup-slots">
-                  {lineupResult.lineup.map((slot) => (
-                    <div key={slot.game.bggId} className="lineup-slot-card panel">
-                      <div className="lineup-slot-header">
-                        <span className="slot-role-badge">{slot.label}</span>
-                        <span className="slot-time-badge">⏱️ ~{slot.estimatedMinutes} min</span>
+                  {lineupResult.lineup.map((slot, idx) => (
+                    <div key={slot.game.bggId} style={{ display: "contents" }}>
+                      {idx > 0 && (
+                        <div className="lineup-buffer-pill">
+                          {slot.transitionReason ?? `☕ ${slot.transitionBeforeMinutes ?? 15}m Intermission & Setup buffer`}
+                        </div>
+                      )}
+                      <div className="lineup-slot-card panel">
+                        <div className="lineup-slot-header">
+                          <span className="slot-role-badge">{slot.label}</span>
+                          <span className="slot-time-badge">⏱️ ~{slot.estimatedMinutes} min</span>
+                        </div>
+                        <GameCard game={slot.game} owners={slot.game.owners} />
                       </div>
-                      <GameCard game={slot.game} owners={slot.game.owners} />
                     </div>
                   ))}
                 </div>
