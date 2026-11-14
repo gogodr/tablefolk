@@ -74,6 +74,21 @@ describe("game night picker", () => {
     expect(eligibleGameIds(gamesAndExpansions, 6)).toEqual([2655]);
   });
 
+  it("allows expansions marked as isStandalone to be drawn independently", () => {
+    const standaloneExpansion = [
+      {
+        bggId: 8888,
+        kind: "boardgameexpansion" as const,
+        baseGameBggId: 7777,
+        minPlayers: 2,
+        maxPlayers: 4,
+        isStandalone: true,
+      },
+    ];
+
+    expect(eligibleGameIds(standaloneExpansion, 4)).toEqual([8888]);
+  });
+
   it("excludes games with unknown or incompatible player counts", () => {
     expect(eligibleGameIds(games, 7)).toEqual([]);
     expect(eligibleGameIds([{ bggId: 1, minPlayers: 5, maxPlayers: 2 }], 3)).toEqual([]);

@@ -53,6 +53,7 @@ export async function collectionRoutes(app: FastifyInstance) {
           unavailableReason: item.unavailableReason,
           versionName: item.versionName,
           maxPlayersOverride: item.maxPlayersOverride,
+          isStandalone: item.isStandalone,
           effectiveMaxPlayers,
           expansionCount: ownedExpansions.length,
           expansions: ownedExpansions,
@@ -138,6 +139,7 @@ export async function collectionRoutes(app: FastifyInstance) {
         unavailableReason: body.isAvailable ? null : (body.unavailableReason ?? item.unavailableReason),
         versionName: body.versionName !== undefined ? body.versionName : item.versionName,
         maxPlayersOverride: body.maxPlayersOverride !== undefined ? body.maxPlayersOverride : item.maxPlayersOverride,
+        isStandalone: body.isStandalone !== undefined ? body.isStandalone : item.isStandalone,
       },
       include: { game: true, shares: { select: { groupId: true } } },
     });
@@ -150,6 +152,7 @@ export async function collectionRoutes(app: FastifyInstance) {
         unavailableReason: updated.unavailableReason,
         versionName: updated.versionName,
         maxPlayersOverride: updated.maxPlayersOverride,
+        isStandalone: updated.isStandalone,
       },
     };
   });

@@ -17,6 +17,7 @@ export const collectionAvailabilitySchema = z.object({
   unavailableReason: z.string().trim().max(100).nullable().optional(),
   versionName: z.string().trim().max(100).nullable().optional(),
   maxPlayersOverride: z.number().int().min(1).max(99).nullable().optional(),
+  isStandalone: z.boolean().optional(),
 });
 
 export const bggProfileSchema = z.object({
@@ -106,6 +107,7 @@ export interface CollectionGame extends Game {
   unavailableReason: string | null;
   versionName: string | null;
   maxPlayersOverride?: number | null;
+  isStandalone?: boolean | null;
   effectiveMaxPlayers?: number | null;
   expansionCount?: number;
   expansions?: { bggId: number; name: string; maxPlayers: number | null }[];
@@ -121,6 +123,7 @@ export interface GameOwner extends Member {
   versionName?: string | null;
   isAvailable?: boolean;
   unavailableReason?: string | null;
+  isStandalone?: boolean | null;
 }
 
 export interface GroupSummary {
@@ -138,6 +141,7 @@ export interface GroupGame extends Game {
   effectiveMaxPlayers?: number | null;
   expansionCount?: number;
   expansions?: { bggId: number; name: string; maxPlayers: number | null }[];
+  isStandalone?: boolean | null;
 }
 
 export interface GroupDetail extends GroupSummary {

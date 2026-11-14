@@ -14,6 +14,7 @@ export interface CandidateGame {
   effectiveMaxPlayers?: number | null;
   playingTime?: number | null;
   weight?: number | null;
+  isStandalone?: boolean | null;
 }
 
 export interface PickerFilters {
@@ -32,11 +33,11 @@ export function eligibleGameIds(
 
   return [...new Set(games
     .filter((game) => {
-      // Expansions cannot be drawn / picked independently as standalone games
-      if (
+      // Expansions cannot be drawn / picked independently UNLESS marked as standalone
+      const isExpansion =
         game.kind === "boardgameexpansion" ||
-        (game.baseGameBggId !== null && game.baseGameBggId !== undefined)
-      ) {
+        (game.baseGameBggId !== null && game.baseGameBggId !== undefined);
+      if (isExpansion && !game.isStandalone) {
         return false;
       }
 
@@ -170,9 +171,12 @@ export function planSessionLineup(
   } = options;
 
   // Filter games that support the playerCount (including expansion player counts)
-  // Expansions cannot be chosen as standalone games in the lineup
+  // Expansions cannot be chosen as standalone games in the lineup unless marked as isStandalone
   const eligible = availableGames.filter((g) => {
-    if (g.kind === "boardgameexpansion" || (g.baseGameBggId !== null && g.baseGameBggId !== undefined)) {
+    const isExpansion =
+      g.kind === "boardgameexpansion" ||
+      (g.baseGameBggId !== null && g.baseGameBggId !== undefined);
+    if (isExpansion && !g.isStandalone) {
       return false;
     }
     if (excludeBggIds.includes(g.bggId)) return false;

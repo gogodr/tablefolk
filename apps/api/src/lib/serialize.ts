@@ -33,6 +33,7 @@ export type ShareWithRelations = GroupShare & {
     isAvailable?: boolean;
     unavailableReason?: string | null;
     maxPlayersOverride?: number | null;
+    isStandalone?: boolean | null;
   } | null;
 };
 
@@ -70,8 +71,11 @@ export function groupGames(shares: ShareWithRelations[], options: GroupGameOptio
         userVotedPoints: options.userVotesMap?.get(share.bggId) ?? 0,
         expansions: attachedExpansions,
         expansionCount: attachedExpansions.length,
+        isStandalone: share.collection?.isStandalone ?? false,
       };
       byId.set(share.bggId, entry);
+    } else if (share.collection?.isStandalone) {
+      entry.isStandalone = true;
     }
     const owner: GameOwner = {
       userId: share.user.id,
@@ -80,6 +84,7 @@ export function groupGames(shares: ShareWithRelations[], options: GroupGameOptio
       versionName: share.collection?.versionName ?? null,
       isAvailable: share.collection?.isAvailable ?? true,
       unavailableReason: share.collection?.unavailableReason ?? null,
+      isStandalone: share.collection?.isStandalone ?? false,
     };
     entry.owners.push(owner);
   }

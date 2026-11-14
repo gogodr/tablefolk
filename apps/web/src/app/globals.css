@@ -954,6 +954,54 @@ body { font-size: var(--text-md); }
   font-weight: 600;
 }
 
+.game-kind.game-kind-standalone {
+  background: rgba(14, 165, 233, 0.12);
+  color: #0369a1;
+  border: 1px solid rgba(14, 165, 233, 0.25);
+}
+
+.game-attached-expansions-box {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(168, 85, 247, 0.05);
+  border: 1px dashed rgba(168, 85, 247, 0.25);
+  border-radius: var(--radius-sm, 6px);
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.attached-expansions-label {
+  display: block;
+}
+
+.attached-expansion-chip {
+  color: #7e22ce;
+  font-weight: 500;
+}
+
+.expansion-chip-bump {
+  font-size: 0.9em;
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.field.standalone-field {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--color-paper-2);
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border);
+}
+
+.field.standalone-field label {
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .owned-expansions-list {
   margin-top: 12px;
   padding: 10px 14px;

@@ -67,7 +67,11 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
               </span>
             )}
           </h3>
-          {game.kind === "boardgameexpansion" && <span className="game-kind">Expansion</span>}
+          {game.kind === "boardgameexpansion" && (
+            <span className={`game-kind ${"isStandalone" in game && game.isStandalone ? "game-kind-standalone" : ""}`}>
+              {"isStandalone" in game && game.isStandalone ? "Standalone Expansion" : "Expansion"}
+            </span>
+          )}
         </div>
         <p className="game-meta">
           <span className="meta-pill meta-players">{playerRange(game)}</span>
@@ -107,6 +111,23 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
                 + Add vote
               </button>
             )}
+          </div>
+        )}
+
+        {expansions && expansions.length > 0 && (
+          <div className="game-attached-expansions-box">
+            <span className="attached-expansions-label">
+              📦 <strong>Included Expansions ({expansions.length}):</strong>{" "}
+              {expansions.map((exp, i) => (
+                <span key={exp.bggId} className="attached-expansion-chip">
+                  {i > 0 && ", "}
+                  {cleanExpansionName(game.name, exp.name)}
+                  {exp.maxPlayers && exp.maxPlayers > (game.maxPlayers ?? 0) && (
+                    <span className="expansion-chip-bump"> (up to {exp.maxPlayers}p)</span>
+                  )}
+                </span>
+              ))}
+            </span>
           </div>
         )}
 
