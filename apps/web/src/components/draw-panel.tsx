@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { EventDetail, PickResult, SessionLineupResult } from "@tablefolk/contracts";
-import { GameCard } from "@/components/game-card";
+import { GameCard, cleanExpansionName } from "@/components/game-card";
 import { useApi } from "@/lib/api";
 
 type Mode = "lineup" | "single";
@@ -113,6 +113,7 @@ export function DrawPanel({ groupId }: { groupId: string }) {
             name: s.game.name,
             estimatedMinutes: s.estimatedMinutes,
             carrierDisplayName: s.game.owners[0]?.displayName ?? undefined,
+            expansions: s.game.expansions?.map((e) => ({ bggId: e.bggId, name: e.name })),
           })),
         }),
       });
@@ -132,10 +133,15 @@ export function DrawPanel({ groupId }: { groupId: string }) {
         lineupResult.transitionMinutes ? ` (includes ${lineupResult.transitionMinutes}m setup & breaks)` : ""
       }`,
       ``,
-      ...lineupResult.lineup.flatMap((s, idx) => [
-        ...(idx > 0 && s.transitionBeforeMinutes ? [`  ${s.transitionReason ?? `☕ ${s.transitionBeforeMinutes}m Setup buffer`}`] : []),
-        `• ${s.label}: *${s.game.name}* (~${s.estimatedMinutes} min)`,
-      ]),
+      ...lineupResult.lineup.flatMap((s, idx) => {
+        const expText = s.game.expansions && s.game.expansions.length > 0
+          ? ` (+ ${s.game.expansions.map((e) => cleanExpansionName(s.game.name, e.name)).join(", ")})`
+          : "";
+        return [
+          ...(idx > 0 && s.transitionBeforeMinutes ? [`  ${s.transitionReason ?? `☕ ${s.transitionBeforeMinutes}m Setup buffer`}`] : []),
+          `• ${s.label}: *${s.game.name}*${expText} (~${s.estimatedMinutes} min)`,
+        ];
+      }),
     ];
     void navigator.clipboard.writeText(textLines.join("\n"));
     setCopied(true);
@@ -437,10 +443,17 @@ export function DrawPanel({ groupId }: { groupId: string }) {
               <span className="draw-result-intro">
                 Your game night pick · {singleResult.eligibleCount} {singleResult.eligibleCount === 1 ? "game fits" : "games fit"}
               </span>
-              <h2>Let&apos;s play {singleResult.game.name}.</h2>
+              <h2>
+                Let&apos;s play {singleResult.game.name}
+                {singleResult.game.expansions && singleResult.game.expansions.length > 0 && (
+                  <span className="draw-title-expansions">
+                    {" + "}{singleResult.game.expansions.map((e) => cleanExpansionName(singleResult.game.name, e.name)).join(", ")}
+                  </span>
+                )}
+                .
+              </h2>
               <GameCard game={singleResult.game} owners={singleResult.game.owners} />
               <p className="draw-hint">
-                {singleResult.game.kind === "boardgameexpansion" ? "This is an expansion and may need a base game. " : ""}
                 Check with a sharing member that they can bring it.
               </p>
               <div className="draw-actions">

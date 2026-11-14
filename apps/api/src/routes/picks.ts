@@ -37,28 +37,7 @@ export async function pickRoutes(app: FastifyInstance) {
       interestMap.set(interest.bggId, (interestMap.get(interest.bggId) ?? 0) + interest.points);
     }
 
-    // Map expansions to base games for extended player counts
-    const groupExpansions = new Map<number, number>();
-    for (const share of shares) {
-      if (share.game.baseGameBggId && share.game.maxPlayers) {
-        const current = groupExpansions.get(share.game.baseGameBggId) ?? 0;
-        groupExpansions.set(share.game.baseGameBggId, Math.max(current, share.game.maxPlayers));
-      }
-    }
-
-    const games = groupGames(shares, { interestMap }).map((g) => {
-      const matchingShares = shares.filter((s) => s.bggId === g.bggId);
-      const ownerOverride = matchingShares.reduce(
-        (max, s) => Math.max(max, s.collection?.maxPlayersOverride ?? 0),
-        0
-      );
-      const expansionMax = groupExpansions.get(g.bggId) ?? 0;
-      const effectiveMax = Math.max(g.maxPlayers ?? 0, ownerOverride, expansionMax);
-      return {
-        ...g,
-        effectiveMaxPlayers: effectiveMax > (g.maxPlayers ?? 0) ? effectiveMax : g.maxPlayers,
-      };
-    });
+    const games = groupGames(shares, { interestMap });
 
     const eligibleIds = eligibleGameIds(games, {
       playerCount,
@@ -67,15 +46,22 @@ export async function pickRoutes(app: FastifyInstance) {
     });
 
     if (eligibleIds.length === 0) {
-      const unknownPlayerCount = games.filter((game) => game.minPlayers === null || game.maxPlayers === null).length;
+      const unknownPlayerCount = games
+        .filter((g) => g.kind !== "boardgameexpansion" && !g.baseGameBggId)
+        .filter((game) => game.minPlayers === null || game.maxPlayers === null).length;
       audit("pick.no_match", { groupId, actorId: user.id, playerCount, unknownPlayerCount });
       return { status: "no_match", eligibleCount: 0, unknownPlayerCount };
     }
 
-    // Weights: Base weight 1 + interest points
+    // Weights: Base weight 1 + interest points (including from attached expansions)
     const weightsMap = new Map<number, number>();
-    for (const id of eligibleIds) {
-      weightsMap.set(id, 1 + (interestMap.get(id) ?? 0));
+    for (const g of games) {
+      const basePoints = interestMap.get(g.bggId) ?? 0;
+      const expansionPoints = (g.expansions ?? []).reduce(
+        (sum, exp) => sum + (interestMap.get(exp.bggId) ?? 0),
+        0
+      );
+      weightsMap.set(g.bggId, 1 + basePoints + expansionPoints);
     }
 
     const bggId = chooseWeightedGameId(eligibleIds, weightsMap, excludeBggId);
@@ -121,31 +107,16 @@ export async function pickRoutes(app: FastifyInstance) {
       interestMap.set(interest.bggId, (interestMap.get(interest.bggId) ?? 0) + interest.points);
     }
 
-    const groupExpansions = new Map<number, number>();
-    for (const share of shares) {
-      if (share.game.baseGameBggId && share.game.maxPlayers) {
-        const current = groupExpansions.get(share.game.baseGameBggId) ?? 0;
-        groupExpansions.set(share.game.baseGameBggId, Math.max(current, share.game.maxPlayers));
-      }
-    }
-
-    const availableGroupGames = groupGames(shares, { interestMap }).map((g) => {
-      const matchingShares = shares.filter((s) => s.bggId === g.bggId);
-      const ownerOverride = matchingShares.reduce(
-        (max, s) => Math.max(max, s.collection?.maxPlayersOverride ?? 0),
-        0
-      );
-      const expansionMax = groupExpansions.get(g.bggId) ?? 0;
-      const effectiveMax = Math.max(g.maxPlayers ?? 0, ownerOverride, expansionMax);
-      return {
-        ...g,
-        effectiveMaxPlayers: effectiveMax > (g.maxPlayers ?? 0) ? effectiveMax : g.maxPlayers,
-      };
-    });
+    const availableGroupGames = groupGames(shares, { interestMap });
 
     const weightsMap = new Map<number, number>();
     for (const g of availableGroupGames) {
-      weightsMap.set(g.bggId, 1 + (interestMap.get(g.bggId) ?? 0));
+      const basePoints = interestMap.get(g.bggId) ?? 0;
+      const expansionPoints = (g.expansions ?? []).reduce(
+        (sum, exp) => sum + (interestMap.get(exp.bggId) ?? 0),
+        0
+      );
+      weightsMap.set(g.bggId, 1 + basePoints + expansionPoints);
     }
 
     const result = planSessionLineup(availableGroupGames, {

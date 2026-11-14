@@ -32,6 +32,48 @@ describe("game night picker", () => {
     expect(eligibleGameIds(baseGameWithExpansion, 7)).toEqual([]);
   });
 
+  it("excludes standalone expansions from the pick pool while keeping the base game", () => {
+    const gamesAndExpansions = [
+      // Base game: Survive: Escape from Atlantis!
+      {
+        bggId: 2655,
+        kind: "boardgame" as const,
+        minPlayers: 2,
+        maxPlayers: 4,
+        effectiveMaxPlayers: 6,
+      },
+      // Expansion: Survive 5-6 Player Mini Expansion
+      {
+        bggId: 99991,
+        kind: "boardgameexpansion" as const,
+        baseGameBggId: 2655,
+        minPlayers: 2,
+        maxPlayers: 6,
+      },
+      // Base game: Rising Sun
+      {
+        bggId: 205896,
+        kind: "boardgame" as const,
+        minPlayers: 3,
+        maxPlayers: 5,
+      },
+      // Expansion: Rising Sun: Daimyo Box
+      {
+        bggId: 99992,
+        kind: "boardgameexpansion" as const,
+        baseGameBggId: 205896,
+        minPlayers: 3,
+        maxPlayers: 5,
+      },
+    ];
+
+    // For 5 players: Rising Sun and Survive (expanded) are eligible, but NEVER their expansions
+    expect(eligibleGameIds(gamesAndExpansions, 5)).toEqual([2655, 205896]);
+
+    // For 6 players: only Survive (expanded to 6) is eligible, neither expansion is in the pool
+    expect(eligibleGameIds(gamesAndExpansions, 6)).toEqual([2655]);
+  });
+
   it("excludes games with unknown or incompatible player counts", () => {
     expect(eligibleGameIds(games, 7)).toEqual([]);
     expect(eligibleGameIds([{ bggId: 1, minPlayers: 5, maxPlayers: 2 }], 3)).toEqual([]);
@@ -289,6 +331,65 @@ describe("game night picker", () => {
       expect(risingSunSlot!.transitionBeforeMinutes).toBe(30); // 30 min buffer for Rising Sun!
       expect(result.transitionMinutes).toBe(30);
       expect(result.totalEstimatedMinutes).toBe(20 + 30 + 120); // 170 min
+    });
+
+    it("never includes standalone expansions in the session lineup", () => {
+      const gamesWithExpansions: GroupGame[] = [
+        {
+          bggId: 301,
+          name: "Survive: Escape from Atlantis!",
+          kind: "boardgame",
+          minPlayers: 2,
+          maxPlayers: 4,
+          effectiveMaxPlayers: 6,
+          playingTime: 45,
+          minPlayingTime: 45,
+          maxPlayingTime: 45,
+          weight: 1.7,
+          yearPublished: 1982,
+          description: null,
+          minAge: 8,
+          coverUrl: null,
+          sourceUrl: "https://bgg.com/301",
+          designers: [],
+          publishers: [],
+          categories: [],
+          owners: [],
+          expansions: [{ bggId: 302, name: "Survive: 5-6 Player Mini Expansion", maxPlayers: 6 }],
+        },
+        {
+          bggId: 302,
+          name: "Survive: 5-6 Player Mini Expansion",
+          kind: "boardgameexpansion",
+          baseGameBggId: 301,
+          minPlayers: 2,
+          maxPlayers: 6,
+          playingTime: 45,
+          minPlayingTime: 45,
+          maxPlayingTime: 45,
+          weight: 1.7,
+          yearPublished: 2011,
+          description: null,
+          minAge: 8,
+          coverUrl: null,
+          sourceUrl: "https://bgg.com/302",
+          designers: [],
+          publishers: [],
+          categories: [],
+          owners: [],
+        },
+      ];
+
+      const result = planSessionLineup(gamesWithExpansions, {
+        playerCount: 6,
+        totalMinutes: 120,
+      });
+
+      expect(result.status).toBe("success");
+      // The base game 301 should be picked because of its effectiveMaxPlayers: 6
+      expect(result.lineup.some((s) => s.game.bggId === 301)).toBe(true);
+      // The expansion 302 must NEVER be chosen as a slot in the lineup
+      expect(result.lineup.some((s) => s.game.bggId === 302)).toBe(false);
     });
   });
 });

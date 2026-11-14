@@ -69,6 +69,10 @@ export const eventSetOfficialSchema = z.object({
     name: z.string(),
     estimatedMinutes: z.number().int().positive(),
     carrierDisplayName: z.string().optional(),
+    expansions: z.array(z.object({
+      bggId: z.number().int().positive(),
+      name: z.string(),
+    })).optional(),
   })).optional(),
 });
 
@@ -131,6 +135,9 @@ export interface GroupGame extends Game {
   owners: GameOwner[];
   interestScore?: number;
   userVotedPoints?: number;
+  effectiveMaxPlayers?: number | null;
+  expansionCount?: number;
+  expansions?: { bggId: number; name: string; maxPlayers: number | null }[];
 }
 
 export interface GroupDetail extends GroupSummary {
@@ -194,6 +201,7 @@ export interface OfficialLineupItem {
   name: string;
   estimatedMinutes: number;
   carrierDisplayName?: string;
+  expansions?: { bggId: number; name: string }[];
 }
 
 export interface EventDetail {

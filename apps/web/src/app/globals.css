@@ -937,6 +937,21 @@ body { font-size: var(--text-md); }
   background: rgba(168, 85, 247, 0.08);
   border-color: rgba(168, 85, 247, 0.25);
   color: #7e22ce;
+  font-weight: 600;
+}
+
+.game-attached-expansions-tag {
+  display: inline;
+  font-size: 0.88em;
+  font-weight: 600;
+  color: #7e22ce;
+  letter-spacing: -0.01em;
+}
+
+.draw-title-expansions {
+  display: inline;
+  color: #7e22ce;
+  font-weight: 600;
 }
 
 .owned-expansions-list {

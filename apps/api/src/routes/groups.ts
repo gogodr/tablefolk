@@ -62,7 +62,7 @@ export async function groupRoutes(app: FastifyInstance) {
         include: {
           game: true,
           user: { select: { id: true, displayName: true, bggUsername: true } },
-          collection: { select: { versionName: true, isAvailable: true, unavailableReason: true } },
+          collection: { select: { versionName: true, isAvailable: true, unavailableReason: true, maxPlayersOverride: true } },
         },
       }),
       db().gameInterest.findMany({ where: { groupId } }),

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useCallback, useEffect, useState } from "react";
 import type { EventDetail, GroupDetail } from "@tablefolk/contracts";
+import { cleanExpansionName } from "@/components/game-card";
 import { useApi } from "@/lib/api";
 
 export function EventsClient() {
@@ -269,7 +270,14 @@ export function EventsClient() {
                         {event.officialLineup.map((s, idx) => (
                           <span key={s.bggId} className="official-lineup-item">
                             {idx > 0 && " → "}
-                            <strong>{s.name}</strong> ({s.label})
+                            <strong>
+                              {s.name}
+                              {s.expansions && s.expansions.length > 0 && (
+                                <span className="game-attached-expansions-tag">
+                                  {" + "}{s.expansions.map((e) => cleanExpansionName(s.name, e.name)).join(", ")}
+                                </span>
+                              )}
+                            </strong> ({s.label})
                             {s.carrierDisplayName && ` [🎒 ${s.carrierDisplayName}]`}
                           </span>
                         ))}
