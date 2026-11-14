@@ -1,12 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { EventDetail, PickResult, SessionLineupResult } from "@tablefolk/contracts";
+import type { EventDetail, GroupGame, PickResult, SessionLineupResult } from "@tablefolk/contracts";
 import { GameCard, cleanExpansionName } from "@/components/game-card";
 import { useApi } from "@/lib/api";
 
 type Mode = "lineup" | "single";
+
+interface GameOwnerSummary {
+  userId: string;
+  displayName: string;
+  count: number;
+}
 
 export function DrawPanel({ groupId }: { groupId: string }) {
   const api = useApi();
@@ -30,6 +36,41 @@ export function DrawPanel({ groupId }: { groupId: string }) {
   const [savingEvent, setSavingEvent] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
+  const [owners, setOwners] = useState<GameOwnerSummary[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    api<{ games: GroupGame[] }>(`/v1/groups/${groupId}/games`)
+      .then((data) => {
+        if (!isMounted) return;
+        const countMap = new Map<string, GameOwnerSummary>();
+        for (const game of data.games) {
+          for (const owner of game.owners) {
+            const current = countMap.get(owner.userId);
+            if (current) {
+              current.count += 1;
+            } else {
+              countMap.set(owner.userId, {
+                userId: owner.userId,
+                displayName: owner.displayName,
+                count: 1,
+              });
+            }
+          }
+        }
+        const list = [...countMap.values()]
+          .filter((o) => o.count >= 1)
+          .sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName));
+        setOwners(list);
+      })
+      .catch(() => {
+        // Non-critical owner summary
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [api, groupId]);
 
   async function handleSinglePick(reroll = false) {
     const count = Number(playerCount);
@@ -175,6 +216,22 @@ export function DrawPanel({ groupId }: { groupId: string }) {
           </button>
         </div>
       </div>
+
+      {owners.length > 0 && (
+        <div className="draw-owners-strip panel">
+          <div className="draw-owners-label">
+            <span className="draw-owners-icon">🎲</span>
+            <strong>Games contributed by:</strong>
+          </div>
+          <div className="draw-owners-chips">
+            {owners.map((owner) => (
+              <span key={owner.userId} className="draw-owner-chip">
+                {owner.displayName} <strong className="owner-chip-count">({owner.count})</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="draw-layout">
         <section className="draw-card">
