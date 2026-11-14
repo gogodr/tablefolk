@@ -30,6 +30,7 @@ export function DrawPanel({ groupId }: { groupId: string }) {
   // Lineup states
   const [totalMinutes, setTotalMinutes] = useState<number>(180);
   const [allowHeavy, setAllowHeavy] = useState<boolean>(true);
+  const [mechanicsAffinity, setMechanicsAffinity] = useState<number>(0);
   const [lineupResult, setLineupResult] = useState<SessionLineupResult | null>(null);
 
   const [busy, setBusy] = useState(false);
@@ -117,6 +118,7 @@ export function DrawPanel({ groupId }: { groupId: string }) {
           totalMinutes,
           allowHeavy,
           excludeBggIds,
+          mechanicsAffinity,
         }),
       });
       setLineupResult(data);
@@ -303,6 +305,39 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                   <span>Allow a Heavy game (Weight &gt; 3.2 · Anti-fatigue rule limits to max 1)</span>
                 </label>
 
+                <div className="field affinity-slider-field">
+                  <div className="affinity-slider-header">
+                    <label htmlFor="mechanics-affinity">
+                      Mechanics &amp; Style Affinity
+                    </label>
+                    <span className={`affinity-badge ${mechanicsAffinity > 0 ? "affinity-theme" : mechanicsAffinity < 0 ? "affinity-diverse" : "affinity-neutral"}`}>
+                      {mechanicsAffinity === 0 && "⚖️ Balanced (Neutral)"}
+                      {mechanicsAffinity > 0 && mechanicsAffinity <= 0.5 && "🎯 Similar mechanics"}
+                      {mechanicsAffinity > 0.5 && "🎯 Themed night"}
+                      {mechanicsAffinity < 0 && mechanicsAffinity >= -0.5 && "🌈 Diverse mechanics"}
+                      {mechanicsAffinity < -0.5 && "🌈 Maximum variety"}
+                    </span>
+                  </div>
+                  <div className="affinity-slider-control">
+                    <span className="slider-label slider-label-left">🌈 Variety</span>
+                    <input
+                      id="mechanics-affinity"
+                      type="range"
+                      min="-1"
+                      max="1"
+                      step="0.25"
+                      value={mechanicsAffinity}
+                      onChange={(e) => setMechanicsAffinity(parseFloat(e.target.value))}
+                    />
+                    <span className="slider-label slider-label-right">🎯 Themed</span>
+                  </div>
+                  <p className="field-hint">
+                    {mechanicsAffinity === 0 && "Neutral selection: balances by duration and standard complexity."}
+                    {mechanicsAffinity > 0 && "Favors secondary games that share mechanics with the main game (great for a themed night like social deduction or euros)."}
+                    {mechanicsAffinity < 0 && "Favors mechanics that contrast with the main game to refresh the table and avoid mental fatigue."}
+                  </p>
+                </div>
+
                 <button
                   type="button"
                   className="button button-large"
@@ -421,6 +456,11 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                   {lineupResult.transitionMinutes ? ` (${lineupResult.transitionMinutes}m buffer included)` : ""}
                 </span>
                 <h2>Game Night Menu</h2>
+                {lineupResult.themeNotice && (
+                  <div className="lineup-theme-notice">
+                    {lineupResult.themeNotice}
+                  </div>
+                )}
 
                 <div className="lineup-slots">
                   {lineupResult.lineup.map((slot, idx) => (
@@ -432,7 +472,14 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                       )}
                       <div className="lineup-slot-card panel">
                         <div className="lineup-slot-header">
-                          <span className="slot-role-badge">{slot.label}</span>
+                          <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                            <span className="slot-role-badge">{slot.label}</span>
+                            {slot.sharedMechanics && slot.sharedMechanics.length > 0 && (
+                              <span className="slot-shared-chip" title="Shared mechanics with main game">
+                                🔗 Shares: {slot.sharedMechanics.slice(0, 2).join(", ")}
+                              </span>
+                            )}
+                          </div>
                           <span className="slot-time-badge">⏱️ ~{slot.estimatedMinutes} min</span>
                         </div>
                         <GameCard game={slot.game} owners={slot.game.owners} />

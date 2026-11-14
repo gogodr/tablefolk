@@ -94,8 +94,10 @@ export async function collectionRoutes(app: FastifyInstance) {
             designers: details.designers,
             publishers: details.publishers,
             categories: details.categories,
+            mechanics: details.mechanics,
             coverUrl,
             sourceUrl: details.sourceUrl,
+            lastEnrichedAt: new Date(),
           },
         });
         if (cover) {
@@ -328,6 +330,8 @@ export async function collectionRoutes(app: FastifyInstance) {
               designers: details.designers.length ? details.designers : undefined,
               publishers: details.publishers.length ? details.publishers : undefined,
               categories: details.categories.length ? details.categories : undefined,
+              mechanics: details.mechanics.length ? details.mechanics : undefined,
+              lastEnrichedAt: new Date(),
             },
           });
         }
@@ -355,16 +359,28 @@ export async function collectionRoutes(app: FastifyInstance) {
       include: { game: true },
     });
 
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    // Priority 1: Games never enriched yet
+    // Priority 2: Games enriched >30 days ago that still lack weight or local cover
     const candidates = items
-      .filter(
-        (item) =>
-          item.game.weight === null ||
-          !item.game.coverUrl ||
-          !item.game.coverUrl.startsWith("/v1/covers/")
-      )
+      .filter((item) => {
+        if (!item.game.lastEnrichedAt) return true;
+        const missingData = item.game.weight === null || !item.game.coverUrl?.startsWith("/v1/covers/");
+        const isStale = (now - item.game.lastEnrichedAt.getTime()) > THIRTY_DAYS_MS;
+        return missingData && isStale;
+      })
+      .sort((a, b) => {
+        if (!a.game.lastEnrichedAt && b.game.lastEnrichedAt) return -1;
+        if (a.game.lastEnrichedAt && !b.game.lastEnrichedAt) return 1;
+        const aTime = a.game.lastEnrichedAt?.getTime() ?? 0;
+        const bTime = b.game.lastEnrichedAt?.getTime() ?? 0;
+        return aTime - bTime;
+      })
       .map((item) => item.bggId);
 
-    const batch = candidates.slice(0, 15);
+    const batch = candidates.slice(0, 30);
     let enrichedCount = 0;
 
     if (batch.length > 0) {
@@ -413,9 +429,22 @@ export async function collectionRoutes(app: FastifyInstance) {
             designers: details.designers.length ? details.designers : undefined,
             publishers: details.publishers.length ? details.publishers : undefined,
             categories: details.categories.length ? details.categories : undefined,
+            mechanics: details.mechanics.length ? details.mechanics : undefined,
+            lastEnrichedAt: new Date(),
           },
         });
         enrichedCount++;
+      }
+
+      // Ensure any IDs in the batch that BGG didn't return also get stamped with lastEnrichedAt
+      // so they don't block subsequent batches forever.
+      const returnedIds = new Set(enrichedDetails.keys());
+      const missingIds = batch.filter((id) => !returnedIds.has(id));
+      if (missingIds.length > 0) {
+        await db().game.updateMany({
+          where: { bggId: { in: missingIds } },
+          data: { lastEnrichedAt: new Date() },
+        });
       }
     }
 

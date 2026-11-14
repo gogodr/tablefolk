@@ -541,6 +541,7 @@ export async function eventRoutes(app: FastifyInstance) {
       allowHeavy: body.allowHeavy,
       weightsMap,
       excludeBggIds: body.excludeBggIds,
+      mechanicsAffinity: body.mechanicsAffinity,
     });
 
     return result;

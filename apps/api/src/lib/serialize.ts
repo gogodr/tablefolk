@@ -22,6 +22,7 @@ export function gameDto(game: DbGame): Game {
     designers: game.designers,
     publishers: game.publishers,
     categories: game.categories,
+    mechanics: game.mechanics,
   };
 }
 
