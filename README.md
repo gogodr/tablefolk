@@ -77,6 +77,7 @@ To prevent unbalanced sessions (e.g., an intense 60-minute cooperative game bein
 > - **🍕 Warm-up:** Strictly capped at $\le 35$ min and weight $\le 2.2$ (Light). It must always be shorter and lighter than the Main Game ($duration \le mainDuration$ and $weight \le mainWeight$).
 > - **☕ Cooldown:** Capped at $\le 45$ min. If the Main Game was Heavy ($weight > 3.2$), the Cooldown is strictly restricted to light games ($weight \le 2.0$) to prevent brain burn.
 > - **🛡️ Anti-Fatigue Limit:** Never more than **1 Heavy game** per session, and a maximum of **3 games** total per gathering.
+> - **📦 Expansion Bundling & Exclusion:** Standalone expansions (e.g. *Rising Sun: Daimyo Box*, *Survive 5-6 Player Mini Expansion*) are excluded as independent picks. Instead, they dynamically boost the base game's player count and are bundled together in the draw and session menu (e.g., `Rising Sun + Daimyo Box`).
 
 ---
 

@@ -18,6 +18,7 @@ export function GroupClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [votingBggId, setVotingBggId] = useState<number | null>(null);
+  const [filterKind, setFilterKind] = useState<"base" | "all" | "expansions">("base");
 
   const load = useCallback(async () => {
     try {
@@ -120,8 +121,35 @@ export function GroupClient() {
       )}
 
       <div className="section-title">
-        <h2>Shared games</h2>
-        <p>One entry per game, all sharing members and editions shown</p>
+        <div>
+          <h2>Shared games</h2>
+          <p>One entry per game, all sharing members and editions shown</p>
+        </div>
+        <div className="filter-chips">
+          <button
+            type="button"
+            className={`filter-chip ${filterKind === "base" ? "active" : ""}`}
+            onClick={() => setFilterKind("base")}
+          >
+            Base Games ({games.filter((g) => g.kind !== "boardgameexpansion" || g.isStandalone).length})
+          </button>
+          <button
+            type="button"
+            className={`filter-chip ${filterKind === "all" ? "active" : ""}`}
+            onClick={() => setFilterKind("all")}
+          >
+            All Items ({games.length})
+          </button>
+          {games.some((g) => g.kind === "boardgameexpansion") && (
+            <button
+              type="button"
+              className={`filter-chip ${filterKind === "expansions" ? "active" : ""}`}
+              onClick={() => setFilterKind("expansions")}
+            >
+              Expansions Only ({games.filter((g) => g.kind === "boardgameexpansion").length})
+            </button>
+          )}
+        </div>
       </div>
 
       {games.length === 0 ? (
@@ -135,7 +163,13 @@ export function GroupClient() {
         </div>
       ) : (
         <div className="game-grid">
-          {games.map((game) => (
+          {games
+            .filter((game) => {
+              if (filterKind === "base") return game.kind !== "boardgameexpansion" || game.isStandalone;
+              if (filterKind === "expansions") return game.kind === "boardgameexpansion";
+              return true;
+            })
+            .map((game) => (
             <GameCard
               key={game.bggId}
               game={game}

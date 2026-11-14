@@ -1,4 +1,4 @@
-import type { GroupGame, SessionGameSlot, SessionLineupResult } from "@tablefolk/contracts";
+import type { GameKind, GroupGame, SessionGameSlot, SessionLineupResult } from "@tablefolk/contracts";
 
 export function pickIndex(count: number, random = Math.random): number {
   if (!Number.isInteger(count) || count < 1) throw new Error("count must be positive");
@@ -7,11 +7,14 @@ export function pickIndex(count: number, random = Math.random): number {
 
 export interface CandidateGame {
   bggId: number;
+  kind?: GameKind;
+  baseGameBggId?: number | null;
   minPlayers: number | null;
   maxPlayers: number | null;
   effectiveMaxPlayers?: number | null;
   playingTime?: number | null;
   weight?: number | null;
+  isStandalone?: boolean | null;
 }
 
 export interface PickerFilters {
@@ -30,6 +33,14 @@ export function eligibleGameIds(
 
   return [...new Set(games
     .filter((game) => {
+      // Expansions cannot be drawn / picked independently UNLESS marked as standalone
+      const isExpansion =
+        game.kind === "boardgameexpansion" ||
+        (game.baseGameBggId !== null && game.baseGameBggId !== undefined);
+      if (isExpansion && !game.isStandalone) {
+        return false;
+      }
+
       // Player count filter (taking into account effective max players from expansions)
       const effectiveMax = game.effectiveMaxPlayers ?? game.maxPlayers;
       if (
@@ -160,9 +171,16 @@ export function planSessionLineup(
   } = options;
 
   // Filter games that support the playerCount (including expansion player counts)
+  // Expansions cannot be chosen as standalone games in the lineup unless marked as isStandalone
   const eligible = availableGames.filter((g) => {
+    const isExpansion =
+      g.kind === "boardgameexpansion" ||
+      (g.baseGameBggId !== null && g.baseGameBggId !== undefined);
+    if (isExpansion && !g.isStandalone) {
+      return false;
+    }
     if (excludeBggIds.includes(g.bggId)) return false;
-    const effectiveMax = (g as { effectiveMaxPlayers?: number | null }).effectiveMaxPlayers ?? g.maxPlayers;
+    const effectiveMax = g.effectiveMaxPlayers ?? g.maxPlayers;
     if (g.minPlayers === null || effectiveMax === null) return false;
     return playerCount >= g.minPlayers && playerCount <= effectiveMax;
   });

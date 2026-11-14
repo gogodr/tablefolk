@@ -1,7 +1,14 @@
-import type { Game, CollectionGame, GameOwner, Member } from "@tablefolk/contracts";
+import type { Game, CollectionGame, GroupGame, GameOwner, Member } from "@tablefolk/contracts";
 import { gameCoverSrc } from "@/lib/assets";
 
-export function playerRange(game: Game | CollectionGame): string {
+export function cleanExpansionName(baseGameName: string, expansionName: string): string {
+  const escaped = baseGameName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`^${escaped}[:\\s–—-]+`, "i");
+  const cleaned = expansionName.replace(regex, "").trim();
+  return cleaned || expansionName;
+}
+
+export function playerRange(game: Game | CollectionGame | GroupGame): string {
   if (!game.minPlayers || !game.maxPlayers) return "Player count unknown";
   const effectiveMax = "effectiveMaxPlayers" in game && game.effectiveMaxPlayers
     ? game.effectiveMaxPlayers
@@ -25,7 +32,7 @@ export function weightLabel(weight: number | null): string | null {
 }
 
 interface GameCardProps {
-  game: Game | CollectionGame;
+  game: Game | CollectionGame | GroupGame;
   eagerCover?: boolean;
   owners?: (GameOwner | Member)[];
   actions?: React.ReactNode;
@@ -52,8 +59,19 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
       </div>
       <div className="game-card-body">
         <div className="game-card-heading">
-          <h3>{game.name}</h3>
-          {game.kind === "boardgameexpansion" && <span className="game-kind">Expansion</span>}
+          <h3>
+            {game.name}
+            {expansions && expansions.length > 0 && (
+              <span className="game-attached-expansions-tag" title={expansions.map((e) => e.name).join(", ")}>
+                {" + "}{expansions.map((e) => cleanExpansionName(game.name, e.name)).join(", ")}
+              </span>
+            )}
+          </h3>
+          {game.kind === "boardgameexpansion" && (
+            <span className={`game-kind ${"isStandalone" in game && game.isStandalone ? "game-kind-standalone" : ""}`}>
+              {"isStandalone" in game && game.isStandalone ? "Standalone Expansion" : "Expansion"}
+            </span>
+          )}
         </div>
         <p className="game-meta">
           <span className="meta-pill meta-players">{playerRange(game)}</span>
@@ -75,8 +93,11 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
           {versionName && <span className="meta-pill meta-version" title={`Edition: ${versionName}`}>{versionName}</span>}
           {game.baseGameTitle && <span className="meta-pill meta-basegame" title={`Expansion for ${game.baseGameTitle}`}>For {game.baseGameTitle}</span>}
           {expansions && expansions.length > 0 && (
-            <span className="meta-pill meta-expansions-badge" title={expansions.map((expansion) => `${expansion.name} (up to ${expansion.maxPlayers ?? "?"} players)`).join(", ")}>
-              {expansions.length} {expansions.length === 1 ? "expansion" : "expansions"}
+            <span
+              className="meta-pill meta-expansions-badge"
+              title={expansions.map((expansion) => `${expansion.name} (up to ${expansion.maxPlayers ?? "?"} players)`).join(", ")}
+            >
+              📦 {expansions.length === 1 && expansions[0] ? `+ ${cleanExpansionName(game.name, expansions[0].name)}` : `+ ${expansions.length} expansions`}
             </span>
           )}
           {!isAvailable && <span className="meta-pill meta-unavailable" title={unavailableReason || "Unavailable to travel"}>{unavailableReason || "Home only"}</span>}
@@ -90,6 +111,23 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
                 + Add vote
               </button>
             )}
+          </div>
+        )}
+
+        {expansions && expansions.length > 0 && (
+          <div className="game-attached-expansions-box">
+            <span className="attached-expansions-label">
+              📦 <strong>Included Expansions ({expansions.length}):</strong>{" "}
+              {expansions.map((exp, i) => (
+                <span key={exp.bggId} className="attached-expansion-chip">
+                  {i > 0 && ", "}
+                  {cleanExpansionName(game.name, exp.name)}
+                  {exp.maxPlayers && exp.maxPlayers > (game.maxPlayers ?? 0) && (
+                    <span className="expansion-chip-bump"> (up to {exp.maxPlayers}p)</span>
+                  )}
+                </span>
+              ))}
+            </span>
           </div>
         )}
 

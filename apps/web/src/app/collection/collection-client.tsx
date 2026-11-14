@@ -111,12 +111,13 @@ export function CollectionClient() {
     isAvailable: boolean,
     unavailableReason?: string | null,
     versionName?: string | null,
-    maxPlayersOverride?: number | null
+    maxPlayersOverride?: number | null,
+    isStandalone?: boolean
   ) {
     try {
       await api(`/v1/collection/${bggId}`, {
         method: "PATCH",
-        body: JSON.stringify({ isAvailable, unavailableReason, versionName, maxPlayersOverride }),
+        body: JSON.stringify({ isAvailable, unavailableReason, versionName, maxPlayersOverride, isStandalone }),
       });
       await load();
     } catch (cause) {
@@ -636,10 +637,34 @@ export function CollectionClient() {
                         const value = event.target.value.trim();
                         const parsed = value ? Number(value) : null;
                         if (parsed !== null && (!Number.isInteger(parsed) || parsed < 1 || parsed > 99)) return;
-                        void updateAvailability(game.bggId, game.isAvailable, game.unavailableReason, game.versionName, parsed);
+                        void updateAvailability(game.bggId, game.isAvailable, game.unavailableReason, game.versionName, parsed, game.isStandalone ?? false);
                       }}
                     />
                   </div>
+                  {game.kind === "boardgameexpansion" && (
+                    <div className="field standalone-field">
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={game.isStandalone ?? false}
+                          onChange={(e) =>
+                            void updateAvailability(
+                              game.bggId,
+                              game.isAvailable,
+                              game.unavailableReason,
+                              game.versionName,
+                              game.maxPlayersOverride,
+                              e.target.checked
+                            )
+                          }
+                        />
+                        {" "}Playable Standalone (can be drawn on its own without base game)
+                      </label>
+                      <span className="field-hint">
+                        Check if this box is self-contained and playable independently (e.g. standalone sequel or 2-player core set).
+                      </span>
+                    </div>
+                  )}
                   {game.expansions && game.expansions.length > 0 && (
                     <div className="owned-expansions-list">
                       <strong className="owned-expansions-title">Owned expansions ({game.expansions.length})</strong>

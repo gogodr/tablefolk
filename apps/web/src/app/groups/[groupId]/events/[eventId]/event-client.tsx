@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useCallback, useEffect, useState } from "react";
 import type { EventDetail, PickResult, SessionLineupResult } from "@tablefolk/contracts";
-import { GameCard } from "@/components/game-card";
+import { GameCard, cleanExpansionName } from "@/components/game-card";
 import { useApi } from "@/lib/api";
 
 type Mode = "single" | "lineup";
@@ -148,6 +148,7 @@ export function EventClient() {
               name: s.game.name,
               estimatedMinutes: s.estimatedMinutes,
               carrierDisplayName: resolveCarrier(s.game.owners),
+              expansions: s.game.expansions?.map((e) => ({ bggId: e.bggId, name: e.name })),
             })),
           }),
         });
@@ -184,7 +185,10 @@ export function EventClient() {
     } else if (event.officialLineup && event.officialLineup.length > 0) {
       message += `✨ *Menú de Sesión Programado:*\n`;
       event.officialLineup.forEach((slot, i) => {
-        message += `${i + 1}️⃣ *${slot.name}* (${slot.label} · ~${slot.estimatedMinutes}m)`;
+        const expStr = slot.expansions && slot.expansions.length > 0
+          ? ` (+ ${slot.expansions.map((e) => cleanExpansionName(slot.name, e.name)).join(", ")})`
+          : "";
+        message += `${i + 1}️⃣ *${slot.name}*${expStr} (${slot.label} · ~${slot.estimatedMinutes}m)`;
         if (slot.carrierDisplayName) message += ` [Lo lleva: ${slot.carrierDisplayName}]`;
         message += `\n`;
       });
@@ -212,7 +216,10 @@ export function EventClient() {
       details += `Featured Game: ${event.officialPick.name}\n`;
       if (event.officialPickCarrier) details += `Brought by: ${event.officialPickCarrier}\n`;
     } else if (event.officialLineup && event.officialLineup.length > 0) {
-      details += `Session Lineup:\n` + event.officialLineup.map((s) => `- ${s.name} (${s.label})`).join("\n") + "\n";
+      details += `Session Lineup:\n` + event.officialLineup.map((s) => {
+        const expStr = s.expansions?.length ? ` (+ ${s.expansions.map((e) => cleanExpansionName(s.name, e.name)).join(", ")})` : "";
+        return `- ${s.name}${expStr} (${s.label})`;
+      }).join("\n") + "\n";
     }
     if (typeof window !== "undefined") details += `\nEvent Link: ${window.location.href}`;
 
@@ -228,7 +235,10 @@ export function EventClient() {
     let summaryGame = "";
     if (event.officialPick) summaryGame = `\\nFeatured Game: ${event.officialPick.name}`;
     else if (event.officialLineup && event.officialLineup.length > 0) {
-      summaryGame = `\\nLineup: ` + event.officialLineup.map((s) => s.name).join(", ");
+      summaryGame = `\\nLineup: ` + event.officialLineup.map((s) => {
+        const expStr = s.expansions?.length ? ` (+ ${s.expansions.map((e) => cleanExpansionName(s.name, e.name)).join(", ")})` : "";
+        return `${s.name}${expStr}`;
+      }).join(", ");
     }
 
     const icsData = [
@@ -405,7 +415,14 @@ export function EventClient() {
                       )}
                     </div>
                     <div className="lineup-slot-title-row">
-                      <h3>{slot.name}</h3>
+                      <h3>
+                        {slot.name}
+                        {slot.expansions && slot.expansions.length > 0 && (
+                          <span className="game-attached-expansions-tag">
+                            {" + "}{slot.expansions.map((e) => cleanExpansionName(slot.name, e.name)).join(", ")}
+                          </span>
+                        )}
+                      </h3>
                       <a
                         href={`https://www.youtube.com/results?search_query=how+to+play+${encodeURIComponent(slot.name)}+board+game`}
                         target="_blank"
@@ -674,7 +691,15 @@ export function EventClient() {
               <span className="draw-result-intro">
                 ✨ Tonight&apos;s Selection · {singleResult.eligibleCount} {singleResult.eligibleCount === 1 ? "game was eligible" : "games were eligible"}
               </span>
-              <h2>Let&apos;s play {singleResult.game.name}!</h2>
+              <h2>
+                Let&apos;s play {singleResult.game.name}
+                {singleResult.game.expansions && singleResult.game.expansions.length > 0 && (
+                  <span className="draw-title-expansions">
+                    {" + "}{singleResult.game.expansions.map((e) => cleanExpansionName(singleResult.game.name, e.name)).join(", ")}
+                  </span>
+                )}
+                !
+              </h2>
               <GameCard game={singleResult.game} owners={singleResult.game.owners} />
               <div className="draw-actions">
                 {isHostOrCreator && (
