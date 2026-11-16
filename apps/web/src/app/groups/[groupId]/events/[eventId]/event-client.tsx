@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef, useMemo } from "react";
 import type {
   EventDetail,
   EventMenuOption,
   EventMenuPoll,
+  GroupDetail,
   GroupGame,
+  Member,
   PickResult,
   SessionLineupResult,
   SessionMenuTrioResult,
@@ -42,6 +44,7 @@ export function EventClient() {
   // Session Lineup controls
   const [totalMinutes, setTotalMinutes] = useState<number>(180); // Default 3 hours
   const [allowHeavy, setAllowHeavy] = useState<boolean>(true);
+  const [themeCategory, setThemeCategory] = useState<string>("");
   const [lineupResult, setLineupResult] = useState<SessionLineupResult | null>(null);
 
   // 3-Menu Trio & Poll controls
@@ -49,26 +52,52 @@ export function EventClient() {
   const [planningTrio, setPlanningTrio] = useState(false);
   const [voting, setVoting] = useState(false);
 
-  // Close Event Modal & Actual Played Games
+  // Close Event Modal & Actual Played Games & Attendance
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [closingEvent, setClosingEvent] = useState(false);
   const [groupGamesList, setGroupGamesList] = useState<GroupGame[]>([]);
+  const [groupMembers, setGroupMembers] = useState<Member[]>([]);
   const [playedGameIds, setPlayedGameIds] = useState<number[]>([]);
+  const [attendedUserIds, setAttendedUserIds] = useState<string[]>([]);
   const [showOtherGames, setShowOtherGames] = useState(false);
   const closeDialogRef = useRef<HTMLDialogElement>(null);
 
+  // Edit Event Modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editScheduledDate, setEditScheduledDate] = useState("");
+  const [editHostUserId, setEditHostUserId] = useState("");
+  const [editLocation, setEditLocation] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editManualHeadcount, setEditManualHeadcount] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  const availableCategories = useMemo(() => {
+    return Array.from(
+      new Set(groupGamesList.flatMap((g) => g.categories ?? []))
+    ).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }, [groupGamesList]);
+
   const load = useCallback(async () => {
     try {
-      const data = await api<{ event: EventDetail }>(`/v1/events/${eventId}`);
-      setEvent(data.event);
-      setPlayerCount(data.event.totalHeadcount || 4);
+      const [eventRes, gamesRes, groupRes] = await Promise.all([
+        api<{ event: EventDetail }>(`/v1/events/${eventId}`),
+        api<{ games: GroupGame[] }>(`/v1/groups/${groupId}/games`).catch(() => ({ games: [] })),
+        api<{ group: GroupDetail }>(`/v1/groups/${groupId}`).catch(() => ({ group: null })),
+      ]);
+      setEvent(eventRes.event);
+      setGroupGamesList(gamesRes.games);
+      if (groupRes.group?.members) {
+        setGroupMembers(groupRes.group.members);
+      }
+      setPlayerCount(eventRes.event.totalHeadcount || 4);
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load this event.");
     } finally {
       setLoading(false);
     }
-  }, [api, eventId]);
+  }, [api, eventId, groupId]);
 
   useEffect(() => {
     if (isLoaded && isSignedIn) void load();
@@ -115,6 +144,7 @@ export function EventClient() {
           totalMinutes,
           allowHeavy,
           excludeBggIds,
+          themeCategory: themeCategory || undefined,
         }),
       });
       setLineupResult(data);
@@ -137,6 +167,7 @@ export function EventClient() {
           playerCount,
           totalMinutes,
           allowHeavy,
+          themeCategory: themeCategory || undefined,
         }),
       });
       setTrioResult(data);
@@ -238,6 +269,12 @@ export function EventClient() {
     }
     setPlayedGameIds(defaultIds);
 
+    // Initial attendees: everyone who currently RSVP'd ATTENDING
+    const initialAttendees = (event?.rsvps ?? [])
+      .filter((r) => r.status === "ATTENDING")
+      .map((r) => r.userId);
+    setAttendedUserIds(initialAttendees);
+
     try {
       const data = await api<{ games: GroupGame[] }>(`/v1/groups/${groupId}/games`);
       setGroupGamesList(data.games);
@@ -253,12 +290,21 @@ export function EventClient() {
     );
   }
 
+  function handleToggleAttendee(userId: string) {
+    setAttendedUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  }
+
   async function handleConfirmCloseEvent() {
     setClosingEvent(true);
     try {
       const res = await api<{ event: EventDetail }>(`/v1/events/${eventId}/close`, {
         method: "POST",
-        body: JSON.stringify({ playedBggIds: playedGameIds }),
+        body: JSON.stringify({
+          playedBggIds: playedGameIds,
+          attendedUserIds,
+        }),
       });
       setEvent(res.event);
       setShowCloseModal(false);
@@ -266,6 +312,46 @@ export function EventClient() {
       alert(cause instanceof Error ? cause.message : "Could not close event.");
     } finally {
       setClosingEvent(false);
+    }
+  }
+
+  function handleOpenEditModal() {
+    if (!event) return;
+    setEditTitle(event.title);
+    setEditScheduledDate(event.scheduledDate ? new Date(event.scheduledDate).toISOString().slice(0, 16) : "");
+    setEditHostUserId(event.hostUserId ?? "");
+    setEditLocation(event.location ?? "");
+    setEditDescription(event.description ?? "");
+    setEditManualHeadcount(
+      event.manualHeadcount !== null && event.manualHeadcount !== undefined
+        ? String(event.manualHeadcount)
+        : ""
+    );
+    setShowEditModal(true);
+  }
+
+  async function handleSaveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTitle.trim() || !editScheduledDate) return;
+    setSavingEdit(true);
+    try {
+      const res = await api<{ event: EventDetail }>(`/v1/events/${eventId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          scheduledDate: new Date(editScheduledDate).toISOString(),
+          hostUserId: editHostUserId || null,
+          location: editLocation.trim() || null,
+          description: editDescription.trim() || null,
+          manualHeadcount: editManualHeadcount ? Number(editManualHeadcount) : null,
+        }),
+      });
+      setEvent(res.event);
+      setShowEditModal(false);
+    } catch (cause) {
+      alert(cause instanceof Error ? cause.message : "Could not update event.");
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -431,7 +517,8 @@ export function EventClient() {
     URL.revokeObjectURL(url);
   }
 
-  const isHostOrCreator = !event?.hostUserId || event?.hostUserId === user?.id;
+  const canManage = event?.canManage ?? (!event?.hostUserId || event?.hostUserId === user?.id);
+  const isHostOrCreator = canManage;
 
   if (!isLoaded || loading) return <div className="page"><p className="loading">Entering Game Night room…</p></div>;
   if (!isSignedIn) {
@@ -479,7 +566,7 @@ export function EventClient() {
 
           {/* Event Quick Actions Bar: Share WhatsApp & Calendar */}
           <div className="event-quick-actions">
-            {isHostOrCreator && event?.status === "SCHEDULED" && (
+            {canManage && event?.status === "SCHEDULED" && (
               <button
                 type="button"
                 className="button-small"
@@ -489,13 +576,22 @@ export function EventClient() {
                 🏁 Finish & Record Played Games
               </button>
             )}
-            {isHostOrCreator && event?.status === "COMPLETED" && (
+            {canManage && event?.status === "COMPLETED" && (
               <button
                 type="button"
                 className="button-secondary button-small"
                 onClick={() => void handleOpenCloseEventModal()}
               >
-                ✏️ Edit Played Games
+                ✏️ Edit Played Games & Attendance
+              </button>
+            )}
+            {canManage && (
+              <button
+                type="button"
+                className="button-secondary button-small"
+                onClick={handleOpenEditModal}
+              >
+                ⚙️ Edit Event Details
               </button>
             )}
             <button
@@ -555,13 +651,13 @@ export function EventClient() {
                 Member want-to-play interest points have been consumed only for the games tabled below.
               </p>
             </div>
-            {isHostOrCreator && (
+            {canManage && (
               <button
                 type="button"
                 className="button-secondary button-small"
                 onClick={() => void handleOpenCloseEventModal()}
               >
-                ✏️ Edit Played Games
+                ✏️ Edit Played Games & Attendance
               </button>
             )}
           </div>
@@ -613,7 +709,7 @@ export function EventClient() {
               >
                 {copiedShare ? "✓ Copied Poll!" : "📋 Copy Poll for WhatsApp / Discord"}
               </button>
-              {isHostOrCreator && (
+              {canManage && (
                 <button
                   type="button"
                   className="button button-small"
@@ -697,7 +793,7 @@ export function EventClient() {
                     >
                       {myVote ? "✓ Your Vote" : "🗳️ Vote for This"}
                     </button>
-                    {isHostOrCreator && (
+                    {canManage && (
                       <button
                         type="button"
                         className="button-quiet button-small"
@@ -725,7 +821,7 @@ export function EventClient() {
               <h2>Tonight&apos;s Official Game Night Selection</h2>
               <p>The host has locked in this selection for the event.</p>
             </div>
-            {isHostOrCreator && (
+            {canManage && (
               <button
                 type="button"
                 className="button-quiet button-small"
@@ -867,6 +963,30 @@ export function EventClient() {
                   <span>Allow a Heavy game (Weight &gt; 3.2 · Anti-fatigue rule limits to max 1)</span>
                 </label>
 
+                {availableCategories.length > 0 && (
+                  <div className="field" style={{ marginTop: "14px" }}>
+                    <label htmlFor="event-theme-category">
+                      🎭 Night Theme &amp; Setting <span style={{ fontWeight: "normal", color: "var(--muted)" }}>(Optional)</span>
+                    </label>
+                    <select
+                      id="event-theme-category"
+                      className="select"
+                      value={themeCategory}
+                      onChange={(e) => setThemeCategory(e.target.value)}
+                    >
+                      <option value="">🎲 Open Collection (No specific theme)</option>
+                      {availableCategories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="field-hint" style={{ fontSize: "12px", color: "var(--muted)", margin: "4px 0 0" }}>
+                      Anchor the menu generation to a setting from attendee collections (e.g. Horror, Fantasy, Sci-Fi).
+                    </p>
+                  </div>
+                )}
+
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" }}>
                   <button
                     type="button"
@@ -981,7 +1101,7 @@ export function EventClient() {
                 </span>
                 <h2>Compare Tonight&apos;s 3 Menu Options</h2>
 
-                {isHostOrCreator && event?.menuPoll?.status !== "OPEN" && (
+                {canManage && event?.menuPoll?.status !== "OPEN" && (
                   <div style={{ margin: "14px 0", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
                     <button
                       type="button"
@@ -1085,7 +1205,7 @@ export function EventClient() {
                 </div>
 
                 <div className="draw-actions">
-                  {isHostOrCreator && (
+                  {canManage && (
                     <button
                       type="button"
                       className="button"
@@ -1144,7 +1264,7 @@ export function EventClient() {
               </h2>
               <GameCard game={singleResult.game} owners={singleResult.game.owners} />
               <div className="draw-actions">
-                {isHostOrCreator && (
+                {canManage && (
                   <button
                     type="button"
                     className="button"
@@ -1213,10 +1333,52 @@ export function EventClient() {
             </div>
 
             <p style={{ fontSize: "14px", color: "var(--muted)", margin: "10px 0 16px", lineHeight: "1.5" }}>
-              Select the games that were actually tabled tonight.
-              {" "}<strong>Member want-to-play wishlist points will only be consumed for games that were played</strong>.
-              Any planned title that didn&apos;t make it to table retains its votes intact for future events.
+              Verify who actually attended and which games were tabled tonight.
+              {" "}<strong>Wishlist interest points are only consumed for games played</strong>.
             </p>
+
+            {/* Who actually attended section */}
+            <div style={{ marginBottom: "20px", borderBottom: "1px solid var(--border)", paddingBottom: "16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "8px" }}>
+                <h4 style={{ margin: 0, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)" }}>
+                  👥 Who actually attended tonight?
+                </h4>
+                <span style={{ fontSize: "12px", color: "var(--muted)" }}>
+                  {attendedUserIds.length} {attendedUserIds.length === 1 ? "person confirmed" : "people confirmed"}
+                </span>
+              </div>
+              <p style={{ fontSize: "13px", color: "var(--muted)", margin: "0 0 10px" }}>
+                Check all members who attended. Their attendance will be saved in event records.
+              </p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "8px", maxHeight: "150px", overflowY: "auto" }}>
+                {groupMembers.map((m) => {
+                  const checked = attendedUserIds.includes(m.userId);
+                  return (
+                    <label
+                      key={m.userId}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "8px 10px",
+                        borderRadius: "6px",
+                        border: checked ? "1px solid #16a34a" : "1px solid var(--border)",
+                        background: checked ? "#f0fdf4" : "var(--color-paper, #f9fafb)",
+                        fontSize: "13px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => handleToggleAttendee(m.userId)}
+                      />
+                      <span style={{ fontWeight: checked ? 600 : 400 }}>{m.displayName}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* Planned games section */}
             <div style={{ marginBottom: "16px" }}>
@@ -1342,9 +1504,149 @@ export function EventClient() {
                 disabled={closingEvent}
                 onClick={() => void handleConfirmCloseEvent()}
               >
-                {closingEvent ? "Wrapping Up…" : `Confirm & Wrap Up (${playedGameIds.length} played)`}
+                {closingEvent ? "Wrapping Up…" : `Confirm & Wrap Up (${attendedUserIds.length} attended · ${playedGameIds.length} played)`}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Event Details Modal */}
+      {showEditModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "20px",
+          }}
+          onClick={() => setShowEditModal(false)}
+        >
+          <div
+            className="panel"
+            style={{
+              maxWidth: "540px",
+              width: "100%",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              background: "var(--color-card, #ffffff)",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              padding: "24px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+              <div>
+                <span className="eyebrow">⚙️ Manage Event</span>
+                <h2 style={{ margin: "4px 0" }}>Edit Event Details</h2>
+              </div>
+              <button
+                type="button"
+                className="button-quiet button-small"
+                onClick={() => setShowEditModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div className="field">
+                <label htmlFor="edit-event-title">Event Title</label>
+                <input
+                  id="edit-event-title"
+                  type="text"
+                  required
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                />
+              </div>
+
+              <div className="field">
+                <label htmlFor="edit-event-date">Date & Time</label>
+                <input
+                  id="edit-event-date"
+                  type="datetime-local"
+                  required
+                  value={editScheduledDate}
+                  onChange={(e) => setEditScheduledDate(e.target.value)}
+                />
+              </div>
+
+              <div className="field">
+                <label htmlFor="edit-event-host">Event Host</label>
+                <select
+                  id="edit-event-host"
+                  value={editHostUserId}
+                  onChange={(e) => setEditHostUserId(e.target.value)}
+                >
+                  <option value="">No specific host</option>
+                  {groupMembers.map((m) => (
+                    <option key={m.userId} value={m.userId}>
+                      {m.displayName}
+                    </option>
+                  ))}
+                </select>
+                <span className="field-hint">Host&apos;s home games are automatically eligible to play.</span>
+              </div>
+
+              <div className="field">
+                <label htmlFor="edit-event-location">Location / Venue</label>
+                <input
+                  id="edit-event-location"
+                  type="text"
+                  placeholder="e.g. Carlos's place, Board Game Cafe"
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                />
+              </div>
+
+              <div className="field">
+                <label htmlFor="edit-event-desc">Notes / Description (Optional)</label>
+                <input
+                  id="edit-event-desc"
+                  type="text"
+                  placeholder="e.g. Bring snacks, starting promptly at 7pm"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                />
+              </div>
+
+              <div className="field">
+                <label htmlFor="edit-event-headcount">Override Total Headcount (Optional)</label>
+                <input
+                  id="edit-event-headcount"
+                  type="number"
+                  min={1}
+                  placeholder="Leave blank to calculate from RSVPs"
+                  value={editManualHeadcount}
+                  onChange={(e) => setEditManualHeadcount(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "10px" }}>
+                <button
+                  type="button"
+                  className="button-secondary"
+                  disabled={savingEdit}
+                  onClick={() => setShowEditModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="button"
+                  disabled={savingEdit}
+                >
+                  {savingEdit ? "Saving…" : "Save Changes"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

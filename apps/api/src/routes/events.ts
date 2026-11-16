@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import {
   eventCreateSchema,
   eventUpdateSchema,
+  eventAttendanceSchema,
   eventRsvpSchema,
   eventPickSchema,
   sessionPlanSchema,
@@ -25,7 +26,7 @@ import { AppError, forbidden, notFound } from "../lib/errors.js";
 import { eligibleGameIds, chooseWeightedGameId, planSessionLineup, planSessionMenuTrio } from "../lib/picker.js";
 import { groupGames, gameDto } from "../lib/serialize.js";
 
-async function serializeEventDetail(e: any): Promise<EventDetail> {
+async function serializeEventDetail(e: any, currentUserId?: string): Promise<EventDetail> {
   const attendingRsvps = (e.rsvps ?? []).filter((r: any) => r.status === "ATTENDING");
   const totalHeadcount = e.manualHeadcount !== null && e.manualHeadcount !== undefined
     ? e.manualHeadcount
@@ -40,10 +41,19 @@ async function serializeEventDetail(e: any): Promise<EventDetail> {
     playedGames = games.map(gameDto);
   }
 
+  const isCreator = e.creatorId ? e.creatorId === currentUserId : true;
+  const isHost = e.hostUserId ? e.hostUserId === currentUserId : true;
+  const isGroupCreator = e.group?.creatorId ? e.group.creatorId === currentUserId : false;
+  const canManage = currentUserId ? (isCreator || isHost || isGroupCreator) : true;
+
   return {
     id: e.id,
     groupId: e.groupId,
     groupName: e.group?.name,
+    groupCreatorId: e.group?.creatorId,
+    creatorId: e.creatorId ?? null,
+    creatorDisplayName: e.creator?.displayName ?? null,
+    canManage,
     title: e.title,
     description: e.description,
     scheduledDate: e.scheduledDate instanceof Date ? e.scheduledDate.toISOString() : e.scheduledDate,
@@ -90,7 +100,8 @@ export async function eventRoutes(app: FastifyInstance) {
     const events = await db().event.findMany({
       where: { groupId: { in: groupIds } },
       include: {
-        group: { select: { id: true, name: true } },
+        group: { select: { id: true, name: true, creatorId: true } },
+        creator: { select: { id: true, displayName: true } },
         host: { select: { id: true, displayName: true } },
         officialPick: true,
         rsvps: {
@@ -100,7 +111,7 @@ export async function eventRoutes(app: FastifyInstance) {
       orderBy: { scheduledDate: "asc" },
     });
 
-    const serialized = await Promise.all(events.map(serializeEventDetail));
+    const serialized = await Promise.all(events.map((e) => serializeEventDetail(e, user.id)));
     return { events: serialized };
   });
 
@@ -117,7 +128,8 @@ export async function eventRoutes(app: FastifyInstance) {
     const events = await db().event.findMany({
       where: { groupId },
       include: {
-        group: { select: { id: true, name: true } },
+        group: { select: { id: true, name: true, creatorId: true } },
+        creator: { select: { id: true, displayName: true } },
         host: { select: { id: true, displayName: true } },
         officialPick: true,
         rsvps: {
@@ -127,7 +139,7 @@ export async function eventRoutes(app: FastifyInstance) {
       orderBy: { scheduledDate: "asc" },
     });
 
-    const serialized = await Promise.all(events.map(serializeEventDetail));
+    const serialized = await Promise.all(events.map((e) => serializeEventDetail(e, user.id)));
     return { events: serialized };
   });
 
@@ -146,6 +158,7 @@ export async function eventRoutes(app: FastifyInstance) {
     const event = await db().event.create({
       data: {
         groupId,
+        creatorId: user.id,
         title: body.title,
         description: body.description ?? null,
         scheduledDate: new Date(body.scheduledDate),
@@ -161,7 +174,10 @@ export async function eventRoutes(app: FastifyInstance) {
         },
       },
       include: {
+        group: { select: { id: true, name: true, creatorId: true } },
+        creator: { select: { id: true, displayName: true } },
         host: { select: { id: true, displayName: true } },
+        officialPick: true,
         rsvps: {
           include: { user: { select: { id: true, displayName: true, bggUsername: true } } },
         },
@@ -169,32 +185,7 @@ export async function eventRoutes(app: FastifyInstance) {
     });
 
     return reply.code(201).send({
-      event: {
-        id: event.id,
-        groupId: event.groupId,
-        title: event.title,
-        description: event.description,
-        scheduledDate: event.scheduledDate.toISOString(),
-        location: event.location,
-        hostUserId: event.hostUserId,
-        hostDisplayName: event.host?.displayName ?? null,
-        manualHeadcount: event.manualHeadcount,
-        totalHeadcount: 1,
-        status: event.status,
-        officialPickBggId: null,
-        officialPick: null,
-        officialPickCarrier: null,
-        officialLineup: null,
-        createdAt: event.createdAt.toISOString(),
-        rsvps: event.rsvps.map((r) => ({
-          userId: r.user.id,
-          displayName: r.user.displayName,
-          bggUsername: r.user.bggUsername,
-          status: r.status,
-          additionalGuests: r.additionalGuests,
-          updatedAt: r.updatedAt.toISOString(),
-        })),
-      },
+      event: await serializeEventDetail(event, user.id),
     });
   });
 
@@ -206,7 +197,8 @@ export async function eventRoutes(app: FastifyInstance) {
     const event = await db().event.findUnique({
       where: { id: eventId },
       include: {
-        group: { select: { id: true, name: true } },
+        group: { select: { id: true, name: true, creatorId: true } },
+        creator: { select: { id: true, displayName: true } },
         host: { select: { id: true, displayName: true } },
         officialPick: true,
         rsvps: {
@@ -221,7 +213,114 @@ export async function eventRoutes(app: FastifyInstance) {
     });
     if (!member) throw forbidden("You are not a member of this group.");
 
-    return { event: await serializeEventDetail(event) };
+    return { event: await serializeEventDetail(event, user.id) };
+  });
+
+  // Update event details (Host, Creator, or Group Creator)
+  app.patch("/v1/events/:eventId", async (request) => {
+    const user = await requireUser(request);
+    const { eventId } = request.params as { eventId: string };
+
+    const event = await db().event.findUnique({
+      where: { id: eventId },
+      include: { group: true },
+    });
+    if (!event) throw notFound("Event not found");
+
+    const member = await db().groupMember.findUnique({
+      where: { groupId_userId: { groupId: event.groupId, userId: user.id } },
+    });
+    if (!member) throw forbidden("You are not a member of this group.");
+
+    const isCreator = event.creatorId ? event.creatorId === user.id : true;
+    const isHost = event.hostUserId ? event.hostUserId === user.id : true;
+    const isGroupCreator = event.group.creatorId === user.id;
+    if (!isCreator && !isHost && !isGroupCreator) {
+      throw forbidden("Only the event creator, host, or group creator can edit this event.");
+    }
+
+    const body = eventUpdateSchema.parse(request.body);
+
+    const updated = await db().event.update({
+      where: { id: eventId },
+      data: {
+        ...(body.title !== undefined ? { title: body.title } : {}),
+        ...(body.description !== undefined ? { description: body.description ?? null } : {}),
+        ...(body.scheduledDate !== undefined ? { scheduledDate: new Date(body.scheduledDate) } : {}),
+        ...(body.location !== undefined ? { location: body.location ?? null } : {}),
+        ...(body.hostUserId !== undefined ? { hostUserId: body.hostUserId ?? null } : {}),
+        ...(body.creatorId !== undefined ? { creatorId: body.creatorId ?? null } : {}),
+        ...(body.manualHeadcount !== undefined ? { manualHeadcount: body.manualHeadcount ?? null } : {}),
+      },
+      include: {
+        group: { select: { id: true, name: true, creatorId: true } },
+        creator: { select: { id: true, displayName: true } },
+        host: { select: { id: true, displayName: true } },
+        officialPick: true,
+        rsvps: {
+          include: { user: { select: { id: true, displayName: true, bggUsername: true } } },
+        },
+      },
+    });
+
+    return { event: await serializeEventDetail(updated, user.id) };
+  });
+
+  // Manage attendance for group members (Host, Creator, or Group Creator)
+  app.put("/v1/events/:eventId/attendance", async (request) => {
+    const user = await requireUser(request);
+    const { eventId } = request.params as { eventId: string };
+
+    const event = await db().event.findUnique({
+      where: { id: eventId },
+      include: { group: true },
+    });
+    if (!event) throw notFound("Event not found");
+
+    const member = await db().groupMember.findUnique({
+      where: { groupId_userId: { groupId: event.groupId, userId: user.id } },
+    });
+    if (!member) throw forbidden("You are not a member of this group.");
+
+    const isCreator = event.creatorId ? event.creatorId === user.id : true;
+    const isHost = event.hostUserId ? event.hostUserId === user.id : true;
+    const isGroupCreator = event.group.creatorId === user.id;
+    if (!isCreator && !isHost && !isGroupCreator) {
+      throw forbidden("Only the event creator, host, or group creator can manage attendance.");
+    }
+
+    const body = eventAttendanceSchema.parse(request.body);
+
+    for (const rsvp of body.rsvps) {
+      await db().eventRsvp.upsert({
+        where: { eventId_userId: { eventId, userId: rsvp.userId } },
+        create: {
+          eventId,
+          userId: rsvp.userId,
+          status: rsvp.status,
+          additionalGuests: rsvp.additionalGuests,
+        },
+        update: {
+          status: rsvp.status,
+          additionalGuests: rsvp.additionalGuests,
+        },
+      });
+    }
+
+    const updated = await db().event.findUnique({
+      where: { id: eventId },
+      include: {
+        group: { select: { id: true, name: true, creatorId: true } },
+        creator: { select: { id: true, displayName: true } },
+        host: { select: { id: true, displayName: true } },
+        officialPick: true,
+        rsvps: {
+          include: { user: { select: { id: true, displayName: true, bggUsername: true } } },
+        },
+      },
+    });
+
+    return { event: await serializeEventDetail(updated!, user.id) };
   });
 
   // RSVP to an event
@@ -272,11 +371,12 @@ export async function eventRoutes(app: FastifyInstance) {
     });
     if (!member) throw forbidden("You are not a member of this group.");
 
-    // Host of the event or group creator can set official picks
+    // Host of the event, creator, or group creator can set official picks
+    const isCreator = event.creatorId ? event.creatorId === user.id : true;
     const isHost = event.hostUserId ? event.hostUserId === user.id : true;
     const isGroupCreator = event.group.creatorId === user.id;
-    if (!isHost && !isGroupCreator) {
-      throw forbidden("Only the event host or group creator can announce the official selection.");
+    if (!isCreator && !isHost && !isGroupCreator) {
+      throw forbidden("Only the event creator, host, or group creator can announce the official selection.");
     }
 
     const body = eventSetOfficialSchema.parse(request.body);
@@ -563,6 +663,7 @@ export async function eventRoutes(app: FastifyInstance) {
       weightsMap,
       excludeBggIds: body.excludeBggIds,
       mechanicsAffinity: body.mechanicsAffinity,
+      themeCategory: body.themeCategory,
     });
 
     return result;
@@ -653,6 +754,7 @@ export async function eventRoutes(app: FastifyInstance) {
       weightsMap,
       excludeBggIds: body.excludeBggIds,
       mechanicsAffinity: body.mechanicsAffinity,
+      themeCategory: body.themeCategory,
     });
 
     return result;
@@ -764,7 +866,8 @@ export async function eventRoutes(app: FastifyInstance) {
         menuPoll: updatedPoll as unknown as Prisma.InputJsonValue,
       },
       include: {
-        group: { select: { id: true, name: true } },
+        group: { select: { id: true, name: true, creatorId: true } },
+        creator: { select: { id: true, displayName: true } },
         host: { select: { id: true, displayName: true } },
         officialPick: true,
         rsvps: {
@@ -773,7 +876,7 @@ export async function eventRoutes(app: FastifyInstance) {
       },
     });
 
-    return { event: await serializeEventDetail(updated) };
+    return { event: await serializeEventDetail(updated, user.id) };
   });
 
   // Close poll and lock winning menu as official lineup
@@ -787,10 +890,11 @@ export async function eventRoutes(app: FastifyInstance) {
     });
     if (!event) throw notFound("Event not found");
 
+    const isCreator = event.creatorId ? event.creatorId === user.id : true;
     const isHost = event.hostUserId ? event.hostUserId === user.id : true;
     const isGroupCreator = event.group.creatorId === user.id;
-    if (!isHost && !isGroupCreator) {
-      throw forbidden("Only the host or group creator can close voting.");
+    if (!isCreator && !isHost && !isGroupCreator) {
+      throw forbidden("Only the event creator, host, or group creator can close voting.");
     }
 
     const poll = event.menuPoll as unknown as EventMenuPoll | null;
@@ -840,7 +944,8 @@ export async function eventRoutes(app: FastifyInstance) {
         menuPoll: updatedPoll as unknown as Prisma.InputJsonValue,
       },
       include: {
-        group: { select: { id: true, name: true } },
+        group: { select: { id: true, name: true, creatorId: true } },
+        creator: { select: { id: true, displayName: true } },
         host: { select: { id: true, displayName: true } },
         officialPick: true,
         rsvps: {
@@ -849,10 +954,10 @@ export async function eventRoutes(app: FastifyInstance) {
       },
     });
 
-    return { event: await serializeEventDetail(updated) };
+    return { event: await serializeEventDetail(updated, user.id) };
   });
 
-  // Close event and confirm actual played games (decaying interest points ONLY for what was actually played)
+  // Close event and confirm actual played games and attendance
   app.post("/v1/events/:eventId/close", async (request) => {
     const user = await requireUser(request);
     const { eventId } = request.params as { eventId: string };
@@ -863,13 +968,45 @@ export async function eventRoutes(app: FastifyInstance) {
     });
     if (!event) throw notFound("Event not found");
 
+    const isCreator = event.creatorId ? event.creatorId === user.id : true;
     const isHost = event.hostUserId ? event.hostUserId === user.id : true;
     const isGroupCreator = event.group.creatorId === user.id;
-    if (!isHost && !isGroupCreator) {
-      throw forbidden("Only the event host or group creator can close the event.");
+    if (!isCreator && !isHost && !isGroupCreator) {
+      throw forbidden("Only the event creator, host, or group creator can close the event.");
     }
 
     const body = eventCloseSchema.parse(request.body);
+
+    // If attendedUserIds is passed, update who actually attended
+    if (body.attendedUserIds) {
+      const attendedSet = new Set(body.attendedUserIds);
+      for (const attendeeId of body.attendedUserIds) {
+        await db().eventRsvp.upsert({
+          where: { eventId_userId: { eventId, userId: attendeeId } },
+          create: {
+            eventId,
+            userId: attendeeId,
+            status: "ATTENDING",
+            additionalGuests: 0,
+          },
+          update: {
+            status: "ATTENDING",
+          },
+        });
+      }
+
+      const existingAttending = await db().eventRsvp.findMany({
+        where: { eventId, status: "ATTENDING" },
+      });
+      for (const prev of existingAttending) {
+        if (!attendedSet.has(prev.userId)) {
+          await db().eventRsvp.update({
+            where: { id: prev.id },
+            data: { status: "DECLINED" },
+          });
+        }
+      }
+    }
 
     const updated = await db().event.update({
       where: { id: eventId },
@@ -878,7 +1015,8 @@ export async function eventRoutes(app: FastifyInstance) {
         playedBggIds: body.playedBggIds,
       },
       include: {
-        group: { select: { id: true, name: true } },
+        group: { select: { id: true, name: true, creatorId: true } },
+        creator: { select: { id: true, displayName: true } },
         host: { select: { id: true, displayName: true } },
         officialPick: true,
         rsvps: {
@@ -897,6 +1035,6 @@ export async function eventRoutes(app: FastifyInstance) {
       });
     }
 
-    return { event: await serializeEventDetail(updated) };
+    return { event: await serializeEventDetail(updated, user.id) };
   });
 }

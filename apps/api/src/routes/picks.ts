@@ -126,6 +126,7 @@ export async function pickRoutes(app: FastifyInstance) {
       weightsMap,
       excludeBggIds: body.excludeBggIds ?? [],
       mechanicsAffinity: body.mechanicsAffinity,
+      themeCategory: body.themeCategory,
     });
 
     audit("group.lineup_planned", {
