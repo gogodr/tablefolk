@@ -25,6 +25,7 @@ import { db } from "../db.js";
 import { AppError, forbidden, notFound } from "../lib/errors.js";
 import { eligibleGameIds, chooseWeightedGameId, planSessionLineup, planSessionMenuTrio } from "../lib/picker.js";
 import { groupGames, gameDto } from "../lib/serialize.js";
+import { getBggGame } from "../services/bgg.js";
 
 async function serializeEventDetail(e: any, currentUserId?: string): Promise<EventDetail> {
   const attendingRsvps = (e.rsvps ?? []).filter((r: any) => r.status === "ATTENDING");
@@ -38,7 +39,8 @@ async function serializeEventDetail(e: any, currentUserId?: string): Promise<Eve
     const games = await db().game.findMany({
       where: { bggId: { in: playedBggIds } },
     });
-    playedGames = games.map(gameDto);
+    const gameMap = new Map(games.map((g) => [g.bggId, gameDto(g)]));
+    playedGames = playedBggIds.map((id) => gameMap.get(id)).filter(Boolean);
   }
 
   const isCreator = e.creatorId ? e.creatorId === currentUserId : true;
@@ -776,10 +778,11 @@ export async function eventRoutes(app: FastifyInstance) {
     });
     if (!member) throw forbidden("You are not a member of this group.");
 
+    const isCreator = event.creatorId ? event.creatorId === user.id : true;
     const isHost = event.hostUserId ? event.hostUserId === user.id : true;
     const isGroupCreator = event.group.creatorId === user.id;
-    if (!isHost && !isGroupCreator) {
-      throw forbidden("Only the host or group creator can open voting.");
+    if (!isCreator && !isHost && !isGroupCreator) {
+      throw forbidden("Only the event creator, host, or group creator can open voting.");
     }
 
     const body = request.body as { options: EventMenuOption[] };
@@ -803,7 +806,8 @@ export async function eventRoutes(app: FastifyInstance) {
         menuPoll: pollData as unknown as Prisma.InputJsonValue,
       },
       include: {
-        group: { select: { id: true, name: true } },
+        group: { select: { id: true, name: true, creatorId: true } },
+        creator: { select: { id: true, displayName: true } },
         host: { select: { id: true, displayName: true } },
         officialPick: true,
         rsvps: {
@@ -812,7 +816,7 @@ export async function eventRoutes(app: FastifyInstance) {
       },
     });
 
-    return { event: await serializeEventDetail(updated) };
+    return { event: await serializeEventDetail(updated, user.id) };
   });
 
   // Cast or change vote on a menu option
@@ -1004,6 +1008,77 @@ export async function eventRoutes(app: FastifyInstance) {
             where: { id: prev.id },
             data: { status: "DECLINED" },
           });
+        }
+      }
+    }
+
+    // Ensure all played games exist in DB even if added on the fly from BoardGameGeek
+    if (body.playedBggIds && body.playedBggIds.length > 0) {
+      const existing = await db().game.findMany({
+        where: { bggId: { in: body.playedBggIds } },
+        select: { bggId: true },
+      });
+      const existingSet = new Set(existing.map((g) => g.bggId));
+      const missing = body.playedBggIds.filter((id) => !existingSet.has(id));
+
+      for (const missingId of missing) {
+        try {
+          const details = await getBggGame(missingId);
+          await db().game.upsert({
+            where: { bggId: missingId },
+            update: {},
+            create: {
+              bggId: missingId,
+              kind: details.kind,
+              name: details.name,
+              alternateNames: details.alternateNames,
+              yearPublished: details.yearPublished,
+              description: details.description,
+              minPlayers: details.minPlayers,
+              maxPlayers: details.maxPlayers,
+              playingTime: details.playingTime,
+              minPlayingTime: details.minPlayingTime,
+              maxPlayingTime: details.maxPlayingTime,
+              weight: details.weight,
+              minAge: details.minAge,
+              designers: details.designers,
+              publishers: details.publishers,
+              categories: details.categories,
+              mechanics: details.mechanics,
+              sourceUrl: details.sourceUrl,
+              lastEnrichedAt: new Date(),
+            },
+          });
+        } catch {
+          try {
+            await db().game.upsert({
+              where: { bggId: missingId },
+              update: {},
+              create: {
+                bggId: missingId,
+                kind: "boardgame",
+                name: `Board Game #${missingId}`,
+                alternateNames: [],
+                yearPublished: null,
+                description: null,
+                minPlayers: 1,
+                maxPlayers: 10,
+                playingTime: null,
+                minPlayingTime: null,
+                maxPlayingTime: null,
+                weight: null,
+                minAge: null,
+                designers: [],
+                publishers: [],
+                categories: [],
+                mechanics: [],
+                sourceUrl: `https://boardgamegeek.com/boardgame/${missingId}`,
+                lastEnrichedAt: new Date(),
+              },
+            });
+          } catch {
+            // ignore
+          }
         }
       }
     }

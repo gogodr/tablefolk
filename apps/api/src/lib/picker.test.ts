@@ -852,5 +852,84 @@ describe("game night picker", () => {
       expect(weights?.weightsMap.get(spatialGame.bggId)).toBeGreaterThan(35);
       expect(weights?.weightsMap.get(nonSpatialGame.bggId)).toBeLessThan(1);
     });
+
+    it("allows casual and light games to pair with a short/light main game in a casual night", () => {
+      const scoobyDoo: GroupGame = {
+        bggId: 901,
+        kind: "boardgame",
+        name: "Scooby-Doo! The Board Game",
+        weight: 1.8,
+        playingTime: 30,
+        minPlayers: 1,
+        maxPlayers: 5,
+        yearPublished: 2022,
+        description: null,
+        minPlayingTime: 30,
+        maxPlayingTime: 30,
+        minAge: 10,
+        coverUrl: null,
+        categories: ["Adventure", "Horror"],
+        mechanics: ["Cooperative Game"],
+        designers: [],
+        publishers: [],
+        owners: [],
+      };
+
+      const sagrada: GroupGame = {
+        bggId: 902,
+        kind: "boardgame",
+        name: "Sagrada",
+        weight: 1.9,
+        playingTime: 45,
+        minPlayers: 1,
+        maxPlayers: 4,
+        yearPublished: 2017,
+        description: null,
+        minPlayingTime: 30,
+        maxPlayingTime: 45,
+        minAge: 14,
+        coverUrl: null,
+        categories: ["Dice", "Puzzle"],
+        mechanics: ["Dice Rolling", "Pattern Building"],
+        designers: [],
+        publishers: [],
+        owners: [],
+      };
+
+      const wombat: GroupGame = {
+        bggId: 903,
+        kind: "boardgame",
+        name: "Hand-to-Hand Wombat",
+        weight: 1.1,
+        playingTime: 15,
+        minPlayers: 3,
+        maxPlayers: 6,
+        yearPublished: 2022,
+        description: null,
+        minPlayingTime: 15,
+        maxPlayingTime: 15,
+        minAge: 7,
+        coverUrl: null,
+        categories: ["Party Game", "Bluffing"],
+        mechanics: ["Real-Time", "Traitor"],
+        designers: [],
+        publishers: [],
+        owners: [],
+      };
+
+      // In a 180 min gathering, if Scooby-Doo is main, Sagrada and Wombat can still pair
+      const result = planSessionLineup([scoobyDoo, sagrada, wombat], {
+        playerCount: 4,
+        totalMinutes: 180,
+      });
+
+      expect(result.status).toBe("success");
+      expect(result.lineup.length).toBe(3);
+      expect(result.totalEstimatedMinutes).toBeGreaterThanOrEqual(100);
+      const names = result.lineup.map((s) => s.game.name);
+      expect(names).toContain("Scooby-Doo! The Board Game");
+      expect(names).toContain("Sagrada");
+      expect(names).toContain("Hand-to-Hand Wombat");
+    });
   });
 });

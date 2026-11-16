@@ -33,6 +33,10 @@ const state = vi.hoisted(() => ({
   currentUser: { id: "user-ricardo", displayName: "Ricardo" },
   events: [] as MockEvent[],
   rsvps: [] as MockRsvp[],
+  games: [
+    { bggId: 42, name: "Catan", minPlayers: 3, maxPlayers: 4, minPlaytime: 60, maxPlaytime: 90, weight: 2.3, imageUrl: null },
+    { bggId: 13, name: "Ticket to Ride", minPlayers: 2, maxPlayers: 5, minPlaytime: 30, maxPlaytime: 60, weight: 1.8, imageUrl: null },
+  ] as any[],
   groupMembers: [
     { groupId: "group-1", userId: "user-ricardo" },
     { groupId: "group-1", userId: "user-gogo" },
@@ -42,6 +46,29 @@ const state = vi.hoisted(() => ({
 
 vi.mock("../auth.js", () => ({
   requireUser: async () => state.currentUser,
+}));
+
+vi.mock("../services/bgg.js", () => ({
+  getBggGame: async (bggId: number) => ({
+    bggId,
+    kind: "boardgame",
+    name: bggId === 999 ? "Terraforming Mars" : `BGG Game ${bggId}`,
+    alternateNames: [],
+    yearPublished: 2016,
+    description: "Mars colonization",
+    minPlayers: 1,
+    maxPlayers: 5,
+    playingTime: 120,
+    minPlayingTime: 90,
+    maxPlayingTime: 120,
+    weight: 3.25,
+    minAge: 12,
+    designers: ["Jacob Fryxelius"],
+    publishers: ["FryxGames"],
+    categories: ["Economic", "Sci-Fi"],
+    mechanics: ["Card Drafting", "Tile Placement"],
+    sourceUrl: `https://boardgamegeek.com/boardgame/${bggId}`,
+  }),
 }));
 
 vi.mock("../db.js", () => {
@@ -161,7 +188,23 @@ vi.mock("../db.js", () => {
       deleteMany: async () => ({ count: 0 }),
     },
     game: {
-      findMany: async () => [],
+      findMany: async ({ where }: any) => {
+        const all = [...state.games];
+        if (where?.bggId?.in) {
+          return all.filter((g) => where.bggId.in.includes(g.bggId));
+        }
+        return all;
+      },
+      upsert: async ({ where, create, update }: any) => {
+        let existing = state.games.find((g) => g.bggId === where.bggId);
+        if (!existing) {
+          existing = { ...create };
+          state.games.push(existing);
+        } else {
+          Object.assign(existing, update);
+        }
+        return existing;
+      },
     },
   };
   return { db: () => client };
@@ -215,17 +258,43 @@ describe("Events management & attendance", () => {
     expect(patchRes.statusCode).toBe(200);
     expect(patchRes.json().event.location).toBe("Ricardo's Living Room");
 
-    // Creator can close the event and record who actually attended
+    // Creator can open voting even if host is another user
+    const pollRes = await app.inject({
+      method: "POST",
+      url: `/v1/events/${body.event.id}/menu-poll/open`,
+      payload: {
+        options: [
+          {
+            id: "opt-1",
+            title: "Euro Night",
+            description: "Deep strategy",
+            styleBadge: "Euro Night",
+            totalEstimatedMinutes: 120,
+            lineup: [],
+          },
+        ],
+      },
+    });
+    expect(pollRes.statusCode).toBe(200);
+    expect(pollRes.json().event.menuPoll?.status).toBe("OPEN");
+    expect(pollRes.json().event.canManage).toBe(true);
+
+    // Creator can close the event and record who actually attended in exact sequence,
+    // including a game added directly from BGG (bggId 999) that wasn't previously in DB
     const closeRes = await app.inject({
       method: "POST",
       url: `/v1/events/${body.event.id}/close`,
       payload: {
-        playedBggIds: [13],
+        playedBggIds: [13, 999, 42],
         attendedUserIds: ["user-ricardo", "user-gogo"],
       },
     });
     expect(closeRes.statusCode).toBe(200);
     expect(closeRes.json().event.status).toBe("COMPLETED");
+    expect(closeRes.json().event.playedBggIds).toEqual([13, 999, 42]);
+    // Played games preserves the exact specified sequence [13, 999, 42] and enriches game 999 from BGG
+    expect(closeRes.json().event.playedGames.map((g: any) => g.bggId)).toEqual([13, 999, 42]);
+    expect(closeRes.json().event.playedGames[1].name).toBe("Terraforming Mars");
     expect(closeRes.json().event.rsvps).toHaveLength(2);
     expect(closeRes.json().event.rsvps.every((r: any) => r.status === "ATTENDING")).toBe(true);
   });
