@@ -8,7 +8,7 @@ import { cleanExpansionName } from "@/components/game-card";
 import { useApi } from "@/lib/api";
 
 type ViewMode = "calendar" | "list";
-type EventFilter = "all" | "attending" | "voting" | "completed";
+type EventFilter = "all" | "upcoming" | "attending" | "voting" | "completed";
 
 export function EventsCalendarClient() {
   const { isLoaded, isSignedIn } = useAuth();
@@ -61,6 +61,7 @@ export function EventsCalendarClient() {
   const filteredEvents = useMemo(() => {
     return events.filter((e) => {
       const myRsvp = e.rsvps.find((r) => r.userId === user?.id);
+      if (filter === "upcoming") return e.status !== "COMPLETED";
       if (filter === "attending") return myRsvp?.status === "ATTENDING";
       if (filter === "voting") return e.menuPoll?.status === "OPEN";
       if (filter === "completed") return e.status === "COMPLETED";
@@ -126,6 +127,174 @@ export function EventsCalendarClient() {
     return events.find((e) => e.id === selectedEventId) ?? null;
   }, [events, selectedEventId]);
 
+  function renderEventCard(event: EventDetail) {
+    const myRsvp = event.rsvps.find((r) => r.userId === user?.id);
+    const attendingList = event.rsvps.filter((r) => r.status === "ATTENDING");
+    const isCompleted = event.status === "COMPLETED";
+
+    return (
+      <article key={event.id} className="panel event-card">
+        <div className="event-card-header">
+          <div>
+            <span className="eyebrow">
+              {event.groupName && <strong style={{ color: "var(--accent, #d97706)" }}>{event.groupName} · </strong>}
+              {new Date(event.scheduledDate).toLocaleDateString(undefined, {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+            <h2>{event.title}</h2>
+            {event.location && <p className="event-location">📍 {event.location}</p>}
+            {event.hostDisplayName && (
+              <p className="event-host">🏠 Host: <strong>{event.hostDisplayName}</strong></p>
+            )}
+          </div>
+          <div
+            className="headcount-badge"
+            style={isCompleted ? { background: "#f0fdf4", color: "#166534", borderColor: "#bbf7d0" } : undefined}
+          >
+            {isCompleted ? (
+              <strong>🏁 Completed · {event.totalHeadcount} attended</strong>
+            ) : (
+              <><strong>{event.totalHeadcount}</strong> players attending</>
+            )}
+          </div>
+        </div>
+
+        {/* Voting Banner */}
+        {event.menuPoll?.status === "OPEN" && !isCompleted && (
+          <div style={{ background: "#fef3c7", border: "1px solid #fde68a", padding: "10px 14px", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>🗳️ <strong>Voting Open:</strong> Group is deciding between 3 curated game menus!</span>
+            <Link href={`/groups/${event.groupId}/events/${event.id}`} className="button-small">
+              Cast Vote
+            </Link>
+          </div>
+        )}
+
+        {/* Official Lineup / Pick */}
+        {(event.officialPick || (event.officialLineup && event.officialLineup.length > 0)) && !isCompleted && (
+          <div className="event-official-badge-card">
+            <span className="official-tag">🎲 Official Selection:</span>
+            {event.officialPick && (
+              <span className="official-game-name">
+                <strong>{event.officialPick.name}</strong>
+                {event.officialPickCarrier && ` · 🎒 ${event.officialPickCarrier}`}
+              </span>
+            )}
+            {event.officialLineup && event.officialLineup.length > 0 && (
+              <span className="official-lineup-names">
+                {event.officialLineup.map((s, idx) => (
+                  <span key={s.bggId} className="official-lineup-item">
+                    {idx > 0 && " → "}
+                    <strong>{s.name}</strong> ({s.label})
+                    {s.carrierDisplayName && ` [🎒 ${s.carrierDisplayName}]`}
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Completed status with actually played games */}
+        {isCompleted && (
+          <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "10px 14px", borderRadius: "8px", fontSize: "13px" }}>
+            <span style={{ fontWeight: 700, color: "#166534" }}>🏁 Event Completed</span>
+            {event.playedGames && event.playedGames.length > 0 ? (
+              <span> — Actually played: <strong>{event.playedGames.map((g) => g.name).join(", ")}</strong></span>
+            ) : (
+              <span> — Game night wrapped up.</span>
+            )}
+          </div>
+        )}
+
+        {event.description && <p className="event-description">{event.description}</p>}
+
+        {/* RSVP Controls - ONLY active for upcoming / scheduled events */}
+        {!isCompleted ? (
+          <div className="event-rsvp-bar">
+            <span className="rsvp-label">Your RSVP:</span>
+            <button
+              type="button"
+              className={`button-small ${myRsvp?.status === "ATTENDING" ? "button" : "button-secondary"}`}
+              onClick={() => void handleRsvp(event.id, "ATTENDING", myRsvp?.additionalGuests ?? 0)}
+            >
+              ✓ Attending
+            </button>
+            <button
+              type="button"
+              className={`button-small ${myRsvp?.status === "MAYBE" ? "button" : "button-secondary"}`}
+              onClick={() => void handleRsvp(event.id, "MAYBE", myRsvp?.additionalGuests ?? 0)}
+            >
+              ? Maybe
+            </button>
+            <button
+              type="button"
+              className={`button-small ${myRsvp?.status === "DECLINED" ? "button-danger" : "button-secondary"}`}
+              onClick={() => void handleRsvp(event.id, "DECLINED", 0)}
+            >
+              ✕ Can&apos;t go
+            </button>
+
+            {myRsvp?.status === "ATTENDING" && (
+              <div className="guests-stepper">
+                <span>+Guests:</span>
+                <button
+                  type="button"
+                  className="button-quiet button-small"
+                  disabled={myRsvp.additionalGuests <= 0}
+                  onClick={() => void handleRsvp(event.id, "ATTENDING", myRsvp.additionalGuests - 1)}
+                >
+                  -
+                </button>
+                <strong>{myRsvp.additionalGuests}</strong>
+                <button
+                  type="button"
+                  className="button-quiet button-small"
+                  onClick={() => void handleRsvp(event.id, "ATTENDING", myRsvp.additionalGuests + 1)}
+                >
+                  +
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="event-rsvp-bar" style={{ background: "transparent", padding: "4px 0", borderTop: "1px dashed var(--border)" }}>
+            <span style={{ fontSize: "13px", color: myRsvp?.status === "ATTENDING" ? "#166534" : "var(--muted)", fontWeight: myRsvp?.status === "ATTENDING" ? 600 : 400 }}>
+              {myRsvp?.status === "ATTENDING" ? "✓ You attended this session" : "You were marked as not attending"}
+            </span>
+          </div>
+        )}
+
+        {/* Attendees Summary */}
+        <div className="event-attendees">
+          <strong>{isCompleted ? "Confirmed Attendees:" : "Attendees:"}</strong>{" "}
+          {attendingList.length === 0
+            ? "Nobody confirmed yet."
+            : attendingList.map((r, i) => (
+                <span key={r.userId}>
+                  {i > 0 && ", "}
+                  {r.displayName}
+                  {r.additionalGuests > 0 && ` (+${r.additionalGuests})`}
+                </span>
+              ))}
+        </div>
+
+        <div className="event-card-actions">
+          <Link
+            href={`/groups/${event.groupId}/events/${event.id}`}
+            className={isCompleted ? "button-secondary" : "button"}
+          >
+            {isCompleted ? "View Game Night Summary →" : "Enter Game Night Room & Pick →"}
+          </Link>
+        </div>
+      </article>
+    );
+  }
+
   if (!isLoaded || loading) {
     return (
       <div className="page">
@@ -174,7 +343,7 @@ export function EventsCalendarClient() {
               className={`view-mode-btn ${viewMode === "list" ? "active" : ""}`}
               onClick={() => setViewMode("list")}
             >
-              📋 Upcoming List ({filteredEvents.length})
+              📋 List View ({filteredEvents.length})
             </button>
           </div>
 
@@ -194,6 +363,13 @@ export function EventsCalendarClient() {
           onClick={() => setFilter("all")}
         >
           All ({events.length})
+        </button>
+        <button
+          type="button"
+          className={`filter-chip ${filter === "upcoming" ? "filter-chip-active" : ""}`}
+          onClick={() => setFilter("upcoming")}
+        >
+          📅 Upcoming ({events.filter((e) => e.status !== "COMPLETED").length})
         </button>
         <button
           type="button"
@@ -383,158 +559,41 @@ export function EventsCalendarClient() {
         <div className="events-list">
           {filteredEvents.length === 0 ? (
             <p className="empty">No events match the selected filter.</p>
-          ) : (
-            filteredEvents.map((event) => {
-              const myRsvp = event.rsvps.find((r) => r.userId === user?.id);
-              const attendingList = event.rsvps.filter((r) => r.status === "ATTENDING");
+          ) : filter === "all" ? (
+            (() => {
+              const upcoming = filteredEvents.filter((e) => e.status !== "COMPLETED");
+              const completed = filteredEvents.filter((e) => e.status === "COMPLETED");
 
               return (
-                <article key={event.id} className="panel event-card">
-                  <div className="event-card-header">
-                    <div>
-                      <span className="eyebrow">
-                        {event.groupName && <strong style={{ color: "var(--accent, #d97706)" }}>{event.groupName} · </strong>}
-                        {new Date(event.scheduledDate).toLocaleDateString(undefined, {
-                          weekday: "long",
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                      <h2>{event.title}</h2>
-                      {event.location && <p className="event-location">📍 {event.location}</p>}
-                      {event.hostDisplayName && (
-                        <p className="event-host">🏠 Host: <strong>{event.hostDisplayName}</strong></p>
-                      )}
-                    </div>
-                    <div className="headcount-badge">
-                      <strong>{event.totalHeadcount}</strong> players attending
-                    </div>
-                  </div>
-
-                  {/* Voting Banner */}
-                  {event.menuPoll?.status === "OPEN" && (
-                    <div style={{ background: "#fef3c7", border: "1px solid #fde68a", padding: "10px 14px", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span>🗳️ <strong>Voting Open:</strong> Group is deciding between 3 curated game menus!</span>
-                      <Link href={`/groups/${event.groupId}/events/${event.id}`} className="button-small">
-                        Cast Vote
-                      </Link>
-                    </div>
-                  )}
-
-                  {/* Official Lineup / Pick */}
-                  {(event.officialPick || (event.officialLineup && event.officialLineup.length > 0)) && (
-                    <div className="event-official-badge-card">
-                      <span className="official-tag">🎲 Official Selection:</span>
-                      {event.officialPick && (
-                        <span className="official-game-name">
-                          <strong>{event.officialPick.name}</strong>
-                          {event.officialPickCarrier && ` · 🎒 ${event.officialPickCarrier}`}
-                        </span>
-                      )}
-                      {event.officialLineup && event.officialLineup.length > 0 && (
-                        <span className="official-lineup-names">
-                          {event.officialLineup.map((s, idx) => (
-                            <span key={s.bggId} className="official-lineup-item">
-                              {idx > 0 && " → "}
-                              <strong>{s.name}</strong> ({s.label})
-                              {s.carrierDisplayName && ` [🎒 ${s.carrierDisplayName}]`}
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Completed status with actually played games */}
-                  {event.status === "COMPLETED" && (
-                    <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "8px 12px", borderRadius: "8px", fontSize: "13px" }}>
-                      <span style={{ fontWeight: 700, color: "#166534" }}>🏁 Event Completed</span>
-                      {event.playedGames && event.playedGames.length > 0 ? (
-                        <span> — Actually played: <strong>{event.playedGames.map((g) => g.name).join(", ")}</strong></span>
-                      ) : (
-                        <span> — Games night wrapped up.</span>
-                      )}
-                    </div>
-                  )}
-
-                  {event.description && <p className="event-description">{event.description}</p>}
-
-                  {/* RSVP Controls */}
-                  <div className="event-rsvp-bar">
-                    <span className="rsvp-label">Your RSVP:</span>
-                    <button
-                      type="button"
-                      className={`button-small ${myRsvp?.status === "ATTENDING" ? "button" : "button-secondary"}`}
-                      onClick={() => void handleRsvp(event.id, "ATTENDING", myRsvp?.additionalGuests ?? 0)}
-                    >
-                      ✓ Attending
-                    </button>
-                    <button
-                      type="button"
-                      className={`button-small ${myRsvp?.status === "MAYBE" ? "button" : "button-secondary"}`}
-                      onClick={() => void handleRsvp(event.id, "MAYBE", myRsvp?.additionalGuests ?? 0)}
-                    >
-                      ? Maybe
-                    </button>
-                    <button
-                      type="button"
-                      className={`button-small ${myRsvp?.status === "DECLINED" ? "button-danger" : "button-secondary"}`}
-                      onClick={() => void handleRsvp(event.id, "DECLINED", 0)}
-                    >
-                      ✕ Can&apos;t go
-                    </button>
-
-                    {myRsvp?.status === "ATTENDING" && (
-                      <div className="guests-stepper">
-                        <span>+Guests:</span>
-                        <button
-                          type="button"
-                          className="button-quiet button-small"
-                          disabled={myRsvp.additionalGuests <= 0}
-                          onClick={() => void handleRsvp(event.id, "ATTENDING", myRsvp.additionalGuests - 1)}
-                        >
-                          -
-                        </button>
-                        <strong>{myRsvp.additionalGuests}</strong>
-                        <button
-                          type="button"
-                          className="button-quiet button-small"
-                          onClick={() => void handleRsvp(event.id, "ATTENDING", myRsvp.additionalGuests + 1)}
-                        >
-                          +
-                        </button>
+                <>
+                  {upcoming.length > 0 && (
+                    <div style={{ marginBottom: "16px" }}>
+                      <h3 style={{ margin: "0 0 12px", fontSize: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
+                        <span>📅 Upcoming Game Nights</span>
+                        <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 400 }}>({upcoming.length})</span>
+                      </h3>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                        {upcoming.map(renderEventCard)}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
-                  {/* Attendees Summary */}
-                  <div className="event-attendees">
-                    <strong>Attendees:</strong>{" "}
-                    {attendingList.length === 0
-                      ? "Nobody confirmed yet."
-                      : attendingList.map((r, i) => (
-                          <span key={r.userId}>
-                            {i > 0 && ", "}
-                            {r.displayName}
-                            {r.additionalGuests > 0 && ` (+${r.additionalGuests})`}
-                          </span>
-                        ))}
-                  </div>
-
-                  <div className="event-card-actions">
-                    <Link
-                      href={`/groups/${event.groupId}/events/${event.id}`}
-                      className="button"
-                    >
-                      Enter Game Night Room & Pick →
-                    </Link>
-                  </div>
-                </article>
+                  {completed.length > 0 && (
+                    <div style={{ marginTop: upcoming.length > 0 ? "32px" : 0 }}>
+                      <h3 style={{ margin: "0 0 12px", fontSize: "16px", display: "flex", alignItems: "center", gap: "8px", color: "#166534" }}>
+                        <span>🏁 Past & Completed Sessions</span>
+                        <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 400 }}>({completed.length})</span>
+                      </h3>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                        {completed.map(renderEventCard)}
+                      </div>
+                    </div>
+                  )}
+                </>
               );
-            })
+            })()
+          ) : (
+            filteredEvents.map(renderEventCard)
           )}
         </div>
       )}
