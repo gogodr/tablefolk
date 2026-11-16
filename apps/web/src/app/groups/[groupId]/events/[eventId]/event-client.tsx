@@ -60,6 +60,13 @@ export function EventClient() {
   const [playedGameIds, setPlayedGameIds] = useState<number[]>([]);
   const [attendedUserIds, setAttendedUserIds] = useState<string[]>([]);
   const [showOtherGames, setShowOtherGames] = useState(false);
+  const [otherGameSearch, setOtherGameSearch] = useState("");
+  const [otherGameSource, setOtherGameSource] = useState<"group" | "bgg">("group");
+  const [bggQuery, setBggQuery] = useState("");
+  const [bggResults, setBggResults] = useState<{ bggId: number; name: string; yearPublished: number | null; kind: "boardgame" | "boardgameexpansion" }[]>([]);
+  const [bggSearching, setBggSearching] = useState(false);
+  const [bggError, setBggError] = useState("");
+  const [customGameNames, setCustomGameNames] = useState<Record<number, string>>({});
   const closeDialogRef = useRef<HTMLDialogElement>(null);
 
   // Edit Event Modal
@@ -71,6 +78,88 @@ export function EventClient() {
   const [editDescription, setEditDescription] = useState("");
   const [editManualHeadcount, setEditManualHeadcount] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+
+  const filteredOtherGames = useMemo(() => {
+    const q = otherGameSearch.trim().toLowerCase();
+    if (!q) return groupGamesList;
+    return groupGamesList.filter((g) => g.name.toLowerCase().includes(q));
+  }, [groupGamesList, otherGameSearch]);
+
+  const gameNameMap = useMemo(() => {
+    const map = new Map<number, string>();
+    groupGamesList.forEach((g) => map.set(g.bggId, g.name));
+    if (event?.officialPick) map.set(event.officialPick.bggId, event.officialPick.name);
+    event?.officialLineup?.forEach((s) => map.set(s.bggId, s.name));
+    event?.playedGames?.forEach((g) => map.set(g.bggId, g.name));
+    Object.entries(customGameNames).forEach(([id, name]) => map.set(Number(id), name));
+    return map;
+  }, [groupGamesList, event, customGameNames]);
+
+  useEffect(() => {
+    if (otherGameSource !== "bgg" || bggQuery.trim().length < 2) {
+      setBggResults([]);
+      setBggSearching(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setBggSearching(true);
+      setBggError("");
+      try {
+        const data = await api<{ games: { bggId: number; name: string; yearPublished: number | null; kind: "boardgame" | "boardgameexpansion" }[] }>(
+          `/v1/catalog/search?q=${encodeURIComponent(bggQuery.trim())}`
+        );
+        if (!cancelled) {
+          const seen = new Set<number>();
+          setBggResults(
+            data.games.filter((g) => {
+              if (seen.has(g.bggId)) return false;
+              seen.add(g.bggId);
+              return true;
+            })
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setBggResults([]);
+          setBggError(err instanceof Error ? err.message : "Could not search BoardGameGeek.");
+        }
+      } finally {
+        if (!cancelled) setBggSearching(false);
+      }
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [api, bggQuery, otherGameSource]);
+
+  function handleAddBggGame(game: { bggId: number; name: string; yearPublished: number | null }) {
+    const label = game.yearPublished ? `${game.name} (${game.yearPublished})` : game.name;
+    setCustomGameNames((prev) => ({ ...prev, [game.bggId]: label }));
+    if (!playedGameIds.includes(game.bggId)) {
+      setPlayedGameIds((prev) => [...prev, game.bggId]);
+    }
+  }
+
+  function handleMovePlayedGame(index: number, direction: "up" | "down") {
+    setPlayedGameIds((prev) => {
+      const targetIndex = direction === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const copy = [...prev];
+      const current = copy[index];
+      const target = copy[targetIndex];
+      if (current === undefined || target === undefined) return prev;
+      copy[index] = target;
+      copy[targetIndex] = current;
+      return copy;
+    });
+  }
+
+  function handleRemovePlayedGame(bggId: number) {
+    setPlayedGameIds((prev) => prev.filter((id) => id !== bggId));
+  }
 
   const availableCategories = useMemo(() => {
     return Array.from(
@@ -262,12 +351,20 @@ export function EventClient() {
 
   async function handleOpenCloseEventModal() {
     const defaultIds: number[] = [];
-    if (event?.officialLineup && event.officialLineup.length > 0) {
+    if (event?.playedBggIds && event.playedBggIds.length > 0) {
+      defaultIds.push(...event.playedBggIds);
+    } else if (event?.officialLineup && event.officialLineup.length > 0) {
       event.officialLineup.forEach((s) => defaultIds.push(s.bggId));
     } else if (event?.officialPickBggId) {
       defaultIds.push(event.officialPickBggId);
     }
     setPlayedGameIds(defaultIds);
+    setOtherGameSearch("");
+    setShowOtherGames(false);
+    setOtherGameSource("group");
+    setBggQuery("");
+    setBggResults([]);
+    setBggError("");
 
     // Initial attendees: everyone who currently RSVP'd ATTENDING
     const initialAttendees = (event?.rsvps ?? [])
@@ -519,6 +616,10 @@ export function EventClient() {
 
   const canManage = event?.canManage ?? (!event?.hostUserId || event?.hostUserId === user?.id);
   const isHostOrCreator = canManage;
+  const hasOfficialSelection = Boolean(
+    event?.officialPick || (event?.officialLineup && event.officialLineup.length > 0)
+  );
+  const isCompleted = event?.status === "COMPLETED";
 
   if (!isLoaded || loading) return <div className="page"><p className="loading">Entering Game Night room…</p></div>;
   if (!isSignedIn) {
@@ -619,25 +720,27 @@ export function EventClient() {
           </div>
         </div>
 
-        {/* Mode Switcher */}
-        <div className="count-filters" role="group" aria-label="Planning mode">
-          <button
-            type="button"
-            className={`count-filter ${mode === "lineup" ? "active" : ""}`}
-            onClick={() => setMode("lineup")}
-          >
-            <span>✨ Full Session Menu</span>
-            <strong>Multi-game</strong>
-          </button>
-          <button
-            type="button"
-            className={`count-filter ${mode === "single" ? "active" : ""}`}
-            onClick={() => setMode("single")}
-          >
-            <span>🎲 Single Pick</span>
-            <strong>1 title</strong>
-          </button>
-        </div>
+        {/* Mode Switcher - only show if planning is active */}
+        {!isCompleted && !hasOfficialSelection && (
+          <div className="count-filters" role="group" aria-label="Planning mode">
+            <button
+              type="button"
+              className={`count-filter ${mode === "lineup" ? "active" : ""}`}
+              onClick={() => setMode("lineup")}
+            >
+              <span>✨ Full Session Menu</span>
+              <strong>Multi-game</strong>
+            </button>
+            <button
+              type="button"
+              className={`count-filter ${mode === "single" ? "active" : ""}`}
+              onClick={() => setMode("single")}
+            >
+              <span>🎲 Single Pick</span>
+              <strong>1 title</strong>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Completed Event Status Banner */}
@@ -664,7 +767,7 @@ export function EventClient() {
 
           <div style={{ marginTop: "12px", display: "flex", flexWrap: "wrap", gap: "10px" }}>
             {event.playedGames && event.playedGames.length > 0 ? (
-              event.playedGames.map((g) => (
+              event.playedGames.map((g, idx) => (
                 <div
                   key={g.bggId}
                   style={{
@@ -677,7 +780,7 @@ export function EventClient() {
                     gap: "8px",
                   }}
                 >
-                  <span>🎲</span>
+                  <span style={{ fontWeight: 700, color: "#166534" }}>{idx + 1}️⃣</span>
                   <strong>{g.name}</strong>
                   {g.weight && <span style={{ fontSize: "11px", color: "var(--muted)" }}>(Weight {g.weight.toFixed(1)})</span>}
                 </div>
@@ -892,7 +995,9 @@ export function EventClient() {
         </section>
       )}
 
-      <div className="draw-layout">
+      {/* Menu Planner Section - hidden when completed or when an official selection is already marked */}
+      {!isCompleted && !hasOfficialSelection ? (
+        <div className="draw-layout">
         {/* Draw Controls */}
         <section className="draw-card">
           <div className="draw-card-header">
@@ -1287,6 +1392,25 @@ export function EventClient() {
           )}
         </section>
       </div>
+      ) : !isCompleted && hasOfficialSelection ? (
+        <section
+          className="panel"
+          style={{
+            textAlign: "center",
+            padding: "24px 20px",
+            marginTop: "16px",
+            background: "var(--color-paper, #f9fafb)",
+            border: "1px dashed var(--border)",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: "14px", color: "var(--muted)" }}>
+            🔒 <strong>Tonight&apos;s game selection is marked as official.</strong>
+            {canManage
+              ? " Need to plan a different lineup? Click '✕ Clear Official Pick' above to unlock the menu planner."
+              : " Game night menu is set! Check the announcement above."}
+          </p>
+        </section>
+      ) : null}
 
       {/* Close Event Modal & Actual Played Games */}
       {showCloseModal && (
@@ -1380,6 +1504,81 @@ export function EventClient() {
               </div>
             </div>
 
+            {/* Played games in sequence */}
+            <div style={{ marginBottom: "20px", borderBottom: "1px solid var(--border)", paddingBottom: "16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "8px" }}>
+                <h4 style={{ margin: 0, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)" }}>
+                  🎲 Played Games in Sequence ({playedGameIds.length})
+                </h4>
+                <span style={{ fontSize: "12px", color: "var(--muted)" }}>
+                  Play order (arrange with ▲ / ▼)
+                </span>
+              </div>
+
+              {playedGameIds.length === 0 ? (
+                <p style={{ fontSize: "13px", color: "var(--muted)", margin: "4px 0" }}>
+                  No games selected yet. Check the planned games below or search the group library.
+                </p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {playedGameIds.map((bggId, index) => {
+                    const gameName = gameNameMap.get(bggId) ?? `Game #${bggId}`;
+                    return (
+                      <div
+                        key={bggId}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "8px 12px",
+                          background: "#f0fdf4",
+                          border: "1px solid #86efac",
+                          borderRadius: "6px",
+                          fontSize: "13px",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span style={{ fontWeight: 700, color: "#166534" }}>{index + 1}️⃣</span>
+                          <strong>{gameName}</strong>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                          <button
+                            type="button"
+                            className="button-quiet button-small"
+                            style={{ padding: "2px 6px", fontSize: "12px" }}
+                            title="Move earlier in play order"
+                            disabled={index === 0}
+                            onClick={() => handleMovePlayedGame(index, "up")}
+                          >
+                            ▲
+                          </button>
+                          <button
+                            type="button"
+                            className="button-quiet button-small"
+                            style={{ padding: "2px 6px", fontSize: "12px" }}
+                            title="Move later in play order"
+                            disabled={index === playedGameIds.length - 1}
+                            onClick={() => handleMovePlayedGame(index, "down")}
+                          >
+                            ▼
+                          </button>
+                          <button
+                            type="button"
+                            className="button-quiet button-small"
+                            style={{ padding: "2px 6px", fontSize: "12px", color: "var(--color-danger, #dc2626)" }}
+                            title="Remove from played list"
+                            onClick={() => handleRemovePlayedGame(bggId)}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {/* Planned games section */}
             <div style={{ marginBottom: "16px" }}>
               <h4 style={{ margin: "0 0 8px", fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)" }}>
@@ -1389,6 +1588,7 @@ export function EventClient() {
                 {event?.officialLineup && event.officialLineup.length > 0 ? (
                   event.officialLineup.map((s) => {
                     const checked = playedGameIds.includes(s.bggId);
+                    const orderIndex = playedGameIds.indexOf(s.bggId);
                     return (
                       <label
                         key={s.bggId}
@@ -1413,6 +1613,11 @@ export function EventClient() {
                           <strong>{s.name}</strong>
                           <span style={{ marginLeft: "8px", fontSize: "12px", color: "var(--muted)" }}>({s.label})</span>
                         </div>
+                        {checked && (
+                          <span style={{ fontSize: "12px", color: "#166534", fontWeight: 700 }}>
+                            {orderIndex + 1}️⃣ in play
+                          </span>
+                        )}
                       </label>
                     );
                   })
@@ -1439,6 +1644,11 @@ export function EventClient() {
                       <strong>{event.officialPick.name}</strong>
                       <span style={{ marginLeft: "8px", fontSize: "12px", color: "var(--muted)" }}>(Official Pick)</span>
                     </div>
+                    {playedGameIds.includes(event.officialPick.bggId) && (
+                      <span style={{ fontSize: "12px", color: "#166534", fontWeight: 700 }}>
+                        {playedGameIds.indexOf(event.officialPick.bggId) + 1}️⃣ in play
+                      </span>
+                    )}
                   </label>
                 ) : (
                   <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>No official game was locked in advance.</p>
@@ -1446,44 +1656,231 @@ export function EventClient() {
               </div>
             </div>
 
-            {/* Other games toggle */}
+            {/* Other games toggle & search (Group Collection + BoardGameGeek) */}
             <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px", marginBottom: "16px" }}>
               <button
                 type="button"
                 className="button-quiet button-small"
                 onClick={() => setShowOtherGames((v) => !v)}
               >
-                {showOtherGames ? "▲ Hide other group games" : "➕ Did you play another group game not on the original menu?"}
+                {showOtherGames ? "▲ Hide additional games" : "➕ Did you play another game not on the original menu?"}
               </button>
 
               {showOtherGames && (
-                <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "6px", maxHeight: "200px", overflowY: "auto" }}>
-                  {groupGamesList.map((g) => {
-                    const checked = playedGameIds.includes(g.bggId);
-                    return (
-                      <label
-                        key={g.bggId}
+                <div style={{ marginTop: "10px" }}>
+                  {/* Source selector: Group collection vs BGG */}
+                  <div style={{ display: "flex", gap: "8px", marginBottom: "10px" }}>
+                    <button
+                      type="button"
+                      className={`button-small ${otherGameSource === "group" ? "button" : "button-secondary"}`}
+                      style={{ fontSize: "12px", padding: "4px 10px" }}
+                      onClick={() => setOtherGameSource("group")}
+                    >
+                      🏛️ Group Library ({groupGamesList.length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`button-small ${otherGameSource === "bgg" ? "button" : "button-secondary"}`}
+                      style={{ fontSize: "12px", padding: "4px 10px" }}
+                      onClick={() => setOtherGameSource("bgg")}
+                    >
+                      🌐 Search BoardGameGeek (BGG)
+                    </button>
+                  </div>
+
+                  {otherGameSource === "group" ? (
+                    <>
+                      <input
+                        type="search"
+                        placeholder="🔍 Search group game by name…"
+                        value={otherGameSearch}
+                        onChange={(e) => setOtherGameSearch(e.target.value)}
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          padding: "6px 10px",
+                          width: "100%",
+                          padding: "8px 12px",
                           borderRadius: "6px",
-                          border: checked ? "1px solid #16a34a" : "1px solid var(--border)",
-                          background: checked ? "#f0fdf4" : "transparent",
+                          border: "1px solid var(--border)",
                           fontSize: "13px",
-                          cursor: "pointer",
+                          background: "var(--color-paper, #f9fafb)",
+                          marginBottom: "8px",
+                          boxSizing: "border-box",
                         }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => handleTogglePlayedGame(g.bggId)}
-                        />
-                        <span>{g.name}</span>
-                      </label>
-                    );
-                  })}
+                      />
+
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", fontSize: "12px", color: "var(--muted)" }}>
+                        <span>Showing {filteredOtherGames.length} of {groupGamesList.length} games</span>
+                        {otherGameSearch && (
+                          <button
+                            type="button"
+                            className="button-quiet button-small"
+                            style={{ padding: "0 4px", fontSize: "11px" }}
+                            onClick={() => setOtherGameSearch("")}
+                          >
+                            Clear search
+                          </button>
+                        )}
+                      </div>
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "200px", overflowY: "auto" }}>
+                        {filteredOtherGames.length === 0 ? (
+                          <div style={{ textAlign: "center", padding: "12px 0" }}>
+                            <p style={{ margin: "0 0 6px", fontSize: "13px", color: "var(--muted)" }}>
+                              No group games found matching &quot;{otherGameSearch}&quot;.
+                            </p>
+                            <button
+                              type="button"
+                              className="button-secondary button-small"
+                              onClick={() => {
+                                setOtherGameSource("bgg");
+                                setBggQuery(otherGameSearch);
+                              }}
+                            >
+                              🌐 Search on BoardGameGeek instead
+                            </button>
+                          </div>
+                        ) : (
+                          filteredOtherGames.map((g) => {
+                            const checked = playedGameIds.includes(g.bggId);
+                            const orderIndex = playedGameIds.indexOf(g.bggId);
+                            return (
+                              <label
+                                key={g.bggId}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "8px",
+                                  padding: "6px 10px",
+                                  borderRadius: "6px",
+                                  border: checked ? "1px solid #16a34a" : "1px solid var(--border)",
+                                  background: checked ? "#f0fdf4" : "transparent",
+                                  fontSize: "13px",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => handleTogglePlayedGame(g.bggId)}
+                                />
+                                <span>{g.name}</span>
+                                {checked && (
+                                  <span style={{ marginLeft: "auto", fontSize: "11px", color: "#166534", fontWeight: 700 }}>
+                                    #{orderIndex + 1}
+                                  </span>
+                                )}
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        type="search"
+                        placeholder="🔍 Search any game on BoardGameGeek (e.g. Ark Nova, Heat, Cascadia)…"
+                        value={bggQuery}
+                        onChange={(e) => setBggQuery(e.target.value)}
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px",
+                          borderRadius: "6px",
+                          border: "1px solid var(--border)",
+                          fontSize: "13px",
+                          background: "var(--color-paper, #f9fafb)",
+                          marginBottom: "8px",
+                          boxSizing: "border-box",
+                        }}
+                      />
+
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", fontSize: "12px", color: "var(--muted)" }}>
+                        <span>
+                          {bggSearching
+                            ? "⏳ Searching BGG catalog…"
+                            : bggQuery.trim().length < 2
+                            ? "Type at least 2 characters to search BGG"
+                            : `Found ${bggResults.length} matches on BoardGameGeek`}
+                        </span>
+                        {bggQuery && (
+                          <button
+                            type="button"
+                            className="button-quiet button-small"
+                            style={{ padding: "0 4px", fontSize: "11px" }}
+                            onClick={() => {
+                              setBggQuery("");
+                              setBggResults([]);
+                            }}
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+
+                      {bggError && (
+                        <p style={{ margin: "4px 0", fontSize: "12px", color: "var(--color-danger, #dc2626)" }}>
+                          {bggError}
+                        </p>
+                      )}
+
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "200px", overflowY: "auto" }}>
+                        {bggQuery.trim().length >= 2 && !bggSearching && bggResults.length === 0 ? (
+                          <p style={{ margin: "10px 0", fontSize: "13px", color: "var(--muted)", textAlign: "center" }}>
+                            No games found on BoardGameGeek for &quot;{bggQuery}&quot;.
+                          </p>
+                        ) : (
+                          bggResults.map((g) => {
+                            const checked = playedGameIds.includes(g.bggId);
+                            const orderIndex = playedGameIds.indexOf(g.bggId);
+                            return (
+                              <div
+                                key={g.bggId}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: "8px",
+                                  padding: "6px 10px",
+                                  borderRadius: "6px",
+                                  border: checked ? "1px solid #16a34a" : "1px solid var(--border)",
+                                  background: checked ? "#f0fdf4" : "var(--color-paper, #f9fafb)",
+                                  fontSize: "13px",
+                                }}
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                                  <span>🎲</span>
+                                  <strong style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {g.name}
+                                  </strong>
+                                  {g.yearPublished && (
+                                    <span style={{ fontSize: "11px", color: "var(--muted)", flexShrink: 0 }}>
+                                      ({g.yearPublished})
+                                    </span>
+                                  )}
+                                  <span style={{ fontSize: "10px", color: "var(--muted)", padding: "1px 5px", background: "rgba(0,0,0,0.05)", borderRadius: "4px" }}>
+                                    BGG #{g.bggId}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className={`button-small ${checked ? "button-secondary" : "button"}`}
+                                  style={{ padding: "3px 8px", fontSize: "12px", flexShrink: 0 }}
+                                  onClick={() => {
+                                    if (checked) {
+                                      handleRemovePlayedGame(g.bggId);
+                                    } else {
+                                      handleAddBggGame(g);
+                                    }
+                                  }}
+                                >
+                                  {checked ? `✓ Added (#${orderIndex + 1})` : "+ Add"}
+                                </button>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>

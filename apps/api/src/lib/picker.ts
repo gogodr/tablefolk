@@ -303,21 +303,27 @@ export function planSessionLineup(
         // - Cooldown is played after the Main Game, so transition before Cooldown depends on Cooldown
         const cooldownBuffer = getGameTransition(g).minutes;
 
+        // When the Main Game is already light/short (<= 45m or weight <= 2.2),
+        // allow other light/casual games to pair with it in a "Casual Showcase / Party Marathon"
+        // without choking on strict duration <= mainDuration and weight <= mainWeight.
+        const isCasualNight = isLight(mainGame) && mainDuration <= 45;
+
         // Warm-up eligibility (quick opener)
         const canBeWarmup =
           !hasWarmup &&
           duration <= 35 &&
-          duration <= mainDuration &&
-          isLight(g) &&
-          weight <= mainWeight &&
+          (isCasualNight
+            ? isLight(g)
+            : (duration <= mainDuration && isLight(g) && weight <= mainWeight)) &&
           duration + warmupBuffer <= remainingMinutes + 15;
 
         // Cooldown eligibility (wind-down closer)
         const canBeCooldown =
           !hasCooldown &&
-          duration <= 45 &&
-          duration <= mainDuration &&
-          (hasHeavyGame ? weight <= 2.0 : weight <= 2.4 && weight <= mainWeight) &&
+          duration <= 50 &&
+          (isCasualNight
+            ? (g.weight ?? 2.0) <= 2.4
+            : (duration <= mainDuration && (hasHeavyGame ? weight <= 2.0 : weight <= 2.4 && weight <= mainWeight))) &&
           duration + cooldownBuffer <= remainingMinutes + 15;
 
         return canBeWarmup || canBeCooldown;
@@ -362,12 +368,13 @@ export function planSessionLineup(
       const warmupBuffer = getGameTransition(mainGame).minutes;
       const cooldownBuffer = getGameTransition(fillerGame).minutes;
 
+      const isCasualNight = isLight(mainGame) && mainDuration <= 45;
       const canBeWarmup =
         !hasWarmup &&
         duration <= 35 &&
-        duration <= mainDuration &&
-        isLight(fillerGame) &&
-        weight <= mainWeight &&
+        (isCasualNight
+          ? isLight(fillerGame)
+          : (duration <= mainDuration && isLight(fillerGame) && weight <= mainWeight)) &&
         duration + warmupBuffer <= remainingMinutes + 15;
 
       const sharedWithMain = (fillerGame.mechanics ?? []).filter((m) => mainMechanics.has(m));
@@ -1010,8 +1017,16 @@ export function planSessionMenuTrio(
     });
 
     // If strictly excluding all used games left too few games to form a lineup,
+    // or left a lone micro-filler that severely underfills a long gathering (>= 120m),
     // fallback to only excluding main game anchors, while keeping the soft decay on used fillers
-    if (lineupResult.status !== "success" || lineupResult.lineup.length === 0) {
+    const isUnderfilled =
+      lineupResult.status === "success" &&
+      totalMinutes >= 120 &&
+      lineupResult.lineup.length === 1 &&
+      lineupResult.totalEstimatedMinutes <= 45 &&
+      eligible.length > 2;
+
+    if (lineupResult.status !== "success" || lineupResult.lineup.length === 0 || isUnderfilled) {
       lineupResult = planSessionLineup(availableGames, {
         ...options,
         allowHeavy: recipeAllowHeavy !== undefined ? recipeAllowHeavy : allowHeavy,
