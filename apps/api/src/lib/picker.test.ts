@@ -653,8 +653,8 @@ describe("game night picker", () => {
       }
     });
 
-    it("provides at least 5 distinct menu recipes and dynamically samples contrasting options in English", () => {
-      expect(MENU_RECIPES.length).toBeGreaterThanOrEqual(5);
+    it("provides at least 10 distinct menu recipes and dynamically samples contrasting options in English", () => {
+      expect(MENU_RECIPES.length).toBeGreaterThanOrEqual(10);
 
       const roll1 = planSessionMenuTrio(diverseCollection, {
         playerCount: 4,
@@ -675,6 +675,17 @@ describe("game night picker", () => {
       for (const opt of roll1.options) {
         expect(opt.title).toMatch(/^Option [A-C]: /);
       }
+    });
+
+    it("features dedicated heavy euro brain burner recipe favoring >= 3.0 weight games", () => {
+      const brainBurnerRecipe = MENU_RECIPES.find((r) => r.id === "heavy_euro_brainburner");
+      expect(brainBurnerRecipe).toBeDefined();
+      expect(brainBurnerRecipe?.category).toBe("heavy");
+
+      const weights = brainBurnerRecipe?.getWeightsAndOptions(diverseCollection, new Map());
+      expect(weights?.allowHeavy).toBe(true);
+      // Brass Birmingham (101, weight 3.9) should receive a huge boost
+      expect(weights?.weightsMap.get(101)).toBeGreaterThan(70);
     });
 
     it("handles smaller collections gracefully by providing 3 valid lineups without crashing", () => {

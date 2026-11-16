@@ -423,6 +423,7 @@ function hasAnyKeyword(items: string[] | undefined, keywords: string[]): boolean
 
 export interface MenuRecipe {
   id: string;
+  category: "heavy" | "social" | "strategy" | "thematic" | "favorites" | "accessible";
   titlePrefix: string;
   styleBadge: string;
   description: string;
@@ -439,10 +440,48 @@ export interface MenuRecipe {
 
 export const MENU_RECIPES: MenuRecipe[] = [
   {
+    id: "heavy_euro_brainburner",
+    category: "heavy",
+    titlePrefix: "Brain Burners & Heavy Euros",
+    styleBadge: "🧠 Heavy Euro & Brain Burner",
+    description: "Deep economic systems, worker placement, and complex optimization for players seeking heavy crunch.",
+    isViable: (games, allowHeavy) =>
+      allowHeavy &&
+      games.some(
+        (g) =>
+          (g.weight ?? 0) >= 3.0 ||
+          (hasAnyKeyword(g.mechanics, ["worker placement", "economic", "market"]) &&
+            (g.weight ?? 0) >= 2.8)
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const w = g.weight ?? 2.0;
+        const isEuro =
+          hasAnyKeyword(g.mechanics, [
+            "worker placement",
+            "economic",
+            "market",
+            "income",
+            "contracts",
+          ]) || hasAnyKeyword(g.categories, ["economic", "industry / manufacturing"]);
+        if (w >= 3.0) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 70);
+        } else if (isEuro && w >= 2.6) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 2 + 40);
+        } else {
+          wMap.set(g.bggId, Math.max(0.1, (wMap.get(g.bggId) ?? 1) * 0.2));
+        }
+      }
+      return { allowHeavy: true, weightsMap: wMap, mechanicsAffinity: 0.5 };
+    },
+  },
+  {
     id: "epic_strategy",
-    titlePrefix: "Epic & Heavy Strategy",
+    category: "heavy",
+    titlePrefix: "Epic & Grand Strategy",
     styleBadge: "🔴 Heavy Strategy",
-    description: "Centerpiece heavyweight strategy game with dedicated setup and mental reset buffers.",
+    description: "Centerpiece heavyweight strategy game with dedicated setup and mental reset transition buffers.",
     isViable: (games, allowHeavy) =>
       allowHeavy && games.some((g) => (g.weight ?? 0) >= 2.8 || (g.playingTime ?? 0) >= 90),
     getWeightsAndOptions: (games, baseWeights) => {
@@ -460,10 +499,155 @@ export const MENU_RECIPES: MenuRecipe[] = [
     },
   },
   {
+    id: "tactical_conflict",
+    category: "strategy",
+    titlePrefix: "Area Control & Tactical Combat",
+    styleBadge: "⚔️ Area Control & Clashes",
+    description: "Territorial struggle, tactical movement, and direct tabletop combat with high stakes.",
+    isViable: (games) =>
+      games.some(
+        (g) =>
+          hasAnyKeyword(g.mechanics, [
+            "area majority / influence",
+            "area movement",
+            "wargame",
+            "take that",
+            "conflict",
+            "combat",
+          ]) || hasAnyKeyword(g.categories, ["wargame", "miniatures", "fighting"])
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const isConflict =
+          hasAnyKeyword(g.mechanics, [
+            "area majority / influence",
+            "area movement",
+            "wargame",
+            "take that",
+            "conflict",
+            "combat",
+          ]) || hasAnyKeyword(g.categories, ["wargame", "miniatures", "fighting"]);
+        if (isConflict) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 45);
+        }
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0.3 };
+    },
+  },
+  {
+    id: "cooperative_challenge",
+    category: "thematic",
+    titlePrefix: "Cooperative Survival & Teamwork",
+    styleBadge: "🤝 Cooperative Teamwork",
+    description: "All players unite to defeat the board, solve crises, and survive against escalating threats.",
+    isViable: (games) =>
+      games.some(
+        (g) =>
+          hasAnyKeyword(g.mechanics, [
+            "cooperative game",
+            "communication limits",
+            "traitor",
+            "hidden roles",
+          ]) || hasAnyKeyword(g.categories, ["cooperative"])
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const isCoop =
+          hasAnyKeyword(g.mechanics, [
+            "cooperative game",
+            "communication limits",
+            "traitor",
+            "hidden roles",
+          ]) || hasAnyKeyword(g.categories, ["cooperative"]);
+        if (isCoop) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 40);
+        }
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0.4 };
+    },
+  },
+  {
+    id: "engine_combos",
+    category: "strategy",
+    titlePrefix: "Engine Building & Synergies",
+    styleBadge: "⚙️ Engine & Combos",
+    description: "Card drafting, tableau construction, and exponential resource production engines.",
+    isViable: (games) =>
+      games.some(
+        (g) =>
+          hasAnyKeyword(g.mechanics, [
+            "engine building",
+            "card drafting",
+            "drafting",
+            "tableau building",
+            "deck building",
+            "hand management",
+          ]) || hasAnyKeyword(g.categories, ["economic", "animals"])
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const isEngine =
+          hasAnyKeyword(g.mechanics, [
+            "engine building",
+            "card drafting",
+            "drafting",
+            "tableau building",
+            "deck building",
+            "hand management",
+          ]) || hasAnyKeyword(g.categories, ["economic", "animals"]);
+        if (isEngine) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 35);
+        }
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0.5 };
+    },
+  },
+  {
+    id: "spatial_puzzle",
+    category: "strategy",
+    titlePrefix: "Tile Placement & Spatial Puzzles",
+    styleBadge: "🧩 Spatial Puzzles & Tiles",
+    description: "Satisfying pattern building, tile drafting, and tactile spatial optimization.",
+    isViable: (games) =>
+      games.some(
+        (g) =>
+          hasAnyKeyword(g.mechanics, [
+            "tile placement",
+            "pattern building",
+            "enclosure",
+            "network and route building",
+            "square grid",
+            "hexgrid",
+          ]) || hasAnyKeyword(g.categories, ["puzzle", "abstract strategy"])
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const isSpatial =
+          hasAnyKeyword(g.mechanics, [
+            "tile placement",
+            "pattern building",
+            "enclosure",
+            "network and route building",
+            "square grid",
+            "hexgrid",
+          ]) || hasAnyKeyword(g.categories, ["puzzle", "abstract strategy"]);
+        if (isSpatial) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 35);
+        }
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0.4 };
+    },
+  },
+  {
     id: "high_interaction",
-    titlePrefix: "High Interaction & Table Talk",
+    category: "social",
+    titlePrefix: "Social Deduction & Table Talk",
     styleBadge: "⚡ High Interaction",
-    description: "Fast-paced bluffing, table talk, and direct interaction for an energetic gathering.",
+    description: "Fast-paced bluffing, secret roles, negotiation, and lively table conversation.",
     isViable: (games) =>
       games.some(
         (g) =>
@@ -475,7 +659,6 @@ export const MENU_RECIPES: MenuRecipe[] = [
             "trading",
             "traitor",
             "hidden roles",
-            "take that",
           ]) ||
           hasAnyKeyword(g.categories, ["bluffing", "party game", "deduction"]) ||
           (g.weight ?? 2.0) <= 2.5
@@ -492,11 +675,10 @@ export const MENU_RECIPES: MenuRecipe[] = [
             "trading",
             "traitor",
             "hidden roles",
-            "take that",
           ]) || hasAnyKeyword(g.categories, ["bluffing", "party game", "deduction"]);
         const w = g.weight ?? 2.0;
         if (isInteractive) {
-          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 30);
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 35);
         } else if (w <= 2.4) {
           wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 2 + 10);
         } else {
@@ -507,79 +689,68 @@ export const MENU_RECIPES: MenuRecipe[] = [
     },
   },
   {
-    id: "group_favorites",
-    titlePrefix: "Table Favorites & Wishlist",
-    styleBadge: "⭐ Group Wishlist Favorites",
-    description: "Showcases the titles with the highest collective want-to-play votes from confirmed attendees.",
-    isViable: (games) => games.length > 0,
-    getWeightsAndOptions: (games, baseWeights) => {
-      const wMap = new Map(baseWeights);
-      for (const [id, pts] of baseWeights.entries()) {
-        wMap.set(id, pts * 3);
-      }
-      return { weightsMap: wMap, mechanicsAffinity: 0.5 };
-    },
-  },
-  {
-    id: "engine_optimization",
-    titlePrefix: "Engine Building & Optimization",
-    styleBadge: "🧩 Engine & Optimization",
-    description: "Satisfying efficiency puzzles, engine-building combos, and strategic board placement.",
+    id: "party_and_push",
+    category: "social",
+    titlePrefix: "Party Mayhem & Push-Your-Luck",
+    styleBadge: "🎉 Party & High Energy",
+    description: "High energy, laughter, push-your-luck thrills, and quick turns for maximum group fun.",
     isViable: (games) =>
       games.some(
         (g) =>
+          (g.weight ?? 2.0) <= 2.0 ||
           hasAnyKeyword(g.mechanics, [
-            "engine building",
-            "card drafting",
-            "drafting",
-            "tile placement",
-            "tableau building",
-            "hand management",
-            "set collection",
-            "deck building",
-          ]) || hasAnyKeyword(g.categories, ["economic", "puzzle", "animals"])
+            "push your luck",
+            "speed matching",
+            "dexterity",
+            "acting",
+            "betting",
+            "real-time",
+          ]) ||
+          hasAnyKeyword(g.categories, ["party game", "humor"])
       ),
     getWeightsAndOptions: (games, baseWeights) => {
       const wMap = new Map(baseWeights);
       for (const g of games) {
-        const isEngine =
+        const isParty =
           hasAnyKeyword(g.mechanics, [
-            "engine building",
-            "card drafting",
-            "drafting",
-            "tile placement",
-            "tableau building",
-            "hand management",
-            "set collection",
-            "deck building",
-          ]) || hasAnyKeyword(g.categories, ["economic", "puzzle", "animals"]);
-        if (isEngine) {
-          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 30);
+            "push your luck",
+            "speed matching",
+            "dexterity",
+            "acting",
+            "betting",
+            "real-time",
+          ]) || hasAnyKeyword(g.categories, ["party game", "humor"]);
+        const w = g.weight ?? 2.0;
+        if (isParty) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 40);
+        } else if (w <= 1.8) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 2 + 20);
+        } else {
+          wMap.set(g.bggId, Math.max(0.1, (wMap.get(g.bggId) ?? 1) * 0.2));
         }
       }
-      return { weightsMap: wMap, mechanicsAffinity: 0.5 };
+      return { allowHeavy: false, weightsMap: wMap, mechanicsAffinity: -0.3 };
     },
   },
   {
     id: "thematic_adventure",
-    titlePrefix: "Thematic & Narrative Immersion",
+    category: "thematic",
+    titlePrefix: "Thematic & Narrative Worlds",
     styleBadge: "🗺️ Thematic Adventure",
-    description: "High-stakes narrative immersion, cooperative survival, or epic tabletop quests.",
+    description: "High-stakes narrative immersion, rich fantasy/sci-fi worldbuilding, and tabletop quests.",
     isViable: (games) =>
       games.some(
         (g) =>
           hasAnyKeyword(g.categories, [
             "thematic",
             "adventure",
-            "miniatures",
-            "fighting",
             "science fiction",
             "fantasy",
             "horror",
             "exploration",
+            "fighting",
           ]) ||
           hasAnyKeyword(g.mechanics, [
-            "cooperative game",
             "campaign",
             "role playing",
             "dice rolling",
@@ -594,15 +765,13 @@ export const MENU_RECIPES: MenuRecipe[] = [
           hasAnyKeyword(g.categories, [
             "thematic",
             "adventure",
-            "miniatures",
-            "fighting",
             "science fiction",
             "fantasy",
             "horror",
             "exploration",
+            "fighting",
           ]) ||
           hasAnyKeyword(g.mechanics, [
-            "cooperative game",
             "campaign",
             "role playing",
             "dice rolling",
@@ -617,9 +786,25 @@ export const MENU_RECIPES: MenuRecipe[] = [
     },
   },
   {
+    id: "group_favorites",
+    category: "favorites",
+    titlePrefix: "Table Favorites & Wishlist",
+    styleBadge: "⭐ Group Wishlist Favorites",
+    description: "Showcases the titles with the highest collective want-to-play votes from confirmed attendees.",
+    isViable: (games) => games.length > 0,
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const [id, pts] of baseWeights.entries()) {
+        wMap.set(id, pts * 3);
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0.5 };
+    },
+  },
+  {
     id: "accessible_classics",
-    titlePrefix: "Accessible & Breezy Classics",
-    styleBadge: "🎲 Accessible & Breezy",
+    category: "accessible",
+    titlePrefix: "Breezy Gateway & Modern Classics",
+    styleBadge: "🎲 Accessible Classics",
     description: "Smooth, easy-to-table modern classics that maximize play time and minimize rules friction.",
     isViable: (games) => games.some((g) => (g.weight ?? 2.0) <= 2.4 && (g.playingTime ?? 45) <= 65),
     getWeightsAndOptions: (games, baseWeights) => {
@@ -675,24 +860,39 @@ export function planSessionMenuTrio(
   // Determine which recipes are viable in this collection and headcount
   const viableRecipes = MENU_RECIPES.filter((r) => r.isViable(eligible, allowHeavy));
 
-  // Pseudo-shuffle recipes deterministically or randomly to provide fresh options on reroll
-  const recipePool = viableRecipes.length >= 3 ? [...viableRecipes] : [...MENU_RECIPES];
-  const sortedRecipes = [...recipePool].sort((a, b) => {
-    // If random returns deterministic value, use it, or default comparison
-    const randA = Math.sin(a.id.length * 997 + (random() * 100));
-    const randB = Math.sin(b.id.length * 997 + (random() * 100));
-    return randA - randB;
-  });
+  // Fisher-Yates shuffle viable recipes deterministically using random()
+  const shuffledPool = [...(viableRecipes.length >= 3 ? viableRecipes : MENU_RECIPES)];
+  for (let i = shuffledPool.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    const temp = shuffledPool[i]!;
+    shuffledPool[i] = shuffledPool[j]!;
+    shuffledPool[j] = temp;
+  }
 
+  // Pick 3 recipes, striving for distinct macro-categories to guarantee contrasting flavors
   const chosenRecipes: MenuRecipe[] = [];
-  for (const rec of sortedRecipes) {
-    if (!chosenRecipes.some((c) => c.id === rec.id)) {
+  const usedCategories = new Set<string>();
+
+  // Pass 1: Try to pick from distinct macro-categories (e.g. Heavy vs Social vs Strategy)
+  for (const rec of shuffledPool) {
+    if (!usedCategories.has(rec.category)) {
       chosenRecipes.push(rec);
+      usedCategories.add(rec.category);
     }
     if (chosenRecipes.length === 3) break;
   }
 
-  // Ensure we always have 3 recipes
+  // Pass 2: If collection is narrow, fill remaining slots from distinct recipes
+  if (chosenRecipes.length < 3) {
+    for (const rec of shuffledPool) {
+      if (!chosenRecipes.some((c) => c.id === rec.id)) {
+        chosenRecipes.push(rec);
+      }
+      if (chosenRecipes.length === 3) break;
+    }
+  }
+
+  // Fallback if needed
   while (chosenRecipes.length < 3) {
     const fallback = MENU_RECIPES[chosenRecipes.length]!;
     chosenRecipes.push(fallback);
