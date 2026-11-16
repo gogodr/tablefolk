@@ -5,6 +5,7 @@ import {
   eligibleGameIds,
   planSessionLineup,
   planSessionMenuTrio,
+  MENU_RECIPES,
 } from "./picker.js";
 import type { GroupGame } from "@tablefolk/contracts";
 
@@ -628,26 +629,51 @@ describe("game night picker", () => {
       expect(optB.id).toBe("B");
       expect(optC.id).toBe("C");
 
-      // Verify Option A has heavy strategy anchor (Brass Birmingham)
+      // Verify each option has a distinct main anchor game
       const mainA = optA.lineup.find((s) => s.role === "main");
-      expect(mainA?.game.bggId).toBe(101);
-      expect(optA.hasHeavy).toBe(true);
-
-      // Verify Option B excludes main A and avoids heavy games
       const mainB = optB.lineup.find((s) => s.role === "main");
-      expect(mainB?.game.bggId).not.toBe(101);
-      expect(optB.hasHeavy).toBe(false);
-
-      // Verify Option C provides a distinct anchor game from Option A and Option B
       const mainC = optC.lineup.find((s) => s.role === "main");
-      expect(mainC?.game.bggId).not.toBe(101);
-      expect(mainC?.game.bggId).not.toBe(mainB?.game.bggId);
+      expect(mainA?.game.bggId).toBeDefined();
+      expect(mainB?.game.bggId).toBeDefined();
+      expect(mainC?.game.bggId).toBeDefined();
+      expect(mainA?.game.bggId).not.toBe(mainB?.game.bggId);
+      expect(mainB?.game.bggId).not.toBe(mainC?.game.bggId);
+      expect(mainA?.game.bggId).not.toBe(mainC?.game.bggId);
+
+      // Verify each option has a distinct recipe style badge and title
+      expect(optA.styleBadge).not.toBe(optB.styleBadge);
+      expect(optB.styleBadge).not.toBe(optC.styleBadge);
+      expect(optA.styleBadge).not.toBe(optC.styleBadge);
 
       // All options should have valid estimated times and transitions
       for (const opt of result.options) {
         expect(opt.totalEstimatedMinutes).toBeGreaterThan(0);
         expect(opt.lineup.length).toBeGreaterThan(0);
         expect(opt.votes).toEqual([]);
+      }
+    });
+
+    it("provides at least 5 distinct menu recipes and dynamically samples contrasting options in English", () => {
+      expect(MENU_RECIPES.length).toBeGreaterThanOrEqual(5);
+
+      const roll1 = planSessionMenuTrio(diverseCollection, {
+        playerCount: 4,
+        totalMinutes: 180,
+        random: () => 0.1,
+      });
+
+      const roll2 = planSessionMenuTrio(diverseCollection, {
+        playerCount: 4,
+        totalMinutes: 180,
+        random: () => 0.85,
+      });
+
+      expect(roll1.options).toHaveLength(3);
+      expect(roll2.options).toHaveLength(3);
+
+      // Verify titles are in English with Option prefixes
+      for (const opt of roll1.options) {
+        expect(opt.title).toMatch(/^Option [A-C]: /);
       }
     });
 

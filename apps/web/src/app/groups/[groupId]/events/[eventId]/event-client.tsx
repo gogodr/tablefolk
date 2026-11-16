@@ -204,11 +204,11 @@ export function EventClient() {
       minute: "2-digit",
     });
 
-    let message = `🎲 *¡Votemos el menú de juegos para ${event.title}!* 🗳️\n`;
+    let message = `🎲 *Vote for the game night menu: ${event.title}!* 🗳️\n`;
     message += `📅 ${dateFormatted}\n`;
     if (event.location) message += `📍 ${event.location}\n`;
-    message += `👥 ${event.totalHeadcount} confirmados\n\n`;
-    message += `*Elige tu opción favorita para la noche:*\n\n`;
+    message += `👥 ${event.totalHeadcount} confirmed attendees\n\n`;
+    message += `*Choose your favorite lineup for tonight:*\n\n`;
 
     pollOptions.forEach((opt) => {
       message += `🔹 *${opt.title}* (${opt.styleBadge}) · ~${opt.totalEstimatedMinutes} min\n`;
@@ -222,7 +222,7 @@ export function EventClient() {
     });
 
     if (typeof window !== "undefined") {
-      message += `🔗 Vota directamente en Tablefolk:\n${window.location.href}`;
+      message += `🔗 Vote directly on Tablefolk:\n${window.location.href}`;
       void navigator.clipboard.writeText(message);
       setCopiedShare(true);
       setTimeout(() => setCopiedShare(false), 3000);
@@ -340,21 +340,21 @@ export function EventClient() {
     message += `📅 ${dateFormatted}\n`;
     if (event.location) message += `📍 ${event.location}\n`;
     if (event.hostDisplayName) message += `🏠 Host: ${event.hostDisplayName}\n`;
-    message += `👥 ${event.totalHeadcount} confirmados\n\n`;
+    message += `👥 ${event.totalHeadcount} confirmed attendees\n\n`;
 
     if (event.officialPick) {
-      message += `✨ *Juego Oficial de la Noche:*\n`;
+      message += `✨ *Official Game of the Night:*\n`;
       message += `👉 *${event.officialPick.name}*`;
-      if (event.officialPickCarrier) message += ` (Lo lleva: ${event.officialPickCarrier})`;
-      message += `\n📺 Cómo jugar: https://www.youtube.com/results?search_query=how+to+play+${encodeURIComponent(event.officialPick.name)}+board+game\n\n`;
+      if (event.officialPickCarrier) message += ` (Brought by: ${event.officialPickCarrier})`;
+      message += `\n📺 How to play: https://www.youtube.com/results?search_query=how+to+play+${encodeURIComponent(event.officialPick.name)}+board+game\n\n`;
     } else if (event.officialLineup && event.officialLineup.length > 0) {
-      message += `✨ *Menú de Sesión Programado:*\n`;
+      message += `✨ *Scheduled Session Menu:*\n`;
       event.officialLineup.forEach((slot, i) => {
         const expStr = slot.expansions && slot.expansions.length > 0
           ? ` (+ ${slot.expansions.map((e) => cleanExpansionName(slot.name, e.name)).join(", ")})`
           : "";
         message += `${i + 1}️⃣ *${slot.name}*${expStr} (${slot.label} · ~${slot.estimatedMinutes}m)`;
-        if (slot.carrierDisplayName) message += ` [Lo lleva: ${slot.carrierDisplayName}]`;
+        if (slot.carrierDisplayName) message += ` [Brought by: ${slot.carrierDisplayName}]`;
         message += `\n`;
       });
       message += `\n`;
@@ -552,7 +552,7 @@ export function EventClient() {
               <span className="eyebrow" style={{ color: "#166534" }}>🏁 Event Finished &amp; Verified</span>
               <h2 style={{ margin: "4px 0", color: "#14532d" }}>Game Night Completed</h2>
               <p style={{ margin: "4px 0", fontSize: "14px", color: "#166534" }}>
-                Los puntos de deseo/interés de los miembros se descontaron únicamente de los títulos jugados a continuación.
+                Member want-to-play interest points have been consumed only for the games tabled below.
               </p>
             </div>
             {isHostOrCreator && (
@@ -1200,8 +1200,8 @@ export function EventClient() {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
               <div>
-                <span className="eyebrow" style={{ color: "#166534" }}>🏁 Finalizar Noche de Juegos</span>
-                <h2 style={{ margin: "4px 0" }}>¿Qué juegos se jugaron realmente?</h2>
+                <span className="eyebrow" style={{ color: "#166534" }}>🏁 Wrap Up Game Night</span>
+                <h2 style={{ margin: "4px 0" }}>Which games were actually played?</h2>
               </div>
               <button
                 type="button"
@@ -1213,15 +1213,15 @@ export function EventClient() {
             </div>
 
             <p style={{ fontSize: "14px", color: "var(--muted)", margin: "10px 0 16px", lineHeight: "1.5" }}>
-              Marca los juegos que efectivamente llegaron a mesa hoy.
-              {" "}<strong>Los puntos de deseo/interés de los asistentes solo se descontarán de los títulos jugados</strong>.
-              Cualquier juego planificado que no se llegó a jugar conservará sus votos intactos.
+              Select the games that were actually tabled tonight.
+              {" "}<strong>Member want-to-play wishlist points will only be consumed for games that were played</strong>.
+              Any planned title that didn&apos;t make it to table retains its votes intact for future events.
             </p>
 
             {/* Planned games section */}
             <div style={{ marginBottom: "16px" }}>
               <h4 style={{ margin: "0 0 8px", fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)" }}>
-                Juegos planificados en este evento
+                Planned games in this session
               </h4>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 {event?.officialLineup && event.officialLineup.length > 0 ? (
@@ -1275,11 +1275,11 @@ export function EventClient() {
                     />
                     <div style={{ flex: 1 }}>
                       <strong>{event.officialPick.name}</strong>
-                      <span style={{ marginLeft: "8px", fontSize: "12px", color: "var(--muted)" }}>(Juego Oficial)</span>
+                      <span style={{ marginLeft: "8px", fontSize: "12px", color: "var(--muted)" }}>(Official Pick)</span>
                     </div>
                   </label>
                 ) : (
-                  <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>No había un juego oficial pre-bloqueado.</p>
+                  <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>No official game was locked in advance.</p>
                 )}
               </div>
             </div>
@@ -1291,7 +1291,7 @@ export function EventClient() {
                 className="button-quiet button-small"
                 onClick={() => setShowOtherGames((v) => !v)}
               >
-                {showOtherGames ? "▲ Ocultar otros juegos del grupo" : "➕ ¿Se jugó otro juego del grupo que no estaba en el menú?"}
+                {showOtherGames ? "▲ Hide other group games" : "➕ Did you play another group game not on the original menu?"}
               </button>
 
               {showOtherGames && (
@@ -1333,7 +1333,7 @@ export function EventClient() {
                 disabled={closingEvent}
                 onClick={() => setShowCloseModal(false)}
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 type="button"
@@ -1342,7 +1342,7 @@ export function EventClient() {
                 disabled={closingEvent}
                 onClick={() => void handleConfirmCloseEvent()}
               >
-                {closingEvent ? "Cerrando…" : `Confirmar y Cerrar (${playedGameIds.length} jugados)`}
+                {closingEvent ? "Wrapping Up…" : `Confirm & Wrap Up (${playedGameIds.length} played)`}
               </button>
             </div>
           </div>
