@@ -21,6 +21,7 @@ function Header({ configured }: { configured: boolean }) {
         <nav aria-label="Main navigation" className="main-nav">
           <Link href="/collection">My collection</Link>
           <Link href="/groups">Groups</Link>
+          <Link href="/events">Events</Link>
         </nav>
         <div className="header-account">
           {configured ? (

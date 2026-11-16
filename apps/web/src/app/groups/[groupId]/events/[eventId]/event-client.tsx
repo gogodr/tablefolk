@@ -3,12 +3,20 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { useCallback, useEffect, useState } from "react";
-import type { EventDetail, PickResult, SessionLineupResult } from "@tablefolk/contracts";
+import { useCallback, useEffect, useState, useRef } from "react";
+import type {
+  EventDetail,
+  EventMenuOption,
+  EventMenuPoll,
+  GroupGame,
+  PickResult,
+  SessionLineupResult,
+  SessionMenuTrioResult,
+} from "@tablefolk/contracts";
 import { GameCard, cleanExpansionName } from "@/components/game-card";
 import { useApi } from "@/lib/api";
 
-type Mode = "single" | "lineup";
+type Mode = "lineup" | "single";
 
 export function EventClient() {
   const { groupId, eventId } = useParams<{ groupId: string; eventId: string }>();
@@ -35,6 +43,19 @@ export function EventClient() {
   const [totalMinutes, setTotalMinutes] = useState<number>(180); // Default 3 hours
   const [allowHeavy, setAllowHeavy] = useState<boolean>(true);
   const [lineupResult, setLineupResult] = useState<SessionLineupResult | null>(null);
+
+  // 3-Menu Trio & Poll controls
+  const [trioResult, setTrioResult] = useState<SessionMenuTrioResult | null>(null);
+  const [planningTrio, setPlanningTrio] = useState(false);
+  const [voting, setVoting] = useState(false);
+
+  // Close Event Modal & Actual Played Games
+  const [showCloseModal, setShowCloseModal] = useState(false);
+  const [closingEvent, setClosingEvent] = useState(false);
+  const [groupGamesList, setGroupGamesList] = useState<GroupGame[]>([]);
+  const [playedGameIds, setPlayedGameIds] = useState<number[]>([]);
+  const [showOtherGames, setShowOtherGames] = useState(false);
+  const closeDialogRef = useRef<HTMLDialogElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -101,6 +122,150 @@ export function EventClient() {
       setError(cause instanceof Error ? cause.message : "Could not generate session lineup.");
     } finally {
       setPicking(false);
+    }
+  }
+
+  async function handlePlanTrio() {
+    if (!playerCount || playerCount <= 0) return;
+    setPlanningTrio(true);
+    setError("");
+
+    try {
+      const data = await api<SessionMenuTrioResult>(`/v1/events/${eventId}/menu-trio`, {
+        method: "POST",
+        body: JSON.stringify({
+          playerCount,
+          totalMinutes,
+          allowHeavy,
+        }),
+      });
+      setTrioResult(data);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not plan 3 menu options.");
+    } finally {
+      setPlanningTrio(false);
+    }
+  }
+
+  async function handleOpenPoll(options: EventMenuOption[]) {
+    setVoting(true);
+    setError("");
+    try {
+      const res = await api<{ event: EventDetail }>(`/v1/events/${eventId}/menu-poll/open`, {
+        method: "POST",
+        body: JSON.stringify({ options }),
+      });
+      setEvent(res.event);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not open voting poll.");
+    } finally {
+      setVoting(false);
+    }
+  }
+
+  async function handleVoteOption(optionId: string) {
+    setVoting(true);
+    try {
+      const res = await api<{ event: EventDetail }>(`/v1/events/${eventId}/menu-poll/vote`, {
+        method: "POST",
+        body: JSON.stringify({ optionId }),
+      });
+      setEvent(res.event);
+    } catch (cause) {
+      alert(cause instanceof Error ? cause.message : "Could not record vote.");
+    } finally {
+      setVoting(false);
+    }
+  }
+
+  async function handleClosePoll(winningOptionId?: string) {
+    setVoting(true);
+    try {
+      const res = await api<{ event: EventDetail }>(`/v1/events/${eventId}/menu-poll/close`, {
+        method: "POST",
+        body: JSON.stringify({ winningOptionId }),
+      });
+      setEvent(res.event);
+    } catch (cause) {
+      alert(cause instanceof Error ? cause.message : "Could not lock winning menu.");
+    } finally {
+      setVoting(false);
+    }
+  }
+
+  function handleCopyPollText(pollOptions: EventMenuOption[]) {
+    if (!event || !pollOptions || pollOptions.length === 0) return;
+
+    const dateFormatted = new Date(event.scheduledDate).toLocaleDateString(undefined, {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    let message = `🎲 *¡Votemos el menú de juegos para ${event.title}!* 🗳️\n`;
+    message += `📅 ${dateFormatted}\n`;
+    if (event.location) message += `📍 ${event.location}\n`;
+    message += `👥 ${event.totalHeadcount} confirmados\n\n`;
+    message += `*Elige tu opción favorita para la noche:*\n\n`;
+
+    pollOptions.forEach((opt) => {
+      message += `🔹 *${opt.title}* (${opt.styleBadge}) · ~${opt.totalEstimatedMinutes} min\n`;
+      opt.lineup.forEach((slot) => {
+        const expStr = slot.game.expansions?.length
+          ? ` (+ ${slot.game.expansions.map((e) => cleanExpansionName(slot.game.name, e.name)).join(", ")})`
+          : "";
+        message += `  • ${slot.label}: *${slot.game.name}*${expStr} (~${slot.estimatedMinutes}m)\n`;
+      });
+      message += `  💬 ${opt.description}\n\n`;
+    });
+
+    if (typeof window !== "undefined") {
+      message += `🔗 Vota directamente en Tablefolk:\n${window.location.href}`;
+      void navigator.clipboard.writeText(message);
+      setCopiedShare(true);
+      setTimeout(() => setCopiedShare(false), 3000);
+    }
+  }
+
+  async function handleOpenCloseEventModal() {
+    const defaultIds: number[] = [];
+    if (event?.officialLineup && event.officialLineup.length > 0) {
+      event.officialLineup.forEach((s) => defaultIds.push(s.bggId));
+    } else if (event?.officialPickBggId) {
+      defaultIds.push(event.officialPickBggId);
+    }
+    setPlayedGameIds(defaultIds);
+
+    try {
+      const data = await api<{ games: GroupGame[] }>(`/v1/groups/${groupId}/games`);
+      setGroupGamesList(data.games);
+    } catch {
+      // ignore
+    }
+    setShowCloseModal(true);
+  }
+
+  function handleTogglePlayedGame(bggId: number) {
+    setPlayedGameIds((prev) =>
+      prev.includes(bggId) ? prev.filter((id) => id !== bggId) : [...prev, bggId]
+    );
+  }
+
+  async function handleConfirmCloseEvent() {
+    setClosingEvent(true);
+    try {
+      const res = await api<{ event: EventDetail }>(`/v1/events/${eventId}/close`, {
+        method: "POST",
+        body: JSON.stringify({ playedBggIds: playedGameIds }),
+      });
+      setEvent(res.event);
+      setShowCloseModal(false);
+    } catch (cause) {
+      alert(cause instanceof Error ? cause.message : "Could not close event.");
+    } finally {
+      setClosingEvent(false);
     }
   }
 
@@ -314,6 +479,25 @@ export function EventClient() {
 
           {/* Event Quick Actions Bar: Share WhatsApp & Calendar */}
           <div className="event-quick-actions">
+            {isHostOrCreator && event?.status === "SCHEDULED" && (
+              <button
+                type="button"
+                className="button-small"
+                style={{ background: "#15803d", color: "#fff", borderColor: "#166534" }}
+                onClick={() => void handleOpenCloseEventModal()}
+              >
+                🏁 Finish & Record Played Games
+              </button>
+            )}
+            {isHostOrCreator && event?.status === "COMPLETED" && (
+              <button
+                type="button"
+                className="button-secondary button-small"
+                onClick={() => void handleOpenCloseEventModal()}
+              >
+                ✏️ Edit Played Games
+              </button>
+            )}
             <button
               type="button"
               className="button-secondary button-small"
@@ -359,6 +543,178 @@ export function EventClient() {
           </button>
         </div>
       </div>
+
+      {/* Completed Event Status Banner */}
+      {event?.status === "COMPLETED" && (
+        <section className="panel" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", marginBottom: "20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
+            <div>
+              <span className="eyebrow" style={{ color: "#166534" }}>🏁 Event Finished &amp; Verified</span>
+              <h2 style={{ margin: "4px 0", color: "#14532d" }}>Game Night Completed</h2>
+              <p style={{ margin: "4px 0", fontSize: "14px", color: "#166534" }}>
+                Los puntos de deseo/interés de los miembros se descontaron únicamente de los títulos jugados a continuación.
+              </p>
+            </div>
+            {isHostOrCreator && (
+              <button
+                type="button"
+                className="button-secondary button-small"
+                onClick={() => void handleOpenCloseEventModal()}
+              >
+                ✏️ Edit Played Games
+              </button>
+            )}
+          </div>
+
+          <div style={{ marginTop: "12px", display: "flex", flexWrap: "wrap", gap: "10px" }}>
+            {event.playedGames && event.playedGames.length > 0 ? (
+              event.playedGames.map((g) => (
+                <div
+                  key={g.bggId}
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #bbf7d0",
+                    borderRadius: "8px",
+                    padding: "8px 12px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <span>🎲</span>
+                  <strong>{g.name}</strong>
+                  {g.weight && <span style={{ fontSize: "11px", color: "var(--muted)" }}>(Weight {g.weight.toFixed(1)})</span>}
+                </div>
+              ))
+            ) : (
+              <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>No specific games marked as played.</p>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Active Group Voting Poll Banner */}
+      {event?.menuPoll?.status === "OPEN" && event.menuPoll.options.length > 0 && (
+        <section className="panel" style={{ background: "#fffbeb", border: "2px solid #f59e0b", marginBottom: "24px", padding: "20px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+            <div>
+              <span className="eyebrow" style={{ color: "#b45309" }}>🗳️ Group Voting in Progress</span>
+              <h2 style={{ margin: "4px 0" }}>Which Game Night Menu should we play?</h2>
+              <p style={{ margin: 0, fontSize: "14px", color: "var(--muted)" }}>
+                The host proposed 3 balanced menus. Vote below for your preferred lineup!
+              </p>
+            </div>
+
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="button-secondary button-small"
+                onClick={() => handleCopyPollText(event.menuPoll!.options)}
+              >
+                {copiedShare ? "✓ Copied Poll!" : "📋 Copy Poll for WhatsApp / Discord"}
+              </button>
+              {isHostOrCreator && (
+                <button
+                  type="button"
+                  className="button button-small"
+                  disabled={voting}
+                  onClick={() => void handleClosePoll()}
+                >
+                  {voting ? "Locking…" : "🏆 Lock Winning Menu"}
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+            {event.menuPoll.options.map((opt) => {
+              const myVote = opt.votes.some((v) => v.userId === user?.id);
+              const voteCount = opt.votes.length;
+
+              return (
+                <div
+                  key={opt.id}
+                  className="panel"
+                  style={{
+                    background: myVote ? "#fef3c7" : "#ffffff",
+                    border: myVote ? "2px solid #d97706" : "1px solid var(--border)",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                    padding: "16px",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px" }}>
+                      <span className="slot-role-badge" style={{ fontSize: "11px" }}>{opt.styleBadge}</span>
+                      <span className="headcount-badge" style={{ padding: "3px 8px", fontSize: "11px", fontWeight: 700 }}>
+                        🗳️ {voteCount} {voteCount === 1 ? "vote" : "votes"}
+                      </span>
+                    </div>
+
+                    <h3 style={{ margin: "10px 0 6px", fontSize: "17px" }}>{opt.title}</h3>
+                    <p style={{ margin: "0 0 12px", fontSize: "13px", color: "var(--muted)" }}>{opt.description}</p>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "12px" }}>
+                      {opt.lineup.map((slot) => (
+                        <div
+                          key={slot.game.bggId}
+                          style={{
+                            background: "var(--color-paper, #f9fafb)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "6px",
+                            padding: "6px 10px",
+                            fontSize: "12px",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <strong>{slot.label}: {slot.game.name}</strong>
+                            <span style={{ color: "var(--muted)" }}>~{slot.estimatedMinutes}m</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "12px" }}>
+                      ⏱️ <strong>~{opt.totalEstimatedMinutes} min total</strong>
+                      {opt.transitionMinutes ? ` (${opt.transitionMinutes}m setup &amp; buffer)` : ""}
+                    </div>
+
+                    {opt.votes.length > 0 && (
+                      <div style={{ fontSize: "11px", color: "var(--muted)", marginBottom: "12px" }}>
+                        <strong>Voters:</strong> {opt.votes.map((v) => v.displayName).join(", ")}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      type="button"
+                      className={`button-small ${myVote ? "button" : "button-secondary"}`}
+                      style={{ flex: 1 }}
+                      disabled={voting}
+                      onClick={() => void handleVoteOption(opt.id)}
+                    >
+                      {myVote ? "✓ Your Vote" : "🗳️ Vote for This"}
+                    </button>
+                    {isHostOrCreator && (
+                      <button
+                        type="button"
+                        className="button-quiet button-small"
+                        title="Lock this specific option as official"
+                        disabled={voting}
+                        onClick={() => void handleClosePoll(opt.id)}
+                      >
+                        Set Winner
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Official Selection Announcement Banner */}
       {(event?.officialPick || (event?.officialLineup && event.officialLineup.length > 0)) && (
@@ -511,14 +867,31 @@ export function EventClient() {
                   <span>Allow a Heavy game (Weight &gt; 3.2 · Anti-fatigue rule limits to max 1)</span>
                 </label>
 
-                <button
-                  type="button"
-                  className="button button-large"
-                  disabled={picking || playerCount <= 0}
-                  onClick={() => void handlePlanLineup(false)}
-                >
-                  {picking ? "Composing Lineup…" : "✨ Plan Evening Session Menu"}
-                </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "12px" }}>
+                  <button
+                    type="button"
+                    className="button button-large"
+                    disabled={picking || planningTrio || playerCount <= 0}
+                    onClick={() => {
+                      setTrioResult(null);
+                      void handlePlanLineup(false);
+                    }}
+                  >
+                    {picking ? "Composing Lineup…" : "✨ Plan Single Session Menu"}
+                  </button>
+
+                  <button
+                    type="button"
+                    className="button-secondary button-large"
+                    disabled={picking || planningTrio || playerCount <= 0}
+                    onClick={() => {
+                      setLineupResult(null);
+                      void handlePlanTrio();
+                    }}
+                  >
+                    {planningTrio ? "Composing 3 Options…" : "🗳️ Plan 3 Options for Group Vote"}
+                  </button>
+                </div>
               </>
             ) : (
             <>
@@ -601,7 +974,76 @@ export function EventClient() {
         {/* Results Section */}
         <section className="draw-card draw-result" aria-live="polite">
           {mode === "lineup" ? (
-            !lineupResult ? (
+            trioResult && trioResult.status === "success" ? (
+              <div>
+                <span className="draw-result-intro">
+                  ✨ 3 Contrasting Session Menus Generated · Compare or open group voting
+                </span>
+                <h2>Compare Tonight&apos;s 3 Menu Options</h2>
+
+                {isHostOrCreator && event?.menuPoll?.status !== "OPEN" && (
+                  <div style={{ margin: "14px 0", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="button"
+                      disabled={voting}
+                      onClick={() => void handleOpenPoll(trioResult.options)}
+                    >
+                      {voting ? "Opening Poll…" : "🗳️ Open Group Voting on these 3 Menus"}
+                    </button>
+                    <button
+                      type="button"
+                      className="button-secondary button-small"
+                      onClick={() => handleCopyPollText(trioResult.options)}
+                    >
+                      📋 Copy Poll for WhatsApp / Discord
+                    </button>
+                    <button
+                      type="button"
+                      className="button-quiet button-small"
+                      disabled={planningTrio}
+                      onClick={() => void handlePlanTrio()}
+                    >
+                      🎲 Reroll 3 Options
+                    </button>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "20px", marginTop: "16px" }}>
+                  {trioResult.options.map((opt) => (
+                    <div key={opt.id} className="panel" style={{ padding: "18px", border: "1px solid var(--border)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "8px", marginBottom: "8px" }}>
+                        <div>
+                          <span className="slot-role-badge">{opt.styleBadge}</span>
+                          <h3 style={{ margin: "6px 0 2px", fontSize: "18px" }}>{opt.title}</h3>
+                          <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>{opt.description}</p>
+                        </div>
+                        <span className="slot-time-badge">⏱️ ~{opt.totalEstimatedMinutes} min</span>
+                      </div>
+
+                      <div className="lineup-slots" style={{ marginTop: "12px" }}>
+                        {opt.lineup.map((slot, idx) => (
+                          <div key={slot.game.bggId} style={{ display: "contents" }}>
+                            {idx > 0 && (
+                              <div className="lineup-buffer-pill">
+                                {slot.transitionReason ?? `☕ ${slot.transitionBeforeMinutes ?? 15}m Intermission & Setup buffer`}
+                              </div>
+                            )}
+                            <div className="lineup-slot-card panel">
+                              <div className="lineup-slot-header">
+                                <span className="slot-role-badge">{slot.label}</span>
+                                <span className="slot-time-badge">⏱️ ~{slot.estimatedMinutes} min</span>
+                              </div>
+                              <GameCard game={slot.game} owners={slot.game.owners} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : !lineupResult ? (
               <div>
                 <h2>Build the Perfect Game Night Menu</h2>
                 <p>Choose your session length and hit Plan to get a balanced schedule without brain burn.</p>
@@ -725,6 +1167,187 @@ export function EventClient() {
           )}
         </section>
       </div>
+
+      {/* Close Event Modal & Actual Played Games */}
+      {showCloseModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "20px",
+          }}
+          onClick={() => setShowCloseModal(false)}
+        >
+          <div
+            className="panel"
+            style={{
+              maxWidth: "600px",
+              width: "100%",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              background: "var(--color-card, #ffffff)",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              padding: "24px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+              <div>
+                <span className="eyebrow" style={{ color: "#166534" }}>🏁 Finalizar Noche de Juegos</span>
+                <h2 style={{ margin: "4px 0" }}>¿Qué juegos se jugaron realmente?</h2>
+              </div>
+              <button
+                type="button"
+                className="button-quiet button-small"
+                onClick={() => setShowCloseModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: "14px", color: "var(--muted)", margin: "10px 0 16px", lineHeight: "1.5" }}>
+              Marca los juegos que efectivamente llegaron a mesa hoy.
+              {" "}<strong>Los puntos de deseo/interés de los asistentes solo se descontarán de los títulos jugados</strong>.
+              Cualquier juego planificado que no se llegó a jugar conservará sus votos intactos.
+            </p>
+
+            {/* Planned games section */}
+            <div style={{ marginBottom: "16px" }}>
+              <h4 style={{ margin: "0 0 8px", fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)" }}>
+                Juegos planificados en este evento
+              </h4>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                {event?.officialLineup && event.officialLineup.length > 0 ? (
+                  event.officialLineup.map((s) => {
+                    const checked = playedGameIds.includes(s.bggId);
+                    return (
+                      <label
+                        key={s.bggId}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          padding: "10px",
+                          borderRadius: "8px",
+                          border: checked ? "2px solid #16a34a" : "1px solid var(--border)",
+                          background: checked ? "#f0fdf4" : "var(--color-paper, #f9fafb)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => handleTogglePlayedGame(s.bggId)}
+                          style={{ width: "18px", height: "18px" }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <strong>{s.name}</strong>
+                          <span style={{ marginLeft: "8px", fontSize: "12px", color: "var(--muted)" }}>({s.label})</span>
+                        </div>
+                      </label>
+                    );
+                  })
+                ) : event?.officialPick ? (
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "10px",
+                      borderRadius: "8px",
+                      border: playedGameIds.includes(event.officialPick.bggId) ? "2px solid #16a34a" : "1px solid var(--border)",
+                      background: playedGameIds.includes(event.officialPick.bggId) ? "#f0fdf4" : "var(--color-paper, #f9fafb)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={playedGameIds.includes(event.officialPick.bggId)}
+                      onChange={() => handleTogglePlayedGame(event.officialPick!.bggId)}
+                      style={{ width: "18px", height: "18px" }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <strong>{event.officialPick.name}</strong>
+                      <span style={{ marginLeft: "8px", fontSize: "12px", color: "var(--muted)" }}>(Juego Oficial)</span>
+                    </div>
+                  </label>
+                ) : (
+                  <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>No había un juego oficial pre-bloqueado.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Other games toggle */}
+            <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px", marginBottom: "16px" }}>
+              <button
+                type="button"
+                className="button-quiet button-small"
+                onClick={() => setShowOtherGames((v) => !v)}
+              >
+                {showOtherGames ? "▲ Ocultar otros juegos del grupo" : "➕ ¿Se jugó otro juego del grupo que no estaba en el menú?"}
+              </button>
+
+              {showOtherGames && (
+                <div style={{ marginTop: "10px", display: "flex", flexDirection: "column", gap: "6px", maxHeight: "200px", overflowY: "auto" }}>
+                  {groupGamesList.map((g) => {
+                    const checked = playedGameIds.includes(g.bggId);
+                    return (
+                      <label
+                        key={g.bggId}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          padding: "6px 10px",
+                          borderRadius: "6px",
+                          border: checked ? "1px solid #16a34a" : "1px solid var(--border)",
+                          background: checked ? "#f0fdf4" : "transparent",
+                          fontSize: "13px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => handleTogglePlayedGame(g.bggId)}
+                        />
+                        <span>{g.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+              <button
+                type="button"
+                className="button-secondary"
+                disabled={closingEvent}
+                onClick={() => setShowCloseModal(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="button"
+                style={{ background: "#15803d", borderColor: "#166534" }}
+                disabled={closingEvent}
+                onClick={() => void handleConfirmCloseEvent()}
+              >
+                {closingEvent ? "Cerrando…" : `Confirmar y Cerrar (${playedGameIds.length} jugados)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

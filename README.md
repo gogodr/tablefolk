@@ -13,7 +13,9 @@ A friendly place to catalog board games, share selected games with a group, and 
 ## 📑 Quick Navigation
 
 - [🍱 Evening Session Menu Planner](#-evening-session-menu-planner--anti-fatigue-engine)
-  - [🧠 Hierarchy & Anti-Fatigue Rules](#-hierarchy--anti-fatigue-engine) · [☕ Dynamic Setup & Transition Buffers](#-dynamic-setup--intermission-buffers) · [💾 Saving & Sharing Lineups](#-saving-and-sharing-the-approved-lineup)
+  - [🧠 Hierarchy & Anti-Fatigue Rules](#-hierarchy--anti-fatigue-engine) · [☕ Dynamic Setup & Transition Buffers](#-dynamic-setup--intermission-buffers) · [🗳️ 3 Menu Options & Group Polls](#️-3-contrasting-menu-options--group-voting-anti-paralysis) · [💾 Saving & Sharing Lineups](#-saving-and-sharing-the-approved-lineup)
+- [📅 Global Events Calendar](#-global-events-calendar)
+- [🏁 Event Completion & Wishlist Reality](#-event-completion--played-games-reality)
 - [🗺️ How It Works](#how-it-works) · [✨ Key Features](#key-features)
 - [📦 Local Setup](#local-setup)
   - [🐳 Docker Compose](#docker-compose) · [💻 Without Docker](#without-docker) · [🧪 Checks](#checks)
@@ -91,6 +93,38 @@ Real board game nights require downtime between boxes: packing up the previous g
 | 🟡 **Medium-Heavy** | Weight $\ge 2.6$ or Duration $\ge 70$m | Board setup & rules refresh (*Wingspan*, *Clank!*, *Catan* 5-6p) | `☕ 25m Table Setup & Rules Overview` |
 | 🟢 **Medium Standard** | Weight $\ge 2.0$ or Duration $\ge 45$m | Standard board placement & shuffling (*WoW: Lich King*, *Ticket to Ride*) | `☕ 20m Intermission & Board Setup` |
 | 🍕 **Light / Filler** | Weight $< 2.0$ and Duration $< 45$m | Fast deck shuffle, snack break & quick rules (*Avalon*, *Sushi Go!*) | `☕ 15m Quick Reset & Snack buffer` |
+
+---
+
+### 🗳️ 3 Contrasting Menu Options & Group Voting (Anti-Paralysis)
+
+To eliminate the classic *"What should we play? I don't care, you pick"* paralysis, Tablefolk can generate **3 contrasting multi-game menus** simultaneously without repeating anchor titles:
+
+* **Option A: *"Noche Épica & Estrategia"***: Substantial anchor ($\ge 2.5$ weight or $\ge 70$m) paired with quick warm-up.
+* **Option B: *"Dinámica & Interacción"***: High player interaction, bluffing, and social engagement with accessible rules.
+* **Option C: *"Favoritos de la Mesa"***: Maximize community wishlist points among confirmed attendees.
+
+**Group Voting & Polling:**
+* **In-App Voting:** Hosts can open a live poll with 1 click. Attendees vote for Option A, B, or C; real-time counters and member avatars reveal the group favorite.
+* **1-Click WhatsApp / Discord Poll:** Copies a pre-formatted ballot with times, games, and links to paste into chat channels.
+* **Official Lock:** The host can lock the winning menu with 1 click to publish the official lineup.
+
+---
+
+### 📅 Global Events Calendar
+
+Access every upcoming and past game night across all your tabletop groups in one unified view (`/events`):
+* **Monthly Interactive Grid:** Navigate months with today highlights, headcount badges, and clickable event pills with voting and lineup statuses.
+* **Timeline View:** Chronological feed filterable by `All`, `My RSVPs (Attending)`, `Voting Active`, and `Completed`.
+* **Direct RSVP:** Confirm or change attendance without leaving the calendar.
+
+---
+
+### 🏁 Event Completion & Played Games Reality
+
+When game nights wrap up, reality sometimes differs from the planned menu: a game ran long, or a surprise filler hit the table.
+* **Finish & Record (`POST /v1/events/:eventId/close`):** The host reviews which games actually made it to the table (pre-filled with the official lineup, plus optional group shelf additions).
+* **True Wishlist Point Decay:** Only the games that were **actually played** consume their voting points. Any planned title that didn't get tabled preserves its community interest points for future draws!
 
 ---
 
@@ -216,6 +250,7 @@ See [operations](docs/operations.md) for deployment and recovery details.
 
 Tablefolk continues to evolve from a game picker into a complete Game Night Operating System. Key features envisioned for future releases include:
 
+- **🌐 Interfaz Multilenguaje / i18n (UI)**: Soporte completo de internacionalización para la interfaz (Español / Inglés) con `next-intl`. La data de BoardGameGeek (títulos, categorías, mecánicas y descripciones) se preserva **tal cual** de la fuente original. Ver diseño y alcance en [Estrategia de i18n](docs/designs/i18n-strategy.md).
 - **📊 Internal Group Records & Leaderboards**: Record winners and play durations after each game night to maintain friendly group win-rate leaderboards.
 - **🪑 Multi-Table Splitter (*Split Tables*)**: Intelligent auto-division for large gatherings (8–16+ attendees) into balanced parallel tables (e.g., 4-player strategy heavy game + 6-player social party game).
 - **🍕 Potluck / Snack Board**: Collaborative RSVP checklists for food and drinks to coordinate table snacks.

@@ -4,6 +4,7 @@ import {
   chooseWeightedGameId,
   eligibleGameIds,
   planSessionLineup,
+  planSessionMenuTrio,
 } from "./picker.js";
 import type { GroupGame } from "@tablefolk/contracts";
 
@@ -493,6 +494,185 @@ describe("game night picker", () => {
       expect(diverseResult.status).toBe("success");
       expect(diverseResult.lineup.some((s) => s.game.bggId === 503)).toBe(true);
       expect(diverseResult.themeNotice).toContain("Diverse Menu");
+    });
+  });
+
+  describe("planSessionMenuTrio (3 Contrasting Menu Options for Voting)", () => {
+    const diverseCollection: GroupGame[] = [
+      {
+        bggId: 101,
+        kind: "boardgame",
+        name: "Brass: Birmingham",
+        weight: 3.9,
+        playingTime: 120,
+        minPlayers: 2,
+        maxPlayers: 4,
+        yearPublished: 2018,
+        description: null,
+        minPlayingTime: 60,
+        maxPlayingTime: 120,
+        minAge: 14,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/101",
+        designers: [],
+        publishers: [],
+        categories: ["Economic"],
+        mechanics: ["Network and Route Building", "Income"],
+        owners: [{ displayName: "Alice" }],
+      },
+      {
+        bggId: 102,
+        kind: "boardgame",
+        name: "Codenames",
+        weight: 1.3,
+        playingTime: 15,
+        minPlayers: 2,
+        maxPlayers: 8,
+        yearPublished: 2015,
+        description: null,
+        minPlayingTime: 15,
+        maxPlayingTime: 15,
+        minAge: 10,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/102",
+        designers: [],
+        publishers: [],
+        categories: ["Party", "Word Game"],
+        mechanics: ["Deduction", "Push Your Luck"],
+        owners: [{ displayName: "Bob" }],
+      },
+      {
+        bggId: 103,
+        kind: "boardgame",
+        name: "The Resistance: Avalon",
+        weight: 1.8,
+        playingTime: 30,
+        minPlayers: 4,
+        maxPlayers: 10,
+        yearPublished: 2012,
+        description: null,
+        minPlayingTime: 30,
+        maxPlayingTime: 30,
+        minAge: 13,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/103",
+        designers: [],
+        publishers: [],
+        categories: ["Bluffing", "Deduction"],
+        mechanics: ["Social Deduction", "Hidden Roles", "Voting"],
+        owners: [{ displayName: "Charlie" }],
+      },
+      {
+        bggId: 104,
+        kind: "boardgame",
+        name: "Wingspan",
+        weight: 2.4,
+        playingTime: 70,
+        minPlayers: 1,
+        maxPlayers: 5,
+        yearPublished: 2019,
+        description: null,
+        minPlayingTime: 40,
+        maxPlayingTime: 70,
+        minAge: 10,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/104",
+        designers: [],
+        publishers: [],
+        categories: ["Animals"],
+        mechanics: ["Engine Building", "Card Drafting"],
+        owners: [{ displayName: "Alice" }],
+      },
+      {
+        bggId: 105,
+        kind: "boardgame",
+        name: "Cascadia",
+        weight: 1.8,
+        playingTime: 35,
+        minPlayers: 1,
+        maxPlayers: 4,
+        yearPublished: 2021,
+        description: null,
+        minPlayingTime: 30,
+        maxPlayingTime: 45,
+        minAge: 10,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/105",
+        designers: [],
+        publishers: [],
+        categories: ["Puzzle", "Animals"],
+        mechanics: ["Tile Placement", "Drafting"],
+        owners: [{ displayName: "Bob" }],
+      },
+    ];
+
+    it("generates 3 distinct menu options with contrasting styles", () => {
+      const interestWeights = new Map<number, number>([
+        [104, 10], // Wingspan has highest interest points
+        [105, 5],
+      ]);
+
+      const result = planSessionMenuTrio(diverseCollection, {
+        playerCount: 4,
+        totalMinutes: 180,
+        allowHeavy: true,
+        weightsMap: interestWeights,
+        random: () => 0.1,
+      });
+
+      expect(result.status).toBe("success");
+      expect(result.options).toHaveLength(3);
+
+      const [optA, optB, optC] = result.options;
+      expect(optA.id).toBe("A");
+      expect(optB.id).toBe("B");
+      expect(optC.id).toBe("C");
+
+      // Verify Option A has heavy strategy anchor (Brass Birmingham)
+      const mainA = optA.lineup.find((s) => s.role === "main");
+      expect(mainA?.game.bggId).toBe(101);
+      expect(optA.hasHeavy).toBe(true);
+
+      // Verify Option B excludes main A and avoids heavy games
+      const mainB = optB.lineup.find((s) => s.role === "main");
+      expect(mainB?.game.bggId).not.toBe(101);
+      expect(optB.hasHeavy).toBe(false);
+
+      // Verify Option C provides a distinct anchor game from Option A and Option B
+      const mainC = optC.lineup.find((s) => s.role === "main");
+      expect(mainC?.game.bggId).not.toBe(101);
+      expect(mainC?.game.bggId).not.toBe(mainB?.game.bggId);
+
+      // All options should have valid estimated times and transitions
+      for (const opt of result.options) {
+        expect(opt.totalEstimatedMinutes).toBeGreaterThan(0);
+        expect(opt.lineup.length).toBeGreaterThan(0);
+        expect(opt.votes).toEqual([]);
+      }
+    });
+
+    it("handles smaller collections gracefully by providing 3 valid lineups without crashing", () => {
+      const smallCollection = [diverseCollection[1], diverseCollection[2]]; // Codenames and Avalon
+      const result = planSessionMenuTrio(smallCollection as GroupGame[], {
+        playerCount: 4,
+        totalMinutes: 60,
+      });
+
+      expect(result.status).toBe("success");
+      expect(result.options).toHaveLength(3);
+      for (const opt of result.options) {
+        expect(opt.lineup.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("returns empty or no_match if no game supports the headcount", () => {
+      const result = planSessionMenuTrio(diverseCollection, {
+        playerCount: 20, // no game supports 20 players
+        totalMinutes: 180,
+      });
+
+      expect(result.status).toBe("no_match");
+      expect(result.options).toHaveLength(0);
     });
   });
 });

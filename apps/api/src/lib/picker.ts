@@ -1,4 +1,11 @@
-import type { GameKind, GroupGame, SessionGameSlot, SessionLineupResult } from "@tablefolk/contracts";
+import type {
+  EventMenuOption,
+  GameKind,
+  GroupGame,
+  SessionGameSlot,
+  SessionLineupResult,
+  SessionMenuTrioResult,
+} from "@tablefolk/contracts";
 
 export function pickIndex(count: number, random = Math.random): number {
   if (!Number.isInteger(count) || count < 1) throw new Error("count must be positive");
@@ -404,5 +411,162 @@ export function planSessionLineup(
     targetMinutes: totalMinutes,
     hasHeavy: hasHeavyGame,
     themeNotice,
+  };
+}
+
+export function planSessionMenuTrio(
+  availableGames: GroupGame[],
+  options: LineupPlannerOptions,
+): SessionMenuTrioResult {
+  const {
+    playerCount,
+    totalMinutes,
+    allowHeavy = true,
+    weightsMap = new Map<number, number>(),
+    excludeBggIds = [],
+    random = Math.random,
+  } = options;
+
+  // First verify if any game is eligible
+  const baseLineup = planSessionLineup(availableGames, options);
+  if (baseLineup.status !== "success" || baseLineup.lineup.length === 0) {
+    return {
+      status: baseLineup.status,
+      options: [],
+    };
+  }
+
+  // Find eligible candidate pool to understand available variety
+  const eligible = availableGames.filter((g) => {
+    const isExpansion =
+      g.kind === "boardgameexpansion" ||
+      (g.baseGameBggId !== null && g.baseGameBggId !== undefined);
+    if (isExpansion && !g.isStandalone) return false;
+    if (excludeBggIds.includes(g.bggId)) return false;
+    const effectiveMax = g.effectiveMaxPlayers ?? g.maxPlayers;
+    if (g.minPlayers === null || effectiveMax === null) return false;
+    return playerCount >= g.minPlayers && playerCount <= effectiveMax;
+  });
+
+  // --- Option A: "Noche Épica / Estratégica" ---
+  // Favor heavier / substantial games as main
+  const optionAWeights = new Map(weightsMap);
+  for (const g of eligible) {
+    const w = g.weight ?? 2.0;
+    const time = g.playingTime ?? 45;
+    if (w >= 2.6 || time >= 60) {
+      optionAWeights.set(g.bggId, (optionAWeights.get(g.bggId) ?? 1) * 2 + (w >= 3.0 ? 50 : 20));
+    }
+  }
+
+  const lineupA = planSessionLineup(availableGames, {
+    ...options,
+    allowHeavy,
+    weightsMap: optionAWeights,
+    mechanicsAffinity: 0,
+    random,
+  });
+
+  const mainAGame = lineupA.lineup.find((s) => s.role === "main")?.game;
+  const mainABggId = mainAGame?.bggId;
+
+  // --- Option B: "Dinámica & Interacción" ---
+  // Exclude main A if there are enough eligible games, and bias towards lighter/social/dynamic games
+  const excludeForB = [...excludeBggIds];
+  if (mainABggId && eligible.length > 1) {
+    excludeForB.push(mainABggId);
+  }
+
+  const optionBWeights = new Map(weightsMap);
+  for (const g of eligible) {
+    const w = g.weight ?? 2.0;
+    if (w <= 2.5) {
+      optionBWeights.set(g.bggId, (optionBWeights.get(g.bggId) ?? 1) * 2.2);
+    } else {
+      optionBWeights.set(g.bggId, Math.max(0.1, (optionBWeights.get(g.bggId) ?? 1) * 0.3));
+    }
+  }
+
+  const lineupB = planSessionLineup(availableGames, {
+    ...options,
+    allowHeavy: false, // Option B is more dynamic/accessible
+    weightsMap: optionBWeights,
+    excludeBggIds: excludeForB,
+    mechanicsAffinity: -0.4, // Diverse contrasting mechanics
+    random,
+  });
+
+  const resolvedLineupB =
+    lineupB.status === "success" && lineupB.lineup.length > 0
+      ? lineupB
+      : planSessionLineup(availableGames, { ...options, weightsMap: optionBWeights, random });
+
+  const mainBGame = resolvedLineupB.lineup.find((s) => s.role === "main")?.game;
+  const mainBBggId = mainBGame?.bggId;
+
+  // --- Option C: "Favoritos de la Mesa" (Crowd-Pleasers / Wishlist points) ---
+  // Exclude main A and main B if possible so we have 3 unique anchor games
+  const excludeForC = [...excludeBggIds];
+  if (mainABggId && eligible.length > 2) excludeForC.push(mainABggId);
+  if (mainBBggId && eligible.length > 2) excludeForC.push(mainBBggId);
+
+  const optionCWeights = new Map(weightsMap);
+  for (const [id, pts] of weightsMap.entries()) {
+    optionCWeights.set(id, pts * 2);
+  }
+
+  const lineupC = planSessionLineup(availableGames, {
+    ...options,
+    weightsMap: optionCWeights,
+    excludeBggIds: excludeForC.length === excludeBggIds.length + 2 ? excludeForC : excludeBggIds,
+    mechanicsAffinity: 0.5,
+    random,
+  });
+
+  const resolvedLineupC =
+    lineupC.status === "success" && lineupC.lineup.length > 0 ? lineupC : baseLineup;
+
+  const resultOptions: EventMenuOption[] = [
+    {
+      id: "A",
+      title: "Opción A: Noche Épica & Estrategia",
+      styleBadge: lineupA.hasHeavy ? "🔴 Estrategia & Peso Alto" : "🧠 Noche Enfocada & Sesión Larga",
+      description: "Centrado en un plato fuerte de peso con descansos calculados para evitar saturación.",
+      lineup: lineupA.lineup,
+      totalEstimatedMinutes: lineupA.totalEstimatedMinutes,
+      transitionMinutes: lineupA.transitionMinutes ?? 0,
+      hasHeavy: lineupA.hasHeavy,
+      themeNotice: lineupA.themeNotice,
+      votes: [],
+    },
+    {
+      id: "B",
+      title: "Opción B: Dinámica & Interacción",
+      styleBadge: "⚡ Ritmo Ágil & Alta Charla",
+      description: "Títulos directos, con interacción, farol y risas para una velada ágil y distendida.",
+      lineup: resolvedLineupB.lineup,
+      totalEstimatedMinutes: resolvedLineupB.totalEstimatedMinutes,
+      transitionMinutes: resolvedLineupB.transitionMinutes ?? 0,
+      hasHeavy: resolvedLineupB.hasHeavy,
+      themeNotice: resolvedLineupB.themeNotice,
+      votes: [],
+    },
+    {
+      id: "C",
+      title: "Opción C: Favoritos de la Mesa",
+      styleBadge: "⭐ Los Más Votados por el Grupo",
+      description: "Prioriza los juegos que tienen más puntos de deseo acumulados entre los asistentes.",
+      lineup: resolvedLineupC.lineup,
+      totalEstimatedMinutes: resolvedLineupC.totalEstimatedMinutes,
+      transitionMinutes: resolvedLineupC.transitionMinutes ?? 0,
+      hasHeavy: resolvedLineupC.hasHeavy,
+      themeNotice: resolvedLineupC.themeNotice,
+      votes: [],
+    },
+  ];
+
+  return {
+    status: "success",
+    options: resultOptions,
   };
 }
