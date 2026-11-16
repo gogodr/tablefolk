@@ -423,7 +423,7 @@ function hasAnyKeyword(items: string[] | undefined, keywords: string[]): boolean
 
 export interface MenuRecipe {
   id: string;
-  category: "heavy" | "social" | "strategy" | "thematic" | "favorites" | "accessible";
+  category: "heavy" | "social" | "strategy" | "thematic" | "favorites" | "accessible" | "wildcard";
   titlePrefix: string;
   styleBadge: string;
   description: string;
@@ -819,6 +819,21 @@ export const MENU_RECIPES: MenuRecipe[] = [
         }
       }
       return { allowHeavy: false, weightsMap: wMap, mechanicsAffinity: 0 };
+    },
+  },
+  {
+    id: "wildcard_random",
+    category: "wildcard",
+    titlePrefix: "Wildcard & Blind Draw",
+    styleBadge: "🎲 Pure Random Wildcard",
+    description: "No algorithms, curated formulas, or category bias—pure luck of the draw from your group's collection.",
+    isViable: (games) => games.length > 0,
+    getWeightsAndOptions: (games) => {
+      const wMap = new Map<number, number>();
+      for (const g of games) {
+        wMap.set(g.bggId, 1);
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0 };
     },
   },
 ];

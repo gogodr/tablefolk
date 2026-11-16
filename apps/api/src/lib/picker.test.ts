@@ -688,6 +688,18 @@ describe("game night picker", () => {
       expect(weights?.weightsMap.get(101)).toBeGreaterThan(70);
     });
 
+    it("features dedicated pure random wildcard recipe with neutral weights", () => {
+      const wildcardRecipe = MENU_RECIPES.find((r) => r.id === "wildcard_random");
+      expect(wildcardRecipe).toBeDefined();
+      expect(wildcardRecipe?.category).toBe("wildcard");
+
+      const weights = wildcardRecipe?.getWeightsAndOptions(diverseCollection, new Map());
+      expect(weights?.mechanicsAffinity).toBe(0);
+      for (const game of diverseCollection) {
+        expect(weights?.weightsMap.get(game.bggId)).toBe(1);
+      }
+    });
+
     it("handles smaller collections gracefully by providing 3 valid lineups without crashing", () => {
       const smallCollection = [diverseCollection[1], diverseCollection[2]]; // Codenames and Avalon
       const result = planSessionMenuTrio(smallCollection as GroupGame[], {
