@@ -164,6 +164,7 @@ export interface LineupPlannerOptions {
   weightsMap?: Map<number, number>;
   excludeBggIds?: number[];
   mechanicsAffinity?: number;
+  themeCategory?: string;
   random?: () => number;
 }
 
@@ -178,6 +179,7 @@ export function planSessionLineup(
     weightsMap = new Map<number, number>(),
     excludeBggIds = [],
     mechanicsAffinity = 0,
+    themeCategory,
     random = Math.random,
   } = options;
 
@@ -217,6 +219,28 @@ export function planSessionLineup(
   const selectedLineup: SessionGameSlot[] = [];
   const pickedIds = new Set<number>();
 
+  const matchesTheme = (g: GroupGame) =>
+    Boolean(
+      themeCategory &&
+        (hasAnyKeyword(g.categories, [themeCategory]) ||
+          hasAnyKeyword(g.mechanics, [themeCategory]))
+    );
+
+  const activeWeightsMap = new Map(weightsMap);
+  if (themeCategory) {
+    const themedEligible = eligible.filter(matchesTheme);
+    if (themedEligible.length > 0) {
+      for (const g of eligible) {
+        const curW = activeWeightsMap.get(g.bggId) ?? 1;
+        if (matchesTheme(g)) {
+          activeWeightsMap.set(g.bggId, curW * 4 + 40);
+        } else {
+          activeWeightsMap.set(g.bggId, Math.max(0.05, curW * 0.1));
+        }
+      }
+    }
+  }
+
   // 1. Choose Main Event (Centerpiece / Anchor)
   // Look for candidates that fit within the total session time (with room for at least 15m transition if not the only game)
   let mainCandidates = eligible.filter((g) => {
@@ -224,6 +248,13 @@ export function planSessionLineup(
     const duration = getDuration(g);
     return duration <= totalMinutes + 15;
   });
+
+  if (themeCategory) {
+    const themedMain = mainCandidates.filter(matchesTheme);
+    if (themedMain.length > 0) {
+      mainCandidates = themedMain;
+    }
+  }
 
   // If session is long (>= 90m) and substantial games (>= 45m or weight >= 2.0) are available,
   // enforce that the Main Game must be substantial so that a 15-30m micro filler isn't crowned
@@ -237,7 +268,7 @@ export function planSessionLineup(
 
   if (mainCandidates.length > 0) {
     const candidateIds = mainCandidates.map((g) => g.bggId);
-    const mainId = chooseWeightedGameId(candidateIds, weightsMap, undefined, random);
+    const mainId = chooseWeightedGameId(candidateIds, activeWeightsMap, undefined, random);
     const mainGame = mainCandidates.find((g) => g.bggId === mainId)!;
     const mainDuration = getDuration(mainGame);
     const mainWeight = mainGame.weight ?? 2.0;
@@ -300,19 +331,19 @@ export function planSessionLineup(
       const mainCategories = new Set(mainGame.categories ?? []);
 
       for (const g of fillerCandidates) {
-        const baseW = weightsMap.get(g.bggId) ?? 1;
+        const baseW = activeWeightsMap.get(g.bggId) ?? 1;
         const sharedM = (g.mechanics ?? []).filter((m) => mainMechanics.has(m));
         const sharedC = (g.categories ?? []).filter((c) => mainCategories.has(c));
-        const matchScore = sharedM.length * 2 + sharedC.length * 0.5;
+        const matchScore = sharedC.length * 2.5 + sharedM.length * 0.75;
 
         let multiplier = 1;
         if (mechanicsAffinity > 0) {
-          // Boost games that share mechanics / themes with Main Game
+          // Boost games that share themes (categories) & mechanics with Main Game
           multiplier = matchScore > 0
             ? 1 + mechanicsAffinity * (2 + matchScore * 1.5)
             : Math.max(0.15, 1 - mechanicsAffinity * 0.7);
         } else if (mechanicsAffinity < 0) {
-          // Boost games that differ in mechanics / themes from Main Game
+          // Boost games that differ in themes & mechanics from Main Game (prevent fatigue)
           const diversityStrength = Math.abs(mechanicsAffinity);
           multiplier = matchScore === 0
             ? 1 + diversityStrength * 3
@@ -387,16 +418,28 @@ export function planSessionLineup(
   const totalEstimated = gameMinutes + transitionMinutes;
 
   let themeNotice: string | undefined;
-  if (selectedLineup.length > 1) {
+  if (themeCategory) {
+    themeNotice = `🎭 Themed Night: ${themeCategory}`;
+  } else if (selectedLineup.length > 1) {
     if (mechanicsAffinity > 0.2) {
-      const allShared = selectedLineup
+      const mainSlot = selectedLineup.find((s) => s.role === "main");
+      const mainCategories = new Set(mainSlot?.game.categories ?? []);
+      const allSharedCategories = selectedLineup
         .filter((s) => s.role !== "main")
-        .flatMap((s) => s.sharedMechanics ?? []);
-      const uniqueShared = Array.from(new Set(allShared));
-      if (uniqueShared.length > 0) {
-        themeNotice = `🎯 Themed Night: features ${uniqueShared.slice(0, 3).join(", ")}`;
+        .flatMap((s) => (s.game.categories ?? []).filter((c) => mainCategories.has(c)));
+      const uniqueSharedCat = Array.from(new Set(allSharedCategories));
+      if (uniqueSharedCat.length > 0) {
+        themeNotice = `🎯 Themed Night: ${uniqueSharedCat.slice(0, 3).join(", ")}`;
       } else {
-        themeNotice = "🎯 Themed Night: aligned mechanics & style";
+        const allShared = selectedLineup
+          .filter((s) => s.role !== "main")
+          .flatMap((s) => s.sharedMechanics ?? []);
+        const uniqueShared = Array.from(new Set(allShared));
+        if (uniqueShared.length > 0) {
+          themeNotice = `🎯 Themed Night: features ${uniqueShared.slice(0, 3).join(", ")}`;
+        } else {
+          themeNotice = "🎯 Themed Night: aligned mechanics & style";
+        }
       }
     } else if (mechanicsAffinity < -0.2) {
       themeNotice = "🌈 Diverse Menu: contrasting mechanics to prevent mental fatigue";
@@ -483,16 +526,21 @@ export const MENU_RECIPES: MenuRecipe[] = [
     styleBadge: "🔴 Heavy Strategy",
     description: "Centerpiece heavyweight strategy game with dedicated setup and mental reset transition buffers.",
     isViable: (games, allowHeavy) =>
-      allowHeavy && games.some((g) => (g.weight ?? 0) >= 2.8 || (g.playingTime ?? 0) >= 90),
+      allowHeavy &&
+      games.some(
+        (g) =>
+          (g.weight ?? 0) >= 3.1 ||
+          ((g.playingTime ?? 0) >= 100 && (g.weight ?? 0) >= 2.8)
+      ),
     getWeightsAndOptions: (games, baseWeights) => {
       const wMap = new Map(baseWeights);
       for (const g of games) {
         const w = g.weight ?? 2.0;
         const time = g.playingTime ?? 45;
-        if (w >= 2.8 || time >= 90) {
+        if (w >= 3.1 || (time >= 100 && w >= 2.8)) {
           wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 2 + (w >= 3.2 ? 60 : 35));
         } else {
-          wMap.set(g.bggId, Math.max(0.1, (wMap.get(g.bggId) ?? 1) * 0.2));
+          wMap.set(g.bggId, Math.max(0.05, (wMap.get(g.bggId) ?? 1) * 0.15));
         }
       }
       return { allowHeavy: true, weightsMap: wMap, mechanicsAffinity: 0 };
@@ -530,6 +578,8 @@ export const MENU_RECIPES: MenuRecipe[] = [
           ]) || hasAnyKeyword(g.categories, ["wargame", "miniatures", "fighting"]);
         if (isConflict) {
           wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 45);
+        } else {
+          wMap.set(g.bggId, Math.max(0.05, (wMap.get(g.bggId) ?? 1) * 0.15));
         }
       }
       return { weightsMap: wMap, mechanicsAffinity: 0.3 };
@@ -563,6 +613,8 @@ export const MENU_RECIPES: MenuRecipe[] = [
           ]) || hasAnyKeyword(g.categories, ["cooperative"]);
         if (isCoop) {
           wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 40);
+        } else {
+          wMap.set(g.bggId, Math.max(0.05, (wMap.get(g.bggId) ?? 1) * 0.15));
         }
       }
       return { weightsMap: wMap, mechanicsAffinity: 0.4 };
@@ -575,31 +627,39 @@ export const MENU_RECIPES: MenuRecipe[] = [
     styleBadge: "⚙️ Engine & Combos",
     description: "Card drafting, tableau construction, and exponential resource production engines.",
     isViable: (games) =>
-      games.some(
-        (g) =>
-          hasAnyKeyword(g.mechanics, [
-            "engine building",
-            "card drafting",
-            "drafting",
-            "tableau building",
-            "deck building",
-            "hand management",
-          ]) || hasAnyKeyword(g.categories, ["economic", "animals"])
+      games.some((g) =>
+        hasAnyKeyword(g.mechanics, [
+          "engine building",
+          "tableau building",
+          "deck building",
+          "bag building",
+          "pool building",
+          "card drafting",
+          "drafting",
+          "resource management",
+          "market",
+          "income",
+        ])
       ),
     getWeightsAndOptions: (games, baseWeights) => {
       const wMap = new Map(baseWeights);
       for (const g of games) {
-        const isEngine =
-          hasAnyKeyword(g.mechanics, [
-            "engine building",
-            "card drafting",
-            "drafting",
-            "tableau building",
-            "deck building",
-            "hand management",
-          ]) || hasAnyKeyword(g.categories, ["economic", "animals"]);
+        const isEngine = hasAnyKeyword(g.mechanics, [
+          "engine building",
+          "tableau building",
+          "deck building",
+          "bag building",
+          "pool building",
+          "card drafting",
+          "drafting",
+          "resource management",
+          "market",
+          "income",
+        ]);
         if (isEngine) {
           wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 35);
+        } else {
+          wMap.set(g.bggId, Math.max(0.05, (wMap.get(g.bggId) ?? 1) * 0.15));
         }
       }
       return { weightsMap: wMap, mechanicsAffinity: 0.5 };
@@ -618,7 +678,7 @@ export const MENU_RECIPES: MenuRecipe[] = [
             "tile placement",
             "pattern building",
             "enclosure",
-            "network and route building",
+            "grid coverage",
             "square grid",
             "hexgrid",
           ]) || hasAnyKeyword(g.categories, ["puzzle", "abstract strategy"])
@@ -631,12 +691,14 @@ export const MENU_RECIPES: MenuRecipe[] = [
             "tile placement",
             "pattern building",
             "enclosure",
-            "network and route building",
+            "grid coverage",
             "square grid",
             "hexgrid",
           ]) || hasAnyKeyword(g.categories, ["puzzle", "abstract strategy"]);
         if (isSpatial) {
           wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 35);
+        } else {
+          wMap.set(g.bggId, Math.max(0.05, (wMap.get(g.bggId) ?? 1) * 0.15));
         }
       }
       return { weightsMap: wMap, mechanicsAffinity: 0.4 };
@@ -660,8 +722,7 @@ export const MENU_RECIPES: MenuRecipe[] = [
             "traitor",
             "hidden roles",
           ]) ||
-          hasAnyKeyword(g.categories, ["bluffing", "party game", "deduction"]) ||
-          (g.weight ?? 2.0) <= 2.5
+          hasAnyKeyword(g.categories, ["bluffing", "party game", "deduction"])
       ),
     getWeightsAndOptions: (games, baseWeights) => {
       const wMap = new Map(baseWeights);
@@ -676,13 +737,10 @@ export const MENU_RECIPES: MenuRecipe[] = [
             "traitor",
             "hidden roles",
           ]) || hasAnyKeyword(g.categories, ["bluffing", "party game", "deduction"]);
-        const w = g.weight ?? 2.0;
         if (isInteractive) {
           wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 35);
-        } else if (w <= 2.4) {
-          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 2 + 10);
         } else {
-          wMap.set(g.bggId, Math.max(0.1, (wMap.get(g.bggId) ?? 1) * 0.3));
+          wMap.set(g.bggId, Math.max(0.05, (wMap.get(g.bggId) ?? 1) * 0.15));
         }
       }
       return { allowHeavy: false, weightsMap: wMap, mechanicsAffinity: -0.4 };
@@ -726,7 +784,7 @@ export const MENU_RECIPES: MenuRecipe[] = [
         } else if (w <= 1.8) {
           wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 2 + 20);
         } else {
-          wMap.set(g.bggId, Math.max(0.1, (wMap.get(g.bggId) ?? 1) * 0.2));
+          wMap.set(g.bggId, Math.max(0.05, (wMap.get(g.bggId) ?? 1) * 0.15));
         }
       }
       return { allowHeavy: false, weightsMap: wMap, mechanicsAffinity: -0.3 };
@@ -749,11 +807,15 @@ export const MENU_RECIPES: MenuRecipe[] = [
             "horror",
             "exploration",
             "fighting",
+            "zombies",
+            "murder/mystery",
+            "mythology",
           ]) ||
           hasAnyKeyword(g.mechanics, [
             "campaign",
             "role playing",
-            "dice rolling",
+            "storytelling",
+            "scenario / mission / campaign game",
             "grid movement",
             "modular board",
           ])
@@ -770,16 +832,22 @@ export const MENU_RECIPES: MenuRecipe[] = [
             "horror",
             "exploration",
             "fighting",
+            "zombies",
+            "murder/mystery",
+            "mythology",
           ]) ||
           hasAnyKeyword(g.mechanics, [
             "campaign",
             "role playing",
-            "dice rolling",
+            "storytelling",
+            "scenario / mission / campaign game",
             "grid movement",
             "modular board",
           ]);
         if (isThematic) {
           wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 30);
+        } else {
+          wMap.set(g.bggId, Math.max(0.05, (wMap.get(g.bggId) ?? 1) * 0.15));
         }
       }
       return { weightsMap: wMap, mechanicsAffinity: 0.3 };
@@ -915,6 +983,7 @@ export function planSessionMenuTrio(
 
   const optionLabels: ("A" | "B" | "C")[] = ["A", "B", "C"];
   const accumulatedExcludedAnchorIds = [...excludeBggIds];
+  const accumulatedUsedGameIds = new Set<number>(excludeBggIds);
   const resultOptions: EventMenuOption[] = [];
 
   for (let i = 0; i < 3; i++) {
@@ -923,14 +992,35 @@ export function planSessionMenuTrio(
     const { weightsMap: recipeWeights, mechanicsAffinity, allowHeavy: recipeAllowHeavy } =
       recipe.getWeightsAndOptions(eligible, weightsMap);
 
-    const lineupResult = planSessionLineup(availableGames, {
+    // Apply soft decay for all games already used in previous options in this trio
+    for (const usedId of accumulatedUsedGameIds) {
+      if (recipeWeights.has(usedId)) {
+        recipeWeights.set(usedId, (recipeWeights.get(usedId) ?? 1) * 0.05);
+      }
+    }
+
+    // Attempt to strictly exclude all previously used games to guarantee 0 repeats across options
+    let lineupResult = planSessionLineup(availableGames, {
       ...options,
       allowHeavy: recipeAllowHeavy !== undefined ? recipeAllowHeavy : allowHeavy,
       weightsMap: recipeWeights,
-      excludeBggIds: accumulatedExcludedAnchorIds,
+      excludeBggIds: Array.from(accumulatedUsedGameIds),
       mechanicsAffinity: mechanicsAffinity ?? 0,
       random,
     });
+
+    // If strictly excluding all used games left too few games to form a lineup,
+    // fallback to only excluding main game anchors, while keeping the soft decay on used fillers
+    if (lineupResult.status !== "success" || lineupResult.lineup.length === 0) {
+      lineupResult = planSessionLineup(availableGames, {
+        ...options,
+        allowHeavy: recipeAllowHeavy !== undefined ? recipeAllowHeavy : allowHeavy,
+        weightsMap: recipeWeights,
+        excludeBggIds: accumulatedExcludedAnchorIds,
+        mechanicsAffinity: mechanicsAffinity ?? 0,
+        random,
+      });
+    }
 
     const resolvedLineup =
       lineupResult.status === "success" && lineupResult.lineup.length > 0
@@ -944,6 +1034,9 @@ export function planSessionMenuTrio(
     const mainGame = resolvedLineup.lineup.find((s) => s.role === "main")?.game;
     if (mainGame && eligible.length > i + 1) {
       accumulatedExcludedAnchorIds.push(mainGame.bggId);
+    }
+    for (const slot of resolvedLineup.lineup) {
+      accumulatedUsedGameIds.add(slot.game.bggId);
     }
 
     resultOptions.push({

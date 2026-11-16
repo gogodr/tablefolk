@@ -31,6 +31,8 @@ export function DrawPanel({ groupId }: { groupId: string }) {
   const [totalMinutes, setTotalMinutes] = useState<number>(180);
   const [allowHeavy, setAllowHeavy] = useState<boolean>(true);
   const [mechanicsAffinity, setMechanicsAffinity] = useState<number>(0);
+  const [themeCategory, setThemeCategory] = useState<string>("");
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [lineupResult, setLineupResult] = useState<SessionLineupResult | null>(null);
 
   const [busy, setBusy] = useState(false);
@@ -63,6 +65,11 @@ export function DrawPanel({ groupId }: { groupId: string }) {
           .filter((o) => o.count >= 1)
           .sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName));
         setOwners(list);
+
+        const allCategories = Array.from(
+          new Set(data.games.flatMap((g) => g.categories ?? []))
+        ).filter(Boolean).sort((a, b) => a.localeCompare(b));
+        setAvailableCategories(allCategories);
       })
       .catch(() => {
         // Non-critical owner summary
@@ -119,6 +126,7 @@ export function DrawPanel({ groupId }: { groupId: string }) {
           allowHeavy,
           excludeBggIds,
           mechanicsAffinity,
+          themeCategory: themeCategory || undefined,
         }),
       });
       setLineupResult(data);
@@ -305,16 +313,40 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                   <span>Allow a Heavy game (Weight &gt; 3.2 · Anti-fatigue rule limits to max 1)</span>
                 </label>
 
+                {availableCategories.length > 0 && (
+                  <div className="field">
+                    <label htmlFor="draw-theme-category">
+                      🎭 Night Theme &amp; Setting <span style={{ fontWeight: "normal", color: "var(--muted)" }}>(Optional)</span>
+                    </label>
+                    <select
+                      id="draw-theme-category"
+                      className="select"
+                      value={themeCategory}
+                      onChange={(e) => setThemeCategory(e.target.value)}
+                    >
+                      <option value="">🎲 Open Collection (No specific theme)</option>
+                      {availableCategories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="field-hint">
+                      Anchor your session to a thematic setting from your collection (e.g. Horror, Fantasy, Sci-Fi).
+                    </p>
+                  </div>
+                )}
+
                 <div className="field affinity-slider-field">
                   <div className="affinity-slider-header">
                     <label htmlFor="mechanics-affinity">
-                      Mechanics &amp; Style Affinity
+                      Thematic &amp; Mechanics Affinity
                     </label>
                     <span className={`affinity-badge ${mechanicsAffinity > 0 ? "affinity-theme" : mechanicsAffinity < 0 ? "affinity-diverse" : "affinity-neutral"}`}>
                       {mechanicsAffinity === 0 && "⚖️ Balanced (Neutral)"}
-                      {mechanicsAffinity > 0 && mechanicsAffinity <= 0.5 && "🎯 Similar mechanics"}
+                      {mechanicsAffinity > 0 && mechanicsAffinity <= 0.5 && "🎯 Similar themes"}
                       {mechanicsAffinity > 0.5 && "🎯 Themed night"}
-                      {mechanicsAffinity < 0 && mechanicsAffinity >= -0.5 && "🌈 Diverse mechanics"}
+                      {mechanicsAffinity < 0 && mechanicsAffinity >= -0.5 && "🌈 Diverse themes"}
                       {mechanicsAffinity < -0.5 && "🌈 Maximum variety"}
                     </span>
                   </div>
@@ -333,8 +365,8 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                   </div>
                   <p className="field-hint">
                     {mechanicsAffinity === 0 && "Neutral selection: balances by duration and standard complexity."}
-                    {mechanicsAffinity > 0 && "Favors secondary games that share mechanics with the main game (great for a themed night like social deduction or euros)."}
-                    {mechanicsAffinity < 0 && "Favors mechanics that contrast with the main game to refresh the table and avoid mental fatigue."}
+                    {mechanicsAffinity > 0 && "Favors secondary games sharing thematic setting & style with the main event (great for an immersive night)."}
+                    {mechanicsAffinity < 0 && "Favors contrasting themes and mechanics to refresh the table and prevent mental fatigue."}
                   </p>
                 </div>
 

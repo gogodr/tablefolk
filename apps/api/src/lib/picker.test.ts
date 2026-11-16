@@ -496,6 +496,87 @@ describe("game night picker", () => {
       expect(diverseResult.lineup.some((s) => s.game.bggId === 503)).toBe(true);
       expect(diverseResult.themeNotice).toContain("Diverse Menu");
     });
+
+    it("anchors session lineup to a specific themeCategory when requested (e.g. Horror)", () => {
+      const horrorGame: GroupGame = {
+        bggId: 701,
+        kind: "boardgame",
+        name: "Mansions of Madness",
+        weight: 2.7,
+        playingTime: 120,
+        minPlayers: 1,
+        maxPlayers: 5,
+        yearPublished: 2016,
+        description: null,
+        minPlayingTime: 120,
+        maxPlayingTime: 180,
+        minAge: 14,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/701",
+        designers: [],
+        publishers: [],
+        categories: ["Horror", "Adventure", "Murder/Mystery"],
+        mechanics: ["Modular Board", "Cooperative Game"],
+        owners: [],
+      };
+
+      const horrorFiller: GroupGame = {
+        bggId: 702,
+        kind: "boardgame",
+        name: "Scooby-Doo! The Board Game",
+        weight: 1.8,
+        playingTime: 30,
+        minPlayers: 1,
+        maxPlayers: 5,
+        yearPublished: 2022,
+        description: null,
+        minPlayingTime: 30,
+        maxPlayingTime: 30,
+        minAge: 10,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/702",
+        designers: [],
+        publishers: [],
+        categories: ["Horror", "Deduction", "Monsters"],
+        mechanics: ["Cooperative Game", "Pick-up and Deliver"],
+        owners: [],
+      };
+
+      const nonHorrorGame: GroupGame = {
+        bggId: 703,
+        kind: "boardgame",
+        name: "Camel Up",
+        weight: 1.5,
+        playingTime: 45,
+        minPlayers: 3,
+        maxPlayers: 8,
+        yearPublished: 2019,
+        description: null,
+        minPlayingTime: 30,
+        maxPlayingTime: 45,
+        minAge: 8,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/703",
+        designers: [],
+        publishers: [],
+        categories: ["Animals", "Racing"],
+        mechanics: ["Betting and Bluffing", "Roll / Spin and Move"],
+        owners: [],
+      };
+
+      const result = planSessionLineup([horrorGame, horrorFiller, nonHorrorGame], {
+        playerCount: 4,
+        totalMinutes: 180,
+        themeCategory: "Horror",
+        random: () => 0.5,
+      });
+
+      expect(result.status).toBe("success");
+      expect(result.themeNotice).toBe("🎭 Themed Night: Horror");
+      expect(result.lineup.some((s) => s.game.bggId === 701)).toBe(true);
+      expect(result.lineup.some((s) => s.game.bggId === 702)).toBe(true);
+      expect(result.lineup.some((s) => s.game.bggId === 703)).toBe(false);
+    });
   });
 
   describe("planSessionMenuTrio (3 Contrasting Menu Options for Voting)", () => {
@@ -722,6 +803,54 @@ describe("game night picker", () => {
 
       expect(result.status).toBe("no_match");
       expect(result.options).toHaveLength(0);
+    });
+
+    it("prevents repeating filler games across options when sufficient games exist", () => {
+      // 8 distinct games to provide ample choices
+      const largeCollection: GroupGame[] = [
+        { ...diverseCollection[0], bggId: 801, name: "Heavy Strategy 1" },
+        { ...diverseCollection[0], bggId: 802, name: "Heavy Strategy 2", weight: 3.5 },
+        { ...diverseCollection[3], bggId: 803, name: "Meaty Game 3" },
+        { ...diverseCollection[1], bggId: 804, name: "Filler A", playingTime: 20 },
+        { ...diverseCollection[2], bggId: 805, name: "Filler B", playingTime: 25 },
+        { ...diverseCollection[4], bggId: 806, name: "Filler C", playingTime: 30 },
+        { ...diverseCollection[1], bggId: 807, name: "Filler D", playingTime: 15 },
+        { ...diverseCollection[2], bggId: 808, name: "Filler E", playingTime: 20 },
+      ];
+
+      const result = planSessionMenuTrio(largeCollection, {
+        playerCount: 4,
+        totalMinutes: 180,
+        random: () => 0.2,
+      });
+
+      expect(result.status).toBe("success");
+      expect(result.options).toHaveLength(3);
+
+      const [optA, optB, optC] = result.options;
+      const gameIdsA = new Set(optA.lineup.map((s) => s.game.bggId));
+      const gameIdsB = new Set(optB.lineup.map((s) => s.game.bggId));
+      const gameIdsC = new Set(optC.lineup.map((s) => s.game.bggId));
+
+      // Option A and Option B should have zero overlapping games
+      const overlapAB = [...gameIdsA].filter((id) => gameIdsB.has(id));
+      expect(overlapAB).toHaveLength(0);
+
+      // Option B and Option C should have zero overlapping games
+      const overlapBC = [...gameIdsB].filter((id) => gameIdsC.has(id));
+      expect(overlapBC).toHaveLength(0);
+    });
+
+    it("applies negative penalties in recipes so non-spatial games do not win spatial puzzle", () => {
+      const spatialRecipe = MENU_RECIPES.find((r) => r.id === "spatial_puzzle");
+      expect(spatialRecipe).toBeDefined();
+
+      const nonSpatialGame = diverseCollection[0]; // Brass Birmingham (economic route building)
+      const spatialGame = diverseCollection[4]; // Cascadia (Tile Placement)
+
+      const weights = spatialRecipe?.getWeightsAndOptions([nonSpatialGame, spatialGame], new Map());
+      expect(weights?.weightsMap.get(spatialGame.bggId)).toBeGreaterThan(35);
+      expect(weights?.weightsMap.get(nonSpatialGame.bggId)).toBeLessThan(1);
     });
   });
 });

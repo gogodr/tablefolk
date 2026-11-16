@@ -21,6 +21,7 @@ model User {
   shares             GroupShare[]
   sentInvites        Invitation[]     @relation("InviteSender")
   createdInviteLinks GroupInviteLink[] @relation("InviteLinkCreator")
+  createdEvents      Event[]          @relation("EventCreator")
   hostedEvents       Event[]          @relation("EventHost")
   eventRsvps         EventRsvp[]
   gameInterests      GameInterest[]
@@ -172,6 +173,7 @@ model Event {
   description     String?
   scheduledDate   DateTime
   location        String?
+  creatorId       String?
   hostUserId      String?
   manualHeadcount Int?
   status          String      @default("SCHEDULED")
@@ -182,12 +184,14 @@ model Event {
   playedBggIds    Int[]       @default([])
   createdAt       DateTime    @default(now())
   group           Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  creator         User?       @relation("EventCreator", fields: [creatorId], references: [id], onDelete: SetNull)
   host            User?       @relation("EventHost", fields: [hostUserId], references: [id])
   officialPick    Game?       @relation("EventOfficialPick", fields: [officialPickBggId], references: [bggId], onDelete: SetNull)
   rsvps           EventRsvp[]
   picks           EventPick[]
 
   @@index([groupId, scheduledDate])
+  @@index([creatorId])
 }
 
 model EventRsvp {

@@ -33,7 +33,17 @@ export const eventCreateSchema = z.object({
   manualHeadcount: z.number().int().min(1).max(1000).nullable().optional(),
 });
 
-export const eventUpdateSchema = eventCreateSchema.partial();
+export const eventUpdateSchema = eventCreateSchema.partial().extend({
+  creatorId: z.string().nullable().optional(),
+});
+
+export const eventAttendanceSchema = z.object({
+  rsvps: z.array(z.object({
+    userId: z.string(),
+    status: z.enum(["ATTENDING", "DECLINED", "MAYBE"]),
+    additionalGuests: z.number().int().min(0).max(50).default(0),
+  })),
+});
 
 export const eventRsvpSchema = z.object({
   status: z.enum(["ATTENDING", "DECLINED", "MAYBE"]),
@@ -58,6 +68,7 @@ export const sessionPlanSchema = z.object({
   allowHeavy: z.boolean().default(true),
   excludeBggIds: z.array(z.number().int().positive()).optional(),
   mechanicsAffinity: z.number().min(-1).max(1).default(0),
+  themeCategory: z.string().optional(),
 });
 
 export const eventSetOfficialSchema = z.object({
@@ -88,6 +99,7 @@ export const eventMenuPollCloseSchema = z.object({
 
 export const eventCloseSchema = z.object({
   playedBggIds: z.array(z.number().int().positive()),
+  attendedUserIds: z.array(z.string()).optional(),
   notes: z.string().max(500).optional(),
 });
 
@@ -259,6 +271,10 @@ export interface EventDetail {
   id: string;
   groupId: string;
   groupName?: string;
+  groupCreatorId?: string;
+  creatorId?: string | null;
+  creatorDisplayName?: string | null;
+  canManage?: boolean;
   title: string;
   description: string | null;
   scheduledDate: string;
