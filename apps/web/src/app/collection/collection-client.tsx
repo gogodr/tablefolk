@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CollectionGame, GroupSummary, BggSyncResult } from "@tablefolk/contracts";
+import { useQueryClient } from "@tanstack/react-query";
+import type { BggSyncResult } from "@tablefolk/contracts";
 import { GameCard } from "@/components/game-card";
 import { GameSearch } from "@/components/game-search";
 import { ShareControl } from "@/components/share-control";
 import { useApi } from "@/lib/api";
+import { queryKeys, useCollectionQuery, useGroupsQuery, useBggProfileQuery } from "@/lib/queries";
 
 type Filter = "all" | "boardgame" | "boardgameexpansion" | "available" | "unavailable" | "expanded";
 type SortOption = "name-asc" | "name-desc" | "weight-desc" | "weight-asc" | "time-asc" | "year-desc" | "recent";
@@ -18,9 +20,14 @@ type SharedFilter = "all" | "shared" | "unshared";
 export function CollectionClient() {
   const { isLoaded, isSignedIn } = useAuth();
   const api = useApi();
-  const [games, setGames] = useState<CollectionGame[]>([]);
-  const [groups, setGroups] = useState<GroupSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  const { data: collectionData, isLoading: collectionLoading, error: collectionError } = useCollectionQuery();
+  const { data: groupsData, isLoading: groupsLoading } = useGroupsQuery();
+  const { data: bggProfileData } = useBggProfileQuery();
+
+  const games = collectionData?.games ?? [];
+  const groups = groupsData?.groups ?? [];
   const [error, setError] = useState("");
 
   // Filters & Search
@@ -59,33 +66,22 @@ export function CollectionClient() {
     } catch {}
   }, []);
 
-  const load = useCallback(async () => {
-    try {
-      const [collection, groupData, bggProfile] = await Promise.all([
-        api<{ games: CollectionGame[] }>("/v1/collection"),
-        api<{ groups: GroupSummary[] }>("/v1/groups"),
-        api<{ bggUsername: string | null; lastBggSyncAt: string | null }>("/v1/user/bgg-profile").catch(() => ({ bggUsername: null, lastBggSyncAt: null })),
-      ]);
-      setGames(collection.games);
-      setGroups(groupData.groups);
-      if (bggProfile.bggUsername) {
-        setSavedBggUsername(bggProfile.bggUsername);
-        setBggUsername(bggProfile.bggUsername);
-        setLastBggSyncAt(bggProfile.lastBggSyncAt);
-        try { localStorage.setItem("tablefolk_bgg_user", bggProfile.bggUsername); } catch {}
-      }
-      setError("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not load your collection.");
-    } finally {
-      setLoading(false);
-    }
-  }, [api]);
-
   useEffect(() => {
-    if (isLoaded && isSignedIn) void load();
-    else if (isLoaded) setLoading(false);
-  }, [isLoaded, isSignedIn, load]);
+    if (bggProfileData?.bggUsername) {
+      setSavedBggUsername(bggProfileData.bggUsername);
+      setBggUsername((prev) => prev || bggProfileData.bggUsername || "");
+      setLastBggSyncAt(bggProfileData.lastBggSyncAt);
+      try { localStorage.setItem("tablefolk_bgg_user", bggProfileData.bggUsername); } catch {}
+    }
+  }, [bggProfileData]);
+
+  const refreshCollection = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.collection }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.bggProfile }),
+    ]);
+  }, [queryClient]);
 
   const selectedId = sharingId ?? editingId;
   const selectedGame = games.find((game) => game.bggId === selectedId);
@@ -115,7 +111,7 @@ export function CollectionClient() {
       await api(`/v1/collection/${bggId}`, { method: "DELETE" });
       setConfirmId(null);
       setSharingId(null);
-      await load();
+      await refreshCollection();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not remove that game.");
     } finally {
@@ -136,7 +132,7 @@ export function CollectionClient() {
         method: "PATCH",
         body: JSON.stringify({ isAvailable, unavailableReason, versionName, maxPlayersOverride, isStandalone }),
       });
-      await load();
+      await refreshCollection();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not update availability.");
     }
@@ -166,7 +162,7 @@ export function CollectionClient() {
       });
 
       setSyncStatus(`Sync complete! ${res.importedCount} new games added, ${res.updatedCount} updated.`);
-      await load();
+      await refreshCollection();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to sync BGG collection.");
       setSyncStatus(null);
@@ -191,7 +187,7 @@ export function CollectionClient() {
               : "All games are fully enriched and cached in Tablefolk."
           }`
         );
-        await load();
+        await refreshCollection();
       } else {
         setEnrichStatus("All your games are already fully cached and enriched in Tablefolk!");
       }
@@ -294,7 +290,8 @@ export function CollectionClient() {
     return list;
   }, [games, searchQuery, filter, playerFilter, weightFilter, sharedFilter, sortBy]);
 
-  if (!isLoaded || loading) return <div className="page"><p className="loading">Loading your collection…</p></div>;
+  const loading = !isLoaded || (isSignedIn && (collectionLoading || groupsLoading));
+  if (loading) return <div className="page"><p className="loading">Loading your collection…</p></div>;
   if (!isSignedIn) {
     return (
       <section className="narrow-page notice-page">
@@ -320,7 +317,7 @@ export function CollectionClient() {
       <div className="collection-tools">
         <details className="collection-tool collection-tool-add">
           <summary>Add a game</summary>
-          <div className="collection-tool-content"><GameSearch onAdded={() => void load()} /></div>
+          <div className="collection-tool-content"><GameSearch onAdded={() => void refreshCollection()} /></div>
         </details>
         <details className="collection-tool">
           <summary>
@@ -561,7 +558,7 @@ export function CollectionClient() {
       {error && (
         <div className="state-message error" role="alert">
           <p>{error}</p>
-          <button className="button-quiet" onClick={() => void load()}>Try again</button>
+          <button className="button-quiet" onClick={() => void refreshCollection()}>Try again</button>
         </div>
       )}
 
@@ -664,7 +661,7 @@ export function CollectionClient() {
                   bggId={game.bggId}
                   sharedGroupIds={game.sharedGroupIds}
                   groups={groups}
-                  onChanged={() => void load()}
+                  onChanged={() => void refreshCollection()}
                 />
               </section>
             ) : (

@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { EventDetail } from "@tablefolk/contracts";
 import { cleanExpansionName } from "@/components/game-card";
 import { useApi } from "@/lib/api";
+import { queryKeys, useEventsCalendarQuery } from "@/lib/queries";
 
 type ViewMode = "calendar" | "list";
 type EventFilter = "all" | "upcoming" | "attending" | "voting" | "completed";
@@ -14,10 +16,11 @@ export function EventsCalendarClient() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const api = useApi();
+  const queryClient = useQueryClient();
 
-  const [events, setEvents] = useState<EventDetail[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const { data, isLoading, error: queryError } = useEventsCalendarQuery();
+  const events = data?.events ?? [];
+  const error = queryError instanceof Error ? queryError.message : "";
   const [viewMode, setViewMode] = useState<ViewMode>("calendar");
   const [filter, setFilter] = useState<EventFilter>("all");
 
@@ -27,31 +30,13 @@ export function EventsCalendarClient() {
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await api<{ events: EventDetail[] }>("/v1/events");
-      setEvents(data.events);
-      setError("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not load events.");
-    } finally {
-      setLoading(false);
-    }
-  }, [api]);
-
-  useEffect(() => {
-    if (isLoaded && isSignedIn) void load();
-    else if (isLoaded) setLoading(false);
-  }, [isLoaded, isSignedIn, load]);
-
   async function handleRsvp(eventId: string, status: "ATTENDING" | "DECLINED" | "MAYBE", guests = 0) {
     try {
       await api(`/v1/events/${eventId}/rsvp`, {
         method: "POST",
         body: JSON.stringify({ status, additionalGuests: guests }),
       });
-      await load();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events });
     } catch (cause) {
       alert(cause instanceof Error ? cause.message : "Could not update RSVP.");
     }
@@ -295,7 +280,7 @@ export function EventsCalendarClient() {
     );
   }
 
-  if (!isLoaded || loading) {
+  if (!isLoaded || (isSignedIn && isLoading)) {
     return (
       <div className="page">
         <p className="loading">Loading calendar and events…</p>

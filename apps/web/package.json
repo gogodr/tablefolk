@@ -12,6 +12,7 @@
     "@clerk/nextjs": "latest",
     "@fontsource/dm-sans": "latest",
     "@tablefolk/contracts": "workspace:*",
+    "@tanstack/react-query": "^5.107.1",
     "lucide-react": "latest",
     "next": "latest",
     "react": "latest",

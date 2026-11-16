@@ -4,19 +4,24 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { EventDetail, GroupDetail } from "@tablefolk/contracts";
+import { useQueryClient } from "@tanstack/react-query";
+import type { EventDetail } from "@tablefolk/contracts";
 import { cleanExpansionName } from "@/components/game-card";
 import { useApi } from "@/lib/api";
+import { queryKeys, useGroupDetailQuery, useGroupEventsQuery } from "@/lib/queries";
 
 export function EventsClient() {
   const { groupId } = useParams<{ groupId: string }>();
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const api = useApi();
+  const queryClient = useQueryClient();
 
-  const [group, setGroup] = useState<GroupDetail | null>(null);
-  const [events, setEvents] = useState<EventDetail[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: groupData, isLoading: groupLoading } = useGroupDetailQuery(groupId);
+  const { data: eventsData, isLoading: eventsLoading } = useGroupEventsQuery(groupId);
+
+  const group = groupData?.group ?? null;
+  const events = eventsData?.events ?? [];
   const [error, setError] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [filter, setFilter] = useState<"all" | "upcoming" | "completed">("all");
@@ -30,24 +35,18 @@ export function EventsClient() {
   const [manualHeadcount, setManualHeadcount] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(async () => {
-    try {
-      const [groupData, eventData] = await Promise.all([
-        api<{ group: GroupDetail }>(`/v1/groups/${groupId}`),
-        api<{ events: EventDetail[] }>(`/v1/groups/${groupId}/events`),
-      ]);
-      setGroup(groupData.group);
-      setEvents(eventData.events);
-      if (groupData.group.members.length > 0 && !hostUserId) {
-        setHostUserId(groupData.group.members[0]?.userId ?? "");
-      }
-      setError("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not load events.");
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (group?.members && group.members.length > 0 && !hostUserId) {
+      setHostUserId(group.members[0]?.userId ?? "");
     }
-  }, [api, groupId, hostUserId]);
+  }, [group, hostUserId]);
+
+  const refreshEvents = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.groupEvents(groupId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.events }),
+    ]);
+  }, [groupId, queryClient]);
 
   const filteredEvents = useMemo(() => {
     return events.filter((e) => {
@@ -56,11 +55,6 @@ export function EventsClient() {
       return true;
     });
   }, [events, filter]);
-
-  useEffect(() => {
-    if (isLoaded && isSignedIn) void load();
-    else if (isLoaded) setLoading(false);
-  }, [isLoaded, isSignedIn, load]);
 
   async function handleCreateEvent(e: React.FormEvent) {
     e.preventDefault();
@@ -82,7 +76,7 @@ export function EventsClient() {
       setTitle("Friday Game Night");
       setDescription("");
       setLocation("");
-      await load();
+      await refreshEvents();
     } catch (cause) {
       alert(cause instanceof Error ? cause.message : "Could not schedule event.");
     } finally {
@@ -96,7 +90,7 @@ export function EventsClient() {
         method: "POST",
         body: JSON.stringify({ status, additionalGuests }),
       });
-      await load();
+      await refreshEvents();
     } catch (cause) {
       alert(cause instanceof Error ? cause.message : "Could not update RSVP.");
     }
@@ -267,7 +261,8 @@ export function EventsClient() {
     );
   }
 
-  if (!isLoaded || loading) return <div className="page"><p className="loading">Loading events…</p></div>;
+  const loading = !isLoaded || (isSignedIn && (groupLoading || eventsLoading));
+  if (loading) return <div className="page"><p className="loading">Loading events…</p></div>;
   if (!isSignedIn) {
     return (
       <section className="narrow-page notice-page">
@@ -297,7 +292,7 @@ export function EventsClient() {
       {error && (
         <div className="state-message error" role="alert">
           <p>{error}</p>
-          <button className="button-quiet" onClick={() => void load()}>Try again</button>
+          <button className="button-quiet" onClick={() => void refreshEvents()}>Try again</button>
         </div>
       )}
 

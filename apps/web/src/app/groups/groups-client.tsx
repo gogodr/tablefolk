@@ -2,36 +2,21 @@
 
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
-import { useCallback, useEffect, useState } from "react";
-import type { GroupSummary } from "@tablefolk/contracts";
+import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
+import { queryKeys, useGroupsQuery } from "@/lib/queries";
 
 export function GroupsClient() {
   const { isLoaded, isSignedIn } = useAuth();
   const api = useApi();
-  const [groups, setGroups] = useState<GroupSummary[]>([]);
+  const queryClient = useQueryClient();
+  const { data, isLoading, error: queryError } = useGroupsQuery();
+  const groups = data?.groups ?? [];
   const [name, setName] = useState("");
-  const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [error, setError] = useState("");
-
-  const load = useCallback(async () => {
-    try {
-      const data = await api<{ groups: GroupSummary[] }>("/v1/groups");
-      setGroups(data.groups);
-      setError("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not load groups.");
-    } finally {
-      setLoading(false);
-    }
-  }, [api]);
-
-  useEffect(() => {
-    if (isLoaded && isSignedIn) void load();
-    else if (isLoaded) setLoading(false);
-  }, [isLoaded, isSignedIn, load]);
 
   async function createGroup(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,7 +33,7 @@ export function GroupsClient() {
       });
       setName("");
       setShowCreate(false);
-      await load();
+      await queryClient.invalidateQueries({ queryKey: queryKeys.groups });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not create the group.");
     } finally {
@@ -56,7 +41,7 @@ export function GroupsClient() {
     }
   }
 
-  if (!isLoaded || loading) {
+  if (!isLoaded || (isSignedIn && isLoading)) {
     return (
       <div className="page">
         <p className="loading">Loading groups…</p>
