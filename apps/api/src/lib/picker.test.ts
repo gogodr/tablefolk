@@ -4,6 +4,8 @@ import {
   chooseWeightedGameId,
   eligibleGameIds,
   planSessionLineup,
+  planSessionMenuTrio,
+  MENU_RECIPES,
 } from "./picker.js";
 import type { GroupGame } from "@tablefolk/contracts";
 
@@ -493,6 +495,233 @@ describe("game night picker", () => {
       expect(diverseResult.status).toBe("success");
       expect(diverseResult.lineup.some((s) => s.game.bggId === 503)).toBe(true);
       expect(diverseResult.themeNotice).toContain("Diverse Menu");
+    });
+  });
+
+  describe("planSessionMenuTrio (3 Contrasting Menu Options for Voting)", () => {
+    const diverseCollection: GroupGame[] = [
+      {
+        bggId: 101,
+        kind: "boardgame",
+        name: "Brass: Birmingham",
+        weight: 3.9,
+        playingTime: 120,
+        minPlayers: 2,
+        maxPlayers: 4,
+        yearPublished: 2018,
+        description: null,
+        minPlayingTime: 60,
+        maxPlayingTime: 120,
+        minAge: 14,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/101",
+        designers: [],
+        publishers: [],
+        categories: ["Economic"],
+        mechanics: ["Network and Route Building", "Income"],
+        owners: [{ displayName: "Alice" }],
+      },
+      {
+        bggId: 102,
+        kind: "boardgame",
+        name: "Codenames",
+        weight: 1.3,
+        playingTime: 15,
+        minPlayers: 2,
+        maxPlayers: 8,
+        yearPublished: 2015,
+        description: null,
+        minPlayingTime: 15,
+        maxPlayingTime: 15,
+        minAge: 10,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/102",
+        designers: [],
+        publishers: [],
+        categories: ["Party", "Word Game"],
+        mechanics: ["Deduction", "Push Your Luck"],
+        owners: [{ displayName: "Bob" }],
+      },
+      {
+        bggId: 103,
+        kind: "boardgame",
+        name: "The Resistance: Avalon",
+        weight: 1.8,
+        playingTime: 30,
+        minPlayers: 4,
+        maxPlayers: 10,
+        yearPublished: 2012,
+        description: null,
+        minPlayingTime: 30,
+        maxPlayingTime: 30,
+        minAge: 13,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/103",
+        designers: [],
+        publishers: [],
+        categories: ["Bluffing", "Deduction"],
+        mechanics: ["Social Deduction", "Hidden Roles", "Voting"],
+        owners: [{ displayName: "Charlie" }],
+      },
+      {
+        bggId: 104,
+        kind: "boardgame",
+        name: "Wingspan",
+        weight: 2.4,
+        playingTime: 70,
+        minPlayers: 1,
+        maxPlayers: 5,
+        yearPublished: 2019,
+        description: null,
+        minPlayingTime: 40,
+        maxPlayingTime: 70,
+        minAge: 10,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/104",
+        designers: [],
+        publishers: [],
+        categories: ["Animals"],
+        mechanics: ["Engine Building", "Card Drafting"],
+        owners: [{ displayName: "Alice" }],
+      },
+      {
+        bggId: 105,
+        kind: "boardgame",
+        name: "Cascadia",
+        weight: 1.8,
+        playingTime: 35,
+        minPlayers: 1,
+        maxPlayers: 4,
+        yearPublished: 2021,
+        description: null,
+        minPlayingTime: 30,
+        maxPlayingTime: 45,
+        minAge: 10,
+        coverUrl: null,
+        sourceUrl: "https://bgg.com/105",
+        designers: [],
+        publishers: [],
+        categories: ["Puzzle", "Animals"],
+        mechanics: ["Tile Placement", "Drafting"],
+        owners: [{ displayName: "Bob" }],
+      },
+    ];
+
+    it("generates 3 distinct menu options with contrasting styles", () => {
+      const interestWeights = new Map<number, number>([
+        [104, 10], // Wingspan has highest interest points
+        [105, 5],
+      ]);
+
+      const result = planSessionMenuTrio(diverseCollection, {
+        playerCount: 4,
+        totalMinutes: 180,
+        allowHeavy: true,
+        weightsMap: interestWeights,
+        random: () => 0.1,
+      });
+
+      expect(result.status).toBe("success");
+      expect(result.options).toHaveLength(3);
+
+      const [optA, optB, optC] = result.options;
+      expect(optA.id).toBe("A");
+      expect(optB.id).toBe("B");
+      expect(optC.id).toBe("C");
+
+      // Verify each option has a distinct main anchor game
+      const mainA = optA.lineup.find((s) => s.role === "main");
+      const mainB = optB.lineup.find((s) => s.role === "main");
+      const mainC = optC.lineup.find((s) => s.role === "main");
+      expect(mainA?.game.bggId).toBeDefined();
+      expect(mainB?.game.bggId).toBeDefined();
+      expect(mainC?.game.bggId).toBeDefined();
+      expect(mainA?.game.bggId).not.toBe(mainB?.game.bggId);
+      expect(mainB?.game.bggId).not.toBe(mainC?.game.bggId);
+      expect(mainA?.game.bggId).not.toBe(mainC?.game.bggId);
+
+      // Verify each option has a distinct recipe style badge and title
+      expect(optA.styleBadge).not.toBe(optB.styleBadge);
+      expect(optB.styleBadge).not.toBe(optC.styleBadge);
+      expect(optA.styleBadge).not.toBe(optC.styleBadge);
+
+      // All options should have valid estimated times and transitions
+      for (const opt of result.options) {
+        expect(opt.totalEstimatedMinutes).toBeGreaterThan(0);
+        expect(opt.lineup.length).toBeGreaterThan(0);
+        expect(opt.votes).toEqual([]);
+      }
+    });
+
+    it("provides at least 10 distinct menu recipes and dynamically samples contrasting options in English", () => {
+      expect(MENU_RECIPES.length).toBeGreaterThanOrEqual(10);
+
+      const roll1 = planSessionMenuTrio(diverseCollection, {
+        playerCount: 4,
+        totalMinutes: 180,
+        random: () => 0.1,
+      });
+
+      const roll2 = planSessionMenuTrio(diverseCollection, {
+        playerCount: 4,
+        totalMinutes: 180,
+        random: () => 0.85,
+      });
+
+      expect(roll1.options).toHaveLength(3);
+      expect(roll2.options).toHaveLength(3);
+
+      // Verify titles are in English with Option prefixes
+      for (const opt of roll1.options) {
+        expect(opt.title).toMatch(/^Option [A-C]: /);
+      }
+    });
+
+    it("features dedicated heavy euro brain burner recipe favoring >= 3.0 weight games", () => {
+      const brainBurnerRecipe = MENU_RECIPES.find((r) => r.id === "heavy_euro_brainburner");
+      expect(brainBurnerRecipe).toBeDefined();
+      expect(brainBurnerRecipe?.category).toBe("heavy");
+
+      const weights = brainBurnerRecipe?.getWeightsAndOptions(diverseCollection, new Map());
+      expect(weights?.allowHeavy).toBe(true);
+      // Brass Birmingham (101, weight 3.9) should receive a huge boost
+      expect(weights?.weightsMap.get(101)).toBeGreaterThan(70);
+    });
+
+    it("features dedicated pure random wildcard recipe with neutral weights", () => {
+      const wildcardRecipe = MENU_RECIPES.find((r) => r.id === "wildcard_random");
+      expect(wildcardRecipe).toBeDefined();
+      expect(wildcardRecipe?.category).toBe("wildcard");
+
+      const weights = wildcardRecipe?.getWeightsAndOptions(diverseCollection, new Map());
+      expect(weights?.mechanicsAffinity).toBe(0);
+      for (const game of diverseCollection) {
+        expect(weights?.weightsMap.get(game.bggId)).toBe(1);
+      }
+    });
+
+    it("handles smaller collections gracefully by providing 3 valid lineups without crashing", () => {
+      const smallCollection = [diverseCollection[1], diverseCollection[2]]; // Codenames and Avalon
+      const result = planSessionMenuTrio(smallCollection as GroupGame[], {
+        playerCount: 4,
+        totalMinutes: 60,
+      });
+
+      expect(result.status).toBe("success");
+      expect(result.options).toHaveLength(3);
+      for (const opt of result.options) {
+        expect(opt.lineup.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("returns empty or no_match if no game supports the headcount", () => {
+      const result = planSessionMenuTrio(diverseCollection, {
+        playerCount: 20, // no game supports 20 players
+        totalMinutes: 180,
+      });
+
+      expect(result.status).toBe("no_match");
+      expect(result.options).toHaveLength(0);
     });
   });
 });

@@ -78,6 +78,19 @@ export const eventSetOfficialSchema = z.object({
   })).optional(),
 });
 
+export const eventMenuVoteSchema = z.object({
+  optionId: z.string().min(1),
+});
+
+export const eventMenuPollCloseSchema = z.object({
+  winningOptionId: z.string().optional(),
+});
+
+export const eventCloseSchema = z.object({
+  playedBggIds: z.array(z.number().int().positive()),
+  notes: z.string().max(500).optional(),
+});
+
 export type GameKind = "boardgame" | "boardgameexpansion";
 
 export interface Game {
@@ -212,9 +225,40 @@ export interface OfficialLineupItem {
   expansions?: { bggId: number; name: string }[];
 }
 
+export interface EventMenuVote {
+  userId: string;
+  displayName: string;
+}
+
+export interface EventMenuOption {
+  id: "A" | "B" | "C" | string;
+  title: string;
+  styleBadge: string;
+  description: string;
+  lineup: SessionGameSlot[];
+  totalEstimatedMinutes: number;
+  transitionMinutes: number;
+  hasHeavy: boolean;
+  themeNotice?: string;
+  votes: EventMenuVote[];
+}
+
+export interface EventMenuPoll {
+  status: "OPEN" | "CLOSED";
+  options: EventMenuOption[];
+  winningOptionId?: string | null;
+  updatedAt: string;
+}
+
+export interface SessionMenuTrioResult {
+  status: "success" | "empty" | "no_match";
+  options: EventMenuOption[];
+}
+
 export interface EventDetail {
   id: string;
   groupId: string;
+  groupName?: string;
   title: string;
   description: string | null;
   scheduledDate: string;
@@ -228,6 +272,9 @@ export interface EventDetail {
   officialPick?: Game | null;
   officialPickCarrier?: string | null;
   officialLineup?: OfficialLineupItem[] | null;
+  menuPoll?: EventMenuPoll | null;
+  playedBggIds?: number[];
+  playedGames?: Game[];
   createdAt: string;
   rsvps: EventRsvpMember[];
 }

@@ -1,4 +1,11 @@
-import type { GameKind, GroupGame, SessionGameSlot, SessionLineupResult } from "@tablefolk/contracts";
+import type {
+  EventMenuOption,
+  GameKind,
+  GroupGame,
+  SessionGameSlot,
+  SessionLineupResult,
+  SessionMenuTrioResult,
+} from "@tablefolk/contracts";
 
 export function pickIndex(count: number, random = Math.random): number {
   if (!Number.isInteger(count) || count < 1) throw new Error("count must be positive");
@@ -404,5 +411,557 @@ export function planSessionLineup(
     targetMinutes: totalMinutes,
     hasHeavy: hasHeavyGame,
     themeNotice,
+  };
+}
+
+function hasAnyKeyword(items: string[] | undefined, keywords: string[]): boolean {
+  if (!items || items.length === 0) return false;
+  return keywords.some((k) =>
+    items.some((i) => i.toLowerCase().includes(k.toLowerCase()))
+  );
+}
+
+export interface MenuRecipe {
+  id: string;
+  category: "heavy" | "social" | "strategy" | "thematic" | "favorites" | "accessible" | "wildcard";
+  titlePrefix: string;
+  styleBadge: string;
+  description: string;
+  isViable: (games: GroupGame[], allowHeavy: boolean) => boolean;
+  getWeightsAndOptions: (
+    games: GroupGame[],
+    baseWeights: Map<number, number>,
+  ) => {
+    allowHeavy?: boolean;
+    weightsMap: Map<number, number>;
+    mechanicsAffinity?: number;
+  };
+}
+
+export const MENU_RECIPES: MenuRecipe[] = [
+  {
+    id: "heavy_euro_brainburner",
+    category: "heavy",
+    titlePrefix: "Brain Burners & Heavy Euros",
+    styleBadge: "🧠 Heavy Euro & Brain Burner",
+    description: "Deep economic systems, worker placement, and complex optimization for players seeking heavy crunch.",
+    isViable: (games, allowHeavy) =>
+      allowHeavy &&
+      games.some(
+        (g) =>
+          (g.weight ?? 0) >= 3.0 ||
+          (hasAnyKeyword(g.mechanics, ["worker placement", "economic", "market"]) &&
+            (g.weight ?? 0) >= 2.8)
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const w = g.weight ?? 2.0;
+        const isEuro =
+          hasAnyKeyword(g.mechanics, [
+            "worker placement",
+            "economic",
+            "market",
+            "income",
+            "contracts",
+          ]) || hasAnyKeyword(g.categories, ["economic", "industry / manufacturing"]);
+        if (w >= 3.0) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 70);
+        } else if (isEuro && w >= 2.6) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 2 + 40);
+        } else {
+          wMap.set(g.bggId, Math.max(0.1, (wMap.get(g.bggId) ?? 1) * 0.2));
+        }
+      }
+      return { allowHeavy: true, weightsMap: wMap, mechanicsAffinity: 0.5 };
+    },
+  },
+  {
+    id: "epic_strategy",
+    category: "heavy",
+    titlePrefix: "Epic & Grand Strategy",
+    styleBadge: "🔴 Heavy Strategy",
+    description: "Centerpiece heavyweight strategy game with dedicated setup and mental reset transition buffers.",
+    isViable: (games, allowHeavy) =>
+      allowHeavy && games.some((g) => (g.weight ?? 0) >= 2.8 || (g.playingTime ?? 0) >= 90),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const w = g.weight ?? 2.0;
+        const time = g.playingTime ?? 45;
+        if (w >= 2.8 || time >= 90) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 2 + (w >= 3.2 ? 60 : 35));
+        } else {
+          wMap.set(g.bggId, Math.max(0.1, (wMap.get(g.bggId) ?? 1) * 0.2));
+        }
+      }
+      return { allowHeavy: true, weightsMap: wMap, mechanicsAffinity: 0 };
+    },
+  },
+  {
+    id: "tactical_conflict",
+    category: "strategy",
+    titlePrefix: "Area Control & Tactical Combat",
+    styleBadge: "⚔️ Area Control & Clashes",
+    description: "Territorial struggle, tactical movement, and direct tabletop combat with high stakes.",
+    isViable: (games) =>
+      games.some(
+        (g) =>
+          hasAnyKeyword(g.mechanics, [
+            "area majority / influence",
+            "area movement",
+            "wargame",
+            "take that",
+            "conflict",
+            "combat",
+          ]) || hasAnyKeyword(g.categories, ["wargame", "miniatures", "fighting"])
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const isConflict =
+          hasAnyKeyword(g.mechanics, [
+            "area majority / influence",
+            "area movement",
+            "wargame",
+            "take that",
+            "conflict",
+            "combat",
+          ]) || hasAnyKeyword(g.categories, ["wargame", "miniatures", "fighting"]);
+        if (isConflict) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 45);
+        }
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0.3 };
+    },
+  },
+  {
+    id: "cooperative_challenge",
+    category: "thematic",
+    titlePrefix: "Cooperative Survival & Teamwork",
+    styleBadge: "🤝 Cooperative Teamwork",
+    description: "All players unite to defeat the board, solve crises, and survive against escalating threats.",
+    isViable: (games) =>
+      games.some(
+        (g) =>
+          hasAnyKeyword(g.mechanics, [
+            "cooperative game",
+            "communication limits",
+            "traitor",
+            "hidden roles",
+          ]) || hasAnyKeyword(g.categories, ["cooperative"])
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const isCoop =
+          hasAnyKeyword(g.mechanics, [
+            "cooperative game",
+            "communication limits",
+            "traitor",
+            "hidden roles",
+          ]) || hasAnyKeyword(g.categories, ["cooperative"]);
+        if (isCoop) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 40);
+        }
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0.4 };
+    },
+  },
+  {
+    id: "engine_combos",
+    category: "strategy",
+    titlePrefix: "Engine Building & Synergies",
+    styleBadge: "⚙️ Engine & Combos",
+    description: "Card drafting, tableau construction, and exponential resource production engines.",
+    isViable: (games) =>
+      games.some(
+        (g) =>
+          hasAnyKeyword(g.mechanics, [
+            "engine building",
+            "card drafting",
+            "drafting",
+            "tableau building",
+            "deck building",
+            "hand management",
+          ]) || hasAnyKeyword(g.categories, ["economic", "animals"])
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const isEngine =
+          hasAnyKeyword(g.mechanics, [
+            "engine building",
+            "card drafting",
+            "drafting",
+            "tableau building",
+            "deck building",
+            "hand management",
+          ]) || hasAnyKeyword(g.categories, ["economic", "animals"]);
+        if (isEngine) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 35);
+        }
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0.5 };
+    },
+  },
+  {
+    id: "spatial_puzzle",
+    category: "strategy",
+    titlePrefix: "Tile Placement & Spatial Puzzles",
+    styleBadge: "🧩 Spatial Puzzles & Tiles",
+    description: "Satisfying pattern building, tile drafting, and tactile spatial optimization.",
+    isViable: (games) =>
+      games.some(
+        (g) =>
+          hasAnyKeyword(g.mechanics, [
+            "tile placement",
+            "pattern building",
+            "enclosure",
+            "network and route building",
+            "square grid",
+            "hexgrid",
+          ]) || hasAnyKeyword(g.categories, ["puzzle", "abstract strategy"])
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const isSpatial =
+          hasAnyKeyword(g.mechanics, [
+            "tile placement",
+            "pattern building",
+            "enclosure",
+            "network and route building",
+            "square grid",
+            "hexgrid",
+          ]) || hasAnyKeyword(g.categories, ["puzzle", "abstract strategy"]);
+        if (isSpatial) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 35);
+        }
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0.4 };
+    },
+  },
+  {
+    id: "high_interaction",
+    category: "social",
+    titlePrefix: "Social Deduction & Table Talk",
+    styleBadge: "⚡ High Interaction",
+    description: "Fast-paced bluffing, secret roles, negotiation, and lively table conversation.",
+    isViable: (games) =>
+      games.some(
+        (g) =>
+          hasAnyKeyword(g.mechanics, [
+            "social deduction",
+            "bluffing",
+            "negotiation",
+            "voting",
+            "trading",
+            "traitor",
+            "hidden roles",
+          ]) ||
+          hasAnyKeyword(g.categories, ["bluffing", "party game", "deduction"]) ||
+          (g.weight ?? 2.0) <= 2.5
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const isInteractive =
+          hasAnyKeyword(g.mechanics, [
+            "social deduction",
+            "bluffing",
+            "negotiation",
+            "voting",
+            "trading",
+            "traitor",
+            "hidden roles",
+          ]) || hasAnyKeyword(g.categories, ["bluffing", "party game", "deduction"]);
+        const w = g.weight ?? 2.0;
+        if (isInteractive) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 35);
+        } else if (w <= 2.4) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 2 + 10);
+        } else {
+          wMap.set(g.bggId, Math.max(0.1, (wMap.get(g.bggId) ?? 1) * 0.3));
+        }
+      }
+      return { allowHeavy: false, weightsMap: wMap, mechanicsAffinity: -0.4 };
+    },
+  },
+  {
+    id: "party_and_push",
+    category: "social",
+    titlePrefix: "Party Mayhem & Push-Your-Luck",
+    styleBadge: "🎉 Party & High Energy",
+    description: "High energy, laughter, push-your-luck thrills, and quick turns for maximum group fun.",
+    isViable: (games) =>
+      games.some(
+        (g) =>
+          (g.weight ?? 2.0) <= 2.0 ||
+          hasAnyKeyword(g.mechanics, [
+            "push your luck",
+            "speed matching",
+            "dexterity",
+            "acting",
+            "betting",
+            "real-time",
+          ]) ||
+          hasAnyKeyword(g.categories, ["party game", "humor"])
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const isParty =
+          hasAnyKeyword(g.mechanics, [
+            "push your luck",
+            "speed matching",
+            "dexterity",
+            "acting",
+            "betting",
+            "real-time",
+          ]) || hasAnyKeyword(g.categories, ["party game", "humor"]);
+        const w = g.weight ?? 2.0;
+        if (isParty) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 40);
+        } else if (w <= 1.8) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 2 + 20);
+        } else {
+          wMap.set(g.bggId, Math.max(0.1, (wMap.get(g.bggId) ?? 1) * 0.2));
+        }
+      }
+      return { allowHeavy: false, weightsMap: wMap, mechanicsAffinity: -0.3 };
+    },
+  },
+  {
+    id: "thematic_adventure",
+    category: "thematic",
+    titlePrefix: "Thematic & Narrative Worlds",
+    styleBadge: "🗺️ Thematic Adventure",
+    description: "High-stakes narrative immersion, rich fantasy/sci-fi worldbuilding, and tabletop quests.",
+    isViable: (games) =>
+      games.some(
+        (g) =>
+          hasAnyKeyword(g.categories, [
+            "thematic",
+            "adventure",
+            "science fiction",
+            "fantasy",
+            "horror",
+            "exploration",
+            "fighting",
+          ]) ||
+          hasAnyKeyword(g.mechanics, [
+            "campaign",
+            "role playing",
+            "dice rolling",
+            "grid movement",
+            "modular board",
+          ])
+      ),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const isThematic =
+          hasAnyKeyword(g.categories, [
+            "thematic",
+            "adventure",
+            "science fiction",
+            "fantasy",
+            "horror",
+            "exploration",
+            "fighting",
+          ]) ||
+          hasAnyKeyword(g.mechanics, [
+            "campaign",
+            "role playing",
+            "dice rolling",
+            "grid movement",
+            "modular board",
+          ]);
+        if (isThematic) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 30);
+        }
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0.3 };
+    },
+  },
+  {
+    id: "group_favorites",
+    category: "favorites",
+    titlePrefix: "Table Favorites & Wishlist",
+    styleBadge: "⭐ Group Wishlist Favorites",
+    description: "Showcases the titles with the highest collective want-to-play votes from confirmed attendees.",
+    isViable: (games) => games.length > 0,
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const [id, pts] of baseWeights.entries()) {
+        wMap.set(id, pts * 3);
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0.5 };
+    },
+  },
+  {
+    id: "accessible_classics",
+    category: "accessible",
+    titlePrefix: "Breezy Gateway & Modern Classics",
+    styleBadge: "🎲 Accessible Classics",
+    description: "Smooth, easy-to-table modern classics that maximize play time and minimize rules friction.",
+    isViable: (games) => games.some((g) => (g.weight ?? 2.0) <= 2.4 && (g.playingTime ?? 45) <= 65),
+    getWeightsAndOptions: (games, baseWeights) => {
+      const wMap = new Map(baseWeights);
+      for (const g of games) {
+        const w = g.weight ?? 2.0;
+        const time = g.playingTime ?? 45;
+        if (w <= 2.4 && time <= 60) {
+          wMap.set(g.bggId, (wMap.get(g.bggId) ?? 1) * 3 + 30);
+        } else {
+          wMap.set(g.bggId, Math.max(0.1, (wMap.get(g.bggId) ?? 1) * 0.2));
+        }
+      }
+      return { allowHeavy: false, weightsMap: wMap, mechanicsAffinity: 0 };
+    },
+  },
+  {
+    id: "wildcard_random",
+    category: "wildcard",
+    titlePrefix: "Wildcard & Blind Draw",
+    styleBadge: "🎲 Pure Random Wildcard",
+    description: "No algorithms, curated formulas, or category bias—pure luck of the draw from your group's collection.",
+    isViable: (games) => games.length > 0,
+    getWeightsAndOptions: (games) => {
+      const wMap = new Map<number, number>();
+      for (const g of games) {
+        wMap.set(g.bggId, 1);
+      }
+      return { weightsMap: wMap, mechanicsAffinity: 0 };
+    },
+  },
+];
+
+export function planSessionMenuTrio(
+  availableGames: GroupGame[],
+  options: LineupPlannerOptions,
+): SessionMenuTrioResult {
+  const {
+    playerCount,
+    totalMinutes,
+    allowHeavy = true,
+    weightsMap = new Map<number, number>(),
+    excludeBggIds = [],
+    random = Math.random,
+  } = options;
+
+  // First verify if any game is eligible
+  const baseLineup = planSessionLineup(availableGames, options);
+  if (baseLineup.status !== "success" || baseLineup.lineup.length === 0) {
+    return {
+      status: baseLineup.status,
+      options: [],
+    };
+  }
+
+  // Find eligible candidate pool
+  const eligible = availableGames.filter((g) => {
+    const isExpansion =
+      g.kind === "boardgameexpansion" ||
+      (g.baseGameBggId !== null && g.baseGameBggId !== undefined);
+    if (isExpansion && !g.isStandalone) return false;
+    if (excludeBggIds.includes(g.bggId)) return false;
+    const effectiveMax = g.effectiveMaxPlayers ?? g.maxPlayers;
+    if (g.minPlayers === null || effectiveMax === null) return false;
+    return playerCount >= g.minPlayers && playerCount <= effectiveMax;
+  });
+
+  // Determine which recipes are viable in this collection and headcount
+  const viableRecipes = MENU_RECIPES.filter((r) => r.isViable(eligible, allowHeavy));
+
+  // Fisher-Yates shuffle viable recipes deterministically using random()
+  const shuffledPool = [...(viableRecipes.length >= 3 ? viableRecipes : MENU_RECIPES)];
+  for (let i = shuffledPool.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    const temp = shuffledPool[i]!;
+    shuffledPool[i] = shuffledPool[j]!;
+    shuffledPool[j] = temp;
+  }
+
+  // Pick 3 recipes, striving for distinct macro-categories to guarantee contrasting flavors
+  const chosenRecipes: MenuRecipe[] = [];
+  const usedCategories = new Set<string>();
+
+  // Pass 1: Try to pick from distinct macro-categories (e.g. Heavy vs Social vs Strategy)
+  for (const rec of shuffledPool) {
+    if (!usedCategories.has(rec.category)) {
+      chosenRecipes.push(rec);
+      usedCategories.add(rec.category);
+    }
+    if (chosenRecipes.length === 3) break;
+  }
+
+  // Pass 2: If collection is narrow, fill remaining slots from distinct recipes
+  if (chosenRecipes.length < 3) {
+    for (const rec of shuffledPool) {
+      if (!chosenRecipes.some((c) => c.id === rec.id)) {
+        chosenRecipes.push(rec);
+      }
+      if (chosenRecipes.length === 3) break;
+    }
+  }
+
+  // Fallback if needed
+  while (chosenRecipes.length < 3) {
+    const fallback = MENU_RECIPES[chosenRecipes.length]!;
+    chosenRecipes.push(fallback);
+  }
+
+  const optionLabels: ("A" | "B" | "C")[] = ["A", "B", "C"];
+  const accumulatedExcludedAnchorIds = [...excludeBggIds];
+  const resultOptions: EventMenuOption[] = [];
+
+  for (let i = 0; i < 3; i++) {
+    const recipe = chosenRecipes[i]!;
+    const label = optionLabels[i]!;
+    const { weightsMap: recipeWeights, mechanicsAffinity, allowHeavy: recipeAllowHeavy } =
+      recipe.getWeightsAndOptions(eligible, weightsMap);
+
+    const lineupResult = planSessionLineup(availableGames, {
+      ...options,
+      allowHeavy: recipeAllowHeavy !== undefined ? recipeAllowHeavy : allowHeavy,
+      weightsMap: recipeWeights,
+      excludeBggIds: accumulatedExcludedAnchorIds,
+      mechanicsAffinity: mechanicsAffinity ?? 0,
+      random,
+    });
+
+    const resolvedLineup =
+      lineupResult.status === "success" && lineupResult.lineup.length > 0
+        ? lineupResult
+        : planSessionLineup(availableGames, {
+            ...options,
+            weightsMap: recipeWeights,
+            random,
+          });
+
+    const mainGame = resolvedLineup.lineup.find((s) => s.role === "main")?.game;
+    if (mainGame && eligible.length > i + 1) {
+      accumulatedExcludedAnchorIds.push(mainGame.bggId);
+    }
+
+    resultOptions.push({
+      id: label,
+      title: `Option ${label}: ${recipe.titlePrefix}`,
+      styleBadge: recipe.styleBadge,
+      description: recipe.description,
+      lineup: resolvedLineup.lineup,
+      totalEstimatedMinutes: resolvedLineup.totalEstimatedMinutes,
+      transitionMinutes: resolvedLineup.transitionMinutes ?? 0,
+      hasHeavy: resolvedLineup.hasHeavy,
+      themeNotice: resolvedLineup.themeNotice,
+      votes: [],
+    });
+  }
+
+  return {
+    status: "success",
+    options: resultOptions,
   };
 }

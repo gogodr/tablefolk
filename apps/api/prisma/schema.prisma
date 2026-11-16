@@ -178,6 +178,8 @@ model Event {
   officialPickBggId Int?
   officialPickCarrier String?
   officialLineup  Json?
+  menuPoll        Json?
+  playedBggIds    Int[]       @default([])
   createdAt       DateTime    @default(now())
   group           Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
   host            User?       @relation("EventHost", fields: [hostUserId], references: [id])

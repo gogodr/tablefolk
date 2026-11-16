@@ -13,7 +13,10 @@ A friendly place to catalog board games, share selected games with a group, and 
 ## 📑 Quick Navigation
 
 - [🍱 Evening Session Menu Planner](#-evening-session-menu-planner--anti-fatigue-engine)
-  - [🧠 Hierarchy & Anti-Fatigue Rules](#-hierarchy--anti-fatigue-engine) · [☕ Dynamic Setup & Transition Buffers](#-dynamic-setup--intermission-buffers) · [💾 Saving & Sharing Lineups](#-saving-and-sharing-the-approved-lineup)
+  - [🧠 Hierarchy & Anti-Fatigue Rules](#-hierarchy--anti-fatigue-engine) · [☕ Dynamic Setup & Transition Buffers](#-dynamic-setup--intermission-buffers) · [🗳️ 3 Menu Options & 12 Archetype Recipes](#️-3-contrasting-menu-options--12-archetype-recipes-anti-paralysis) · [💾 Saving & Sharing Lineups](#-saving-and-sharing-the-approved-lineup)
+- [📅 Global Events Calendar](#-global-events-calendar)
+- [🏁 Event Completion & Played Games Reality](#-event-completion--played-games-reality)
+- [👥 Redesigned Groups Experience](#-redesigned-groups-experience)
 - [🗺️ How It Works](#how-it-works) · [✨ Key Features](#key-features)
 - [📦 Local Setup](#local-setup)
   - [🐳 Docker Compose](#docker-compose) · [💻 Without Docker](#without-docker) · [🧪 Checks](#checks)
@@ -91,6 +94,63 @@ Real board game nights require downtime between boxes: packing up the previous g
 | 🟡 **Medium-Heavy** | Weight $\ge 2.6$ or Duration $\ge 70$m | Board setup & rules refresh (*Wingspan*, *Clank!*, *Catan* 5-6p) | `☕ 25m Table Setup & Rules Overview` |
 | 🟢 **Medium Standard** | Weight $\ge 2.0$ or Duration $\ge 45$m | Standard board placement & shuffling (*WoW: Lich King*, *Ticket to Ride*) | `☕ 20m Intermission & Board Setup` |
 | 🍕 **Light / Filler** | Weight $< 2.0$ and Duration $< 45$m | Fast deck shuffle, snack break & quick rules (*Avalon*, *Sushi Go!*) | `☕ 15m Quick Reset & Snack buffer` |
+
+---
+
+### 🗳️ 3 Contrasting Menu Options & 12 Archetype Recipes (Anti-Paralysis)
+
+To eliminate the classic *"What should we play? I don't care, you pick"* paralysis, Tablefolk generates **3 contrasting multi-game menus** simultaneously. Rather than repeating a static template, the planner samples from a rich library of **12 dynamic tabletop recipes** across 7 macro-categories:
+
+| Macro Category | Archetype Recipe | Style Badge | Table Focus & BGG Criteria |
+| :--- | :--- | :--- | :--- |
+| 🔴 **Heavy** | **Brain Burners & Heavy Euros** | `🧠 Heavy Euro & Brain Burner` | Deep economic systems, market efficiency & worker placement ($w \ge 3.0$ or $w \ge 2.8$ with worker placement) |
+| 🔴 **Heavy** | **Epic & Grand Strategy** | `🔴 Heavy Strategy` | Centerpiece strategic anchor with dedicated setup buffers ($w \ge 2.8$ or duration $\ge 90$m) paired with light fillers |
+| ⚔️ **Strategy** | **Area Control & Tactical Combat** | `⚔️ Area Control & Clashes` | Direct conflict, territory control, combat & high stakes (*Area Majority*, *Area Movement*, *Wargame*) |
+| 🤝 **Thematic** | **Cooperative Survival & Teamwork** | `🤝 Cooperative Teamwork` | Crisis management and collective survival (*Cooperative Game*, *Communication Limits*, *Traitor*) |
+| ⚙️ **Strategy** | **Engine Building & Synergies** | `⚙️ Engine & Combos` | Card drafting, tableau building, resource production & combos (*Engine Building*, *Drafting*, *Deck Building*) |
+| 🧩 **Strategy** | **Tile Placement & Spatial Puzzles** | `🧩 Spatial Puzzles & Tiles` | Tactile spatial drafting and pattern building (*Tile Placement*, *Pattern Building*, *Hexgrid*, *Puzzle*) |
+| ⚡ **Social** | **Social Deduction & Table Talk** | `⚡ High Interaction` | Fast-paced bluffing, voting, trading, hidden roles & table conversation (*Social Deduction*, *Bluffing*, *Party*) |
+| 🎉 **Social** | **Party Mayhem & Push-Your-Luck** | `🎉 Party & High Energy` | High-energy laughter, push-your-luck thrills & instant turns ($w \le 2.0$, *Push Your Luck*, *Dexterity*) |
+| 🗺️ **Thematic** | **Thematic & Narrative Worlds** | `🗺️ Thematic Adventure` | Rich narrative immersion, sci-fi/fantasy worldbuilding & tabletop quests (*Adventure*, *Sci-Fi*, *Horror*) |
+| ⭐ **Favorites** | **Table Favorites & Wishlist** | `⭐ Group Wishlist Favorites` | Triples voting points from confirmed attendees to showcase collective community desires |
+| 🎲 **Accessible** | **Breezy Gateway & Modern Classics** | `🎲 Accessible Classics` | Smooth modern classics with zero rules friction ($w \le 2.4$, duration $\le 60$m) |
+| 🎲 **Wildcard** | **Wildcard & Blind Draw** | `🎲 Pure Random Wildcard` | Pure luck of the draw: completely flat, neutral weights ($w = 1$) letting the dice decide without bias |
+
+**Macro-Category Contrast Engine:**
+- **Dynamic Sampling:** Viable recipes are filtered based on the group's actual collection and attendee headcount, then shuffled uniformly.
+- **Anti-Monotony Guard:** The selector enforces distinct macro-categories across Options A, B, and C (e.g. Brain Burner vs Social vs Wildcard), ensuring confirmed attendees have genuinely distinct tabletop vibes to choose from.
+- **Unique Anchors:** Main games are mutually exclusive across the 3 options.
+
+**Group Voting & Polling:**
+* **In-App Voting:** Hosts open a live poll with 1 click. Attendees vote for Option A, B, or C; real-time counters and member avatars reveal the group favorite.
+* **1-Click WhatsApp / Discord Poll:** Copies a pre-formatted ballot with times, games, and links to paste into chat channels.
+* **Official Lock:** The host can lock the winning menu with 1 click to publish the official lineup.
+
+---
+
+### 📅 Global Events Calendar
+
+Access every upcoming and past game night across all your tabletop groups in one unified view (`/events` & top navigation):
+* **Monthly Interactive Grid:** Navigate months with today highlights, headcount badges, and clickable event pills with voting and lineup statuses.
+* **Timeline View:** Chronological feed filterable by `All`, `My RSVPs (Attending)`, `Voting Active`, and `Completed`.
+* **Direct RSVP:** Confirm or change attendance without leaving the calendar.
+
+---
+
+### 🏁 Event Completion & Played Games Reality
+
+When game nights wrap up, reality sometimes differs from the planned menu: a game ran long, or a surprise filler hit the table.
+* **Finish & Record (`POST /v1/events/:eventId/close`):** The host reviews which games actually made it to the table (pre-filled with the official lineup, plus optional group shelf additions).
+* **True Wishlist Point Decay:** Only the games that were **actually played** consume their voting points. Any planned title that didn't get tabled preserves its community interest points for future draws!
+
+---
+
+### 👥 Redesigned Groups Experience
+
+The `/groups` hub has been restructured for immediate access:
+* **Your Groups Upfront:** Active groups appear first with member count and game shelf badges.
+* **Expandable Creation Drawer:** Click `+ New Group` in the header to open an inline creation panel without cluttering the screen.
+* **Footer Quick-Start:** Easily start another group anytime from the footer card.
 
 ---
 
@@ -216,6 +276,7 @@ See [operations](docs/operations.md) for deployment and recovery details.
 
 Tablefolk continues to evolve from a game picker into a complete Game Night Operating System. Key features envisioned for future releases include:
 
+- **🌐 Interfaz Multilenguaje / i18n (UI)**: Soporte completo de internacionalización para la interfaz (Español / Inglés) con `next-intl`. La data de BoardGameGeek (títulos, categorías, mecánicas y descripciones) se preserva **tal cual** de la fuente original. Ver diseño y alcance en [Estrategia de i18n](docs/designs/i18n-strategy.md).
 - **📊 Internal Group Records & Leaderboards**: Record winners and play durations after each game night to maintain friendly group win-rate leaderboards.
 - **🪑 Multi-Table Splitter (*Split Tables*)**: Intelligent auto-division for large gatherings (8–16+ attendees) into balanced parallel tables (e.g., 4-player strategy heavy game + 6-player social party game).
 - **🍕 Potluck / Snack Board**: Collaborative RSVP checklists for food and drinks to coordinate table snacks.
