@@ -59,6 +59,8 @@ export function EventClient() {
   const [groupMembers, setGroupMembers] = useState<Member[]>([]);
   const [playedGameIds, setPlayedGameIds] = useState<number[]>([]);
   const [attendedUserIds, setAttendedUserIds] = useState<string[]>([]);
+  const [attendedGuestNames, setAttendedGuestNames] = useState<string[]>([]);
+  const [walkInGuestInput, setWalkInGuestInput] = useState("");
   const [showOtherGames, setShowOtherGames] = useState(false);
   const [otherGameSearch, setOtherGameSearch] = useState("");
   const [otherGameSource, setOtherGameSource] = useState<"group" | "bgg">("group");
@@ -372,6 +374,14 @@ export function EventClient() {
       .map((r) => r.userId);
     setAttendedUserIds(initialAttendees);
 
+    const initialGuests = (event?.confirmedGuestNames && event.confirmedGuestNames.length > 0)
+      ? event.confirmedGuestNames
+      : (event?.rsvps ?? [])
+          .filter((r) => r.status === "ATTENDING")
+          .flatMap((r) => r.guestNames ?? []);
+    setAttendedGuestNames(initialGuests);
+    setWalkInGuestInput("");
+
     try {
       const data = await api<{ games: GroupGame[] }>(`/v1/groups/${groupId}/games`);
       setGroupGamesList(data.games);
@@ -393,6 +403,22 @@ export function EventClient() {
     );
   }
 
+  function handleToggleGuest(name: string) {
+    setAttendedGuestNames((prev) =>
+      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
+    );
+  }
+
+  function handleAddWalkInGuest(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    const trimmed = walkInGuestInput.trim();
+    if (!trimmed) return;
+    if (!attendedGuestNames.includes(trimmed)) {
+      setAttendedGuestNames((prev) => [...prev, trimmed]);
+    }
+    setWalkInGuestInput("");
+  }
+
   async function handleConfirmCloseEvent() {
     setClosingEvent(true);
     try {
@@ -401,6 +427,7 @@ export function EventClient() {
         body: JSON.stringify({
           playedBggIds: playedGameIds,
           attendedUserIds,
+          attendedGuestNames,
         }),
       });
       setEvent(res.event);
@@ -665,6 +692,32 @@ export function EventClient() {
             <strong>{event?.totalHeadcount}</strong> players confirmed
           </p>
 
+          {/* Attendees preview pill list */}
+          {event && event.rsvps.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px", margin: "8px 0 16px", fontSize: "13px" }}>
+              <span style={{ fontWeight: 600, color: "var(--muted)" }}>👥 Attending:</span>
+              {event.rsvps.filter((r) => r.status === "ATTENDING").map((r) => (
+                <span
+                  key={r.userId}
+                  style={{
+                    background: "var(--color-paper, #f9fafb)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "14px",
+                    padding: "2px 8px",
+                    fontSize: "12px",
+                  }}
+                >
+                  <strong>{r.displayName}</strong>
+                  {r.guestNames && r.guestNames.length > 0 ? (
+                    <span style={{ color: "var(--muted)" }}> (+ {r.guestNames.join(", ")})</span>
+                  ) : r.additionalGuests > 0 ? (
+                    <span style={{ color: "var(--muted)" }}> (+{r.additionalGuests})</span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Event Quick Actions Bar: Share WhatsApp & Calendar */}
           <div className="event-quick-actions">
             {canManage && event?.status === "SCHEDULED" && (
@@ -751,7 +804,13 @@ export function EventClient() {
               <span className="eyebrow" style={{ color: "#166534" }}>🏁 Event Finished &amp; Verified</span>
               <h2 style={{ margin: "4px 0", color: "#14532d" }}>Game Night Completed</h2>
               <p style={{ margin: "4px 0", fontSize: "14px", color: "#166534" }}>
-                Member want-to-play interest points have been consumed only for the games tabled below.
+                👥 <strong>{event.totalHeadcount} attendees confirmed:</strong>{" "}
+                {[
+                  ...event.rsvps.filter((r) => r.status === "ATTENDING").map((r) => r.displayName),
+                  ...(event.confirmedGuestNames && event.confirmedGuestNames.length > 0
+                    ? event.confirmedGuestNames
+                    : event.rsvps.filter((r) => r.status === "ATTENDING").flatMap((r) => r.guestNames ?? [])),
+                ].join(", ") || "None recorded"}
               </p>
             </div>
             {canManage && (
@@ -1468,39 +1527,116 @@ export function EventClient() {
                   👥 Who actually attended tonight?
                 </h4>
                 <span style={{ fontSize: "12px", color: "var(--muted)" }}>
-                  {attendedUserIds.length} {attendedUserIds.length === 1 ? "person confirmed" : "people confirmed"}
+                  {attendedUserIds.length + attendedGuestNames.length} {attendedUserIds.length + attendedGuestNames.length === 1 ? "person confirmed" : "people confirmed"}
                 </span>
               </div>
               <p style={{ fontSize: "13px", color: "var(--muted)", margin: "0 0 10px" }}>
-                Check all members who attended. Their attendance will be saved in event records.
+                Check all members and guests who were at the table. Their attendance will be saved in event records.
               </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "8px", maxHeight: "150px", overflowY: "auto" }}>
-                {groupMembers.map((m) => {
-                  const checked = attendedUserIds.includes(m.userId);
-                  return (
-                    <label
-                      key={m.userId}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        padding: "8px 10px",
-                        borderRadius: "6px",
-                        border: checked ? "1px solid #16a34a" : "1px solid var(--border)",
-                        background: checked ? "#f0fdf4" : "var(--color-paper, #f9fafb)",
-                        fontSize: "13px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => handleToggleAttendee(m.userId)}
-                      />
-                      <span style={{ fontWeight: checked ? 600 : 400 }}>{m.displayName}</span>
-                    </label>
-                  );
-                })}
+
+              {/* Members */}
+              <div style={{ marginBottom: "12px" }}>
+                <span style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--muted)", marginBottom: "6px" }}>
+                  Group Members:
+                </span>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "8px", maxHeight: "150px", overflowY: "auto" }}>
+                  {groupMembers.map((m) => {
+                    const checked = attendedUserIds.includes(m.userId);
+                    return (
+                      <label
+                        key={m.userId}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          padding: "8px 10px",
+                          borderRadius: "6px",
+                          border: checked ? "1px solid #16a34a" : "1px solid var(--border)",
+                          background: checked ? "#f0fdf4" : "var(--color-paper, #f9fafb)",
+                          fontSize: "13px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => handleToggleAttendee(m.userId)}
+                        />
+                        <span style={{ fontWeight: checked ? 600 : 400 }}>{m.displayName}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Named Guests */}
+              <div>
+                <span style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--muted)", marginBottom: "6px" }}>
+                  Named Guests &amp; Walk-ins ({attendedGuestNames.length}):
+                </span>
+                {attendedGuestNames.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
+                    {attendedGuestNames.map((name) => (
+                      <span
+                        key={name}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          background: "#f0fdf4",
+                          border: "1px solid #16a34a",
+                          borderRadius: "16px",
+                          padding: "4px 10px",
+                          fontSize: "12px",
+                          fontWeight: 500,
+                          color: "#166534",
+                        }}
+                      >
+                        👤 {name}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleGuest(name)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#dc2626",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                            padding: "0 2px",
+                            lineHeight: 1,
+                          }}
+                          title="Remove guest"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "8px", maxWidth: "340px" }}>
+                  <input
+                    type="text"
+                    placeholder="Add walk-in guest name..."
+                    value={walkInGuestInput}
+                    onChange={(e) => setWalkInGuestInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddWalkInGuest();
+                      }
+                    }}
+                    style={{ flex: 1, padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "13px" }}
+                  />
+                  <button
+                    type="button"
+                    className="button-secondary button-small"
+                    onClick={() => handleAddWalkInGuest()}
+                    disabled={!walkInGuestInput.trim()}
+                  >
+                    + Add Guest
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1901,7 +2037,7 @@ export function EventClient() {
                 disabled={closingEvent}
                 onClick={() => void handleConfirmCloseEvent()}
               >
-                {closingEvent ? "Wrapping Up…" : `Confirm & Wrap Up (${attendedUserIds.length} attended · ${playedGameIds.length} played)`}
+                {closingEvent ? "Wrapping Up…" : `Confirm & Wrap Up (${attendedUserIds.length + attendedGuestNames.length} attended · ${playedGameIds.length} played)`}
               </button>
             </div>
           </div>

@@ -29,9 +29,17 @@ import { getBggGame } from "../services/bgg.js";
 
 async function serializeEventDetail(e: any, currentUserId?: string): Promise<EventDetail> {
   const attendingRsvps = (e.rsvps ?? []).filter((r: any) => r.status === "ATTENDING");
+  const confirmedGuests: string[] = Array.isArray(e.confirmedGuestNames) ? e.confirmedGuestNames : [];
   const totalHeadcount = e.manualHeadcount !== null && e.manualHeadcount !== undefined
     ? e.manualHeadcount
-    : attendingRsvps.reduce((acc: number, r: any) => acc + 1 + r.additionalGuests, 0);
+    : (e.status === "COMPLETED" && confirmedGuests.length > 0)
+      ? attendingRsvps.length + confirmedGuests.length
+      : attendingRsvps.reduce((acc: number, r: any) => {
+          const guestCount = Array.isArray(r.guestNames) && r.guestNames.length > 0
+            ? r.guestNames.length
+            : (r.additionalGuests ?? 0);
+          return acc + 1 + guestCount;
+        }, 0);
 
   let playedGames: any[] | undefined = undefined;
   const playedBggIds: number[] = Array.isArray(e.playedBggIds) ? e.playedBggIds : [];
@@ -72,13 +80,15 @@ async function serializeEventDetail(e: any, currentUserId?: string): Promise<Eve
     menuPoll: (e.menuPoll as unknown as EventMenuPoll) ?? null,
     playedBggIds,
     playedGames,
+    confirmedGuestNames: confirmedGuests,
     createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
     rsvps: (e.rsvps ?? []).map((r: any): EventRsvpMember => ({
       userId: r.user?.id ?? r.userId,
       displayName: r.user?.displayName ?? r.displayName ?? "Member",
       bggUsername: r.user?.bggUsername ?? r.bggUsername,
       status: r.status as "ATTENDING" | "DECLINED" | "MAYBE",
-      additionalGuests: r.additionalGuests,
+      additionalGuests: Array.isArray(r.guestNames) && r.guestNames.length > 0 ? r.guestNames.length : (r.additionalGuests ?? 0),
+      guestNames: Array.isArray(r.guestNames) ? r.guestNames : [],
       updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : r.updatedAt,
     })),
   };
@@ -294,17 +304,21 @@ export async function eventRoutes(app: FastifyInstance) {
     const body = eventAttendanceSchema.parse(request.body);
 
     for (const rsvp of body.rsvps) {
+      const guestNames = (rsvp.guestNames ?? []).filter((name) => name.trim().length > 0);
+      const additionalGuests = guestNames.length > 0 ? guestNames.length : rsvp.additionalGuests;
       await db().eventRsvp.upsert({
         where: { eventId_userId: { eventId, userId: rsvp.userId } },
         create: {
           eventId,
           userId: rsvp.userId,
           status: rsvp.status,
-          additionalGuests: rsvp.additionalGuests,
+          additionalGuests,
+          guestNames,
         },
         update: {
           status: rsvp.status,
-          additionalGuests: rsvp.additionalGuests,
+          additionalGuests,
+          guestNames,
         },
       });
     }
@@ -339,6 +353,8 @@ export async function eventRoutes(app: FastifyInstance) {
     if (!member) throw forbidden("You are not a member of this group.");
 
     const body = eventRsvpSchema.parse(request.body);
+    const guestNames = (body.guestNames ?? []).filter((name) => name.trim().length > 0);
+    const additionalGuests = guestNames.length > 0 ? guestNames.length : body.additionalGuests;
 
     const rsvp = await db().eventRsvp.upsert({
       where: { eventId_userId: { eventId, userId: user.id } },
@@ -346,11 +362,13 @@ export async function eventRoutes(app: FastifyInstance) {
         eventId,
         userId: user.id,
         status: body.status,
-        additionalGuests: body.additionalGuests,
+        additionalGuests,
+        guestNames,
       },
       update: {
         status: body.status,
-        additionalGuests: body.additionalGuests,
+        additionalGuests,
+        guestNames,
       },
     });
 
@@ -469,7 +487,7 @@ export async function eventRoutes(app: FastifyInstance) {
         ? event.manualHeadcount
         : event.rsvps
             .filter((r) => r.status === "ATTENDING")
-            .reduce((acc, r) => acc + 1 + r.additionalGuests, 0));
+            .reduce((acc, r) => acc + 1 + (r.guestNames?.length || r.additionalGuests || 0), 0));
 
     if (headcount <= 0) {
       return { status: "no_match", eligibleCount: 0, unknownPlayerCount: 0 };
@@ -593,7 +611,7 @@ export async function eventRoutes(app: FastifyInstance) {
         ? event.manualHeadcount
         : event.rsvps
             .filter((r) => r.status === "ATTENDING")
-            .reduce((acc, r) => acc + 1 + r.additionalGuests, 0));
+            .reduce((acc, r) => acc + 1 + (r.guestNames?.length || r.additionalGuests || 0), 0));
 
     if (headcount <= 0) {
       return {
@@ -699,7 +717,7 @@ export async function eventRoutes(app: FastifyInstance) {
         ? event.manualHeadcount
         : event.rsvps
             .filter((r) => r.status === "ATTENDING")
-            .reduce((acc, r) => acc + 1 + r.additionalGuests, 0));
+            .reduce((acc, r) => acc + 1 + (r.guestNames?.length || r.additionalGuests || 0), 0));
 
     if (headcount <= 0) {
       return { status: "no_match", options: [] };
@@ -1088,6 +1106,7 @@ export async function eventRoutes(app: FastifyInstance) {
       data: {
         status: "COMPLETED",
         playedBggIds: body.playedBggIds,
+        confirmedGuestNames: body.attendedGuestNames ?? [],
       },
       include: {
         group: { select: { id: true, name: true, creatorId: true } },

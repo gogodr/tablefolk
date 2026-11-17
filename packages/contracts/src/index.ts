@@ -42,12 +42,14 @@ export const eventAttendanceSchema = z.object({
     userId: z.string(),
     status: z.enum(["ATTENDING", "DECLINED", "MAYBE"]),
     additionalGuests: z.number().int().min(0).max(50).default(0),
+    guestNames: z.array(z.string().trim().min(1).max(60)).default([]).optional(),
   })),
 });
 
 export const eventRsvpSchema = z.object({
   status: z.enum(["ATTENDING", "DECLINED", "MAYBE"]),
   additionalGuests: z.number().int().min(0).max(50).default(0),
+  guestNames: z.array(z.string().trim().min(1).max(60)).default([]).optional(),
 });
 
 export const gameInterestVoteSchema = z.object({
@@ -100,6 +102,7 @@ export const eventMenuPollCloseSchema = z.object({
 export const eventCloseSchema = z.object({
   playedBggIds: z.array(z.number().int().positive()),
   attendedUserIds: z.array(z.string()).optional(),
+  attendedGuestNames: z.array(z.string().trim().min(1).max(60)).optional(),
   notes: z.string().max(500).optional(),
 });
 
@@ -224,6 +227,7 @@ export interface EventRsvpMember {
   bggUsername?: string | null;
   status: "ATTENDING" | "DECLINED" | "MAYBE";
   additionalGuests: number;
+  guestNames?: string[];
   updatedAt: string;
 }
 
@@ -291,6 +295,7 @@ export interface EventDetail {
   menuPoll?: EventMenuPoll | null;
   playedBggIds?: number[];
   playedGames?: Game[];
+  confirmedGuestNames?: string[];
   createdAt: string;
   rsvps: EventRsvpMember[];
 }
