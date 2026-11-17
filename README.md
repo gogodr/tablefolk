@@ -272,14 +272,30 @@ See [operations](docs/operations.md) for deployment and recovery details.
 
 ---
 
-## 🗺️ Future Roadmap & Ideas
+## 🗺️ Future Roadmap & Priorities
 
-Tablefolk continues to evolve from a game picker into a complete Game Night Operating System. Key features envisioned for future releases include:
+Tablefolk focuses on what happens **around the physical table**: social coordination, anti-fatigue session curation, and live gathering dynamics. **BoardGameGeek remains the undisputed single source of truth** for game metadata and personal play logs.
 
-- **🌐 Interfaz Multilenguaje / i18n (UI)**: Soporte completo de internacionalización para la interfaz (Español / Inglés) con `next-intl`. La data de BoardGameGeek (títulos, categorías, mecánicas y descripciones) se preserva **tal cual** de la fuente original. Ver diseño y alcance en [Estrategia de i18n](docs/designs/i18n-strategy.md).
-- **📊 Internal Group Records & Leaderboards**: Record winners and play durations after each game night to maintain friendly group win-rate leaderboards.
-- **🪑 Multi-Table Splitter (*Split Tables*)**: Intelligent auto-division for large gatherings (8–16+ attendees) into balanced parallel tables (e.g., 4-player strategy heavy game + 6-player social party game).
-- **🍕 Potluck / Snack Board**: Collaborative RSVP checklists for food and drinks to coordinate table snacks.
-- **🧙‍♂️ Campaign & Legacy Tracker**: Episodic progress saving for campaign games (*Gloomhaven*, *Pandemic Legacy*, *Arkham Horror LCG*), keeping track of the table lineup.
-- **📱 PWA & Offline Table Mode**: Native-like installation on mobile devices with local caching for cabin/basement play sessions without reliable internet.
-- **🎯 BGG Community "Best at X Players"**: Background polling of community player count votes to highlight games at their optimal table size.
+### 🟢 Phase 1: In-Room Table Identity & Guest Enhancements (Near-term)
+- [x] **⚡ Client-Side Reactive Caching**: Instant navigation and 0ms latency with TanStack Query.
+- [ ] **🎲 In-Room Mini-Kit & Animated Meeples**:
+  - Interactive **First-Player Decider** featuring animated meeple avatars.
+  - Optional **Turn / AP Timer** (Analysis Paralysis alert) for heavy turns.
+  - 1-click **Rules Video & Reference links** on the locked official lineup.
+- [ ] **👥 Named Guests & Attendance Reality**:
+  - Support naming additional guests in RSVPs (e.g., *"Carlos (+ Andrea)"* instead of anonymous `+1`).
+  - Precise attendance confirmation in event wrap-up to reflect who actually sat at the table.
+- [ ] **🎯 BGG Community "Best at X" Badge**: Display community-recommended player count consensus directly on game cards.
+
+### 🟡 Phase 2: Gathering Notifications & Group Logistics (Mid-term)
+- [ ] **🔔 Discord & WhatsApp Webhooks**:
+  - Automated rich embeds when an event is scheduled.
+  - Instant notification blast when the 3-Menu Trio poll opens for voting.
+  - Final call alert when the host locks the Official Lineup.
+- [ ] **🪑 Multi-Table Splitter**: Intelligent partitioning for large groups (8–16+ attendees) into 2 balanced parallel game tables without time clashes.
+- [ ] **🍕 Potluck & Beverage Checklist**: Lightweight collaborative table board for food and drinks tied to the event room.
+
+### 🟣 Phase 3: Platform & Ecosystem Integrations (Long-term)
+- [ ] **🔄 BGG Play Logging Sync**: 1-click export of the completed session's played games directly to the attendee's personal BoardGameGeek play log.
+- [ ] **🌐 Multilingual Interface (i18n)**: English / Spanish toggle with `next-intl` (preserving original BGG metadata).
+- [ ] **📱 PWA & Offline Table Mode**: Full progressive web app with offline local caching for playing in cabins, basements, or venues with spotty connection.
