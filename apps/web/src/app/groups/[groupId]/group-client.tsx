@@ -3,10 +3,17 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { GroupDetail, GroupGame, UserVotingSummary } from "@tablefolk/contracts";
+import { useCallback, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import type { UserVotingSummary } from "@tablefolk/contracts";
 import { GameCard } from "@/components/game-card";
 import { useApi } from "@/lib/api";
+import {
+  queryKeys,
+  useGroupDetailQuery,
+  useGroupGamesQuery,
+  useGroupInterestQuery,
+} from "@/lib/queries";
 
 type GroupKindFilter = "base" | "all" | "voted" | "available" | "expansions";
 type GroupSortOption = "votes-desc" | "name-asc" | "name-desc" | "weight-desc" | "weight-asc" | "time-asc" | "year-desc";
@@ -17,12 +24,26 @@ export function GroupClient() {
   const { groupId } = useParams<{ groupId: string }>();
   const { isLoaded, isSignedIn } = useAuth();
   const api = useApi();
-  const [group, setGroup] = useState<GroupDetail | null>(null);
-  const [games, setGames] = useState<GroupGame[]>([]);
-  const [votingSummary, setVotingSummary] = useState<UserVotingSummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+
+  const { data: groupData, isLoading: groupLoading, error: groupQueryError } = useGroupDetailQuery(groupId);
+  const { data: gamesData, isLoading: gamesLoading } = useGroupGamesQuery(groupId);
+  const { data: interestData } = useGroupInterestQuery(groupId);
+
+  const group = groupData?.group ?? null;
+  const games = gamesData?.games ?? [];
+  const votingSummary: UserVotingSummary | null = interestData?.summary ?? null;
+
   const [error, setError] = useState("");
   const [votingBggId, setVotingBggId] = useState<number | null>(null);
+
+  const refreshGroup = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.groupDetail(groupId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.groupGames(groupId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.groupInterest(groupId) }),
+    ]);
+  }, [groupId, queryClient]);
 
   // Filters & Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -126,29 +147,6 @@ export function GroupClient() {
     return list;
   }, [games, searchQuery, kindFilter, playerFilter, weightFilter, ownerFilter, sortBy]);
 
-  const load = useCallback(async () => {
-    try {
-      const [groupData, gameData, interestData] = await Promise.all([
-        api<{ group: GroupDetail }>(`/v1/groups/${groupId}`),
-        api<{ games: GroupGame[] }>(`/v1/groups/${groupId}/games`),
-        api<{ summary: UserVotingSummary }>(`/v1/groups/${groupId}/interest`).catch(() => null),
-      ]);
-      setGroup(groupData.group);
-      setGames(gameData.games);
-      if (interestData) setVotingSummary(interestData.summary);
-      setError("");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not load this group.");
-    } finally {
-      setLoading(false);
-    }
-  }, [api, groupId]);
-
-  useEffect(() => {
-    if (isLoaded && isSignedIn) void load();
-    else if (isLoaded) setLoading(false);
-  }, [isLoaded, isSignedIn, load]);
-
   async function handleVote(bggId: number) {
     if (!votingSummary || votingSummary.availablePoints <= 0) {
       alert("You have no voting points remaining right now. Check back next week to earn more points!");
@@ -161,7 +159,10 @@ export function GroupClient() {
         method: "POST",
         body: JSON.stringify({ bggId, points: currentVote + 1 }),
       });
-      await load();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.groupGames(groupId) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.groupInterest(groupId) }),
+      ]);
     } catch (cause) {
       alert(cause instanceof Error ? cause.message : "Failed to cast vote.");
     } finally {
@@ -169,7 +170,8 @@ export function GroupClient() {
     }
   }
 
-  if (!isLoaded || loading) return <div className="page"><p className="loading">Loading group…</p></div>;
+  const loading = !isLoaded || (isSignedIn && (groupLoading || gamesLoading));
+  if (loading) return <div className="page"><p className="loading">Loading group…</p></div>;
   if (!isSignedIn) {
     return (
       <section className="narrow-page notice-page">
@@ -179,16 +181,18 @@ export function GroupClient() {
     );
   }
 
-  if (error || !group) {
+  if (error || (!groupLoading && !group)) {
     return (
       <section className="narrow-page">
         <div className="state-message error" role="alert">
-          <p>{error || "Group not found."}</p>
-          <button className="button-quiet" onClick={() => void load()}>Try again</button>
+          <p>{error || (groupQueryError instanceof Error ? groupQueryError.message : "") || "Group not found."}</p>
+          <button className="button-quiet" onClick={() => void refreshGroup()}>Try again</button>
         </div>
       </section>
     );
   }
+
+  if (!group) return null;
 
   return (
     <div className="page">

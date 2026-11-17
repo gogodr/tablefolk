@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ClerkProvider, Show, UserButton } from "@clerk/nextjs";
 import { Suspense } from "react";
+import { QueryProvider } from "@/components/query-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -54,7 +55,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   );
   return (
     <html lang="en">
-      <body>{key ? <ClerkProvider publishableKey={key}>{content}</ClerkProvider> : content}</body>
+      <body>
+        <QueryProvider>
+          {key ? <ClerkProvider publishableKey={key}>{content}</ClerkProvider> : content}
+        </QueryProvider>
+      </body>
     </html>
   );
 }
