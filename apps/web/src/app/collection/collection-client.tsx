@@ -198,17 +198,29 @@ export function CollectionClient() {
     }
   }
 
-  // Pending enrichment count (missing complexity weight OR not yet cached locally in Tablefolk)
-  const pendingEnrichmentCount = useMemo(
-    () =>
-      games.filter(
-        (g) =>
-          g.weight === null ||
-          !g.coverUrl ||
-          !g.coverUrl.startsWith("/v1/covers/")
-      ).length,
-    [games]
-  );
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+  // Pending enrichment count (missing complexity weight OR not yet cached locally in Tablefolk,
+  // excluding games refreshed within the last 7 days so items without weight/cover on BGG aren't stuck forever)
+  const pendingEnrichmentCount = useMemo(() => {
+    const now = Date.now();
+    return games.filter((g) => {
+      const missingData =
+        g.weight === null ||
+        !g.coverUrl ||
+        !g.coverUrl.startsWith("/v1/covers/");
+      if (!missingData) return false;
+
+      if (g.lastEnrichedAt) {
+        const enrichedAt = new Date(g.lastEnrichedAt).getTime();
+        if (now - enrichedAt < SEVEN_DAYS_MS) {
+          return false;
+        }
+      }
+
+      return true;
+    }).length;
+  }, [games]);
 
   // Filtered & Sorted Collection List
   const shown = useMemo(() => {

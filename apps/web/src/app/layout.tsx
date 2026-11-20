@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ClerkProvider, Show, UserButton } from "@clerk/nextjs";
 import { Suspense } from "react";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import { QueryProvider } from "@/components/query-provider";
+import { LanguageToggle } from "@/components/language-toggle";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -11,7 +14,7 @@ export const metadata: Metadata = {
   icons: { icon: "/brand/tablefolk-mark.png" },
 };
 
-function Header({ configured }: { configured: boolean }) {
+function Header({ configured, locale }: { configured: boolean; locale: string }) {
   return (
     <header className="site-header">
       <div className="header-inner">
@@ -20,11 +23,17 @@ function Header({ configured }: { configured: boolean }) {
           <span>tablefolk</span>
         </Link>
         <nav aria-label="Main navigation" className="main-nav">
+          {configured && (
+            <Show when="signed-in">
+              <Link href="/dashboard">Dashboard</Link>
+            </Show>
+          )}
           <Link href="/collection">My collection</Link>
           <Link href="/groups">Groups</Link>
           <Link href="/events">Events</Link>
         </nav>
         <div className="header-account">
+          <LanguageToggle currentLocale={locale} />
           {configured ? (
             <>
               <Suspense>
@@ -39,25 +48,33 @@ function Header({ configured }: { configured: boolean }) {
   );
 }
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const key = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   const content = (
     <>
-      <Header configured={Boolean(key)} />
+      <Header configured={Boolean(key)} locale={locale} />
       <main id="main-content">{children}</main>
       <footer className="site-footer">
         <span>Made for the games you bring to the table.</span>
-        <a className="bgg-credit" href="https://boardgamegeek.com" target="_blank" rel="noreferrer">
-          <img src="/vendor/powered_by_bgg.webp" alt="Powered by BoardGameGeek" width="200" height="59" />
-        </a>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <LanguageToggle currentLocale={locale} />
+          <a className="bgg-credit" href="https://boardgamegeek.com" target="_blank" rel="noreferrer">
+            <img src="/vendor/powered_by_bgg.webp" alt="Powered by BoardGameGeek" width="200" height="59" />
+          </a>
+        </div>
       </footer>
     </>
   );
   return (
-    <html lang="en">
+    <html lang={locale}>
       <body>
         <QueryProvider>
-          {key ? <ClerkProvider publishableKey={key}>{content}</ClerkProvider> : content}
+          <NextIntlClientProvider messages={messages} locale={locale}>
+            {key ? <ClerkProvider publishableKey={key}>{content}</ClerkProvider> : content}
+          </NextIntlClientProvider>
         </QueryProvider>
       </body>
     </html>

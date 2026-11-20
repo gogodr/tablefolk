@@ -1,8 +1,20 @@
 import Link from "next/link";
+import { Show } from "@clerk/nextjs";
 
 export default function HomePage() {
   return (
     <div className="home-page">
+      <Show when="signed-in">
+        <aside className="home-signedin-banner" aria-label="Acceso rápido al dashboard">
+          <div className="home-signedin-content">
+            <span className="home-signedin-icon" aria-hidden="true">🎲</span>
+            <span>Sesión iniciada. Tus partidas, grupos y colección te esperan en tu Dashboard.</span>
+          </div>
+          <Link href="/dashboard" className="button button-small">
+            Ir a mi Dashboard →
+          </Link>
+        </aside>
+      </Show>
       <section className="hero">
         <div>
           <h1>Good games are better together.</h1>

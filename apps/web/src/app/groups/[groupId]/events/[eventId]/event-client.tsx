@@ -8,6 +8,7 @@ import type {
   EventDetail,
   EventMenuOption,
   EventMenuPoll,
+  Game,
   GroupDetail,
   GroupGame,
   Member,
@@ -15,7 +16,9 @@ import type {
   SessionLineupResult,
   SessionMenuTrioResult,
 } from "@tablefolk/contracts";
-import { GameCard, cleanExpansionName } from "@/components/game-card";
+import { GameCard, cleanExpansionName, weightLabel } from "@/components/game-card";
+import { GameDetailModal } from "@/components/game-detail-modal";
+import { gameCoverSrc } from "@/lib/assets";
 import { useApi } from "@/lib/api";
 
 type Mode = "lineup" | "single";
@@ -69,6 +72,7 @@ export function EventClient() {
   const [bggSearching, setBggSearching] = useState(false);
   const [bggError, setBggError] = useState("");
   const [customGameNames, setCustomGameNames] = useState<Record<number, string>>({});
+  const [selectedModalGame, setSelectedModalGame] = useState<Game | null>(null);
   const closeDialogRef = useRef<HTMLDialogElement>(null);
 
   // Edit Event Modal
@@ -552,7 +556,18 @@ export function EventClient() {
     if (event.hostDisplayName) message += `🏠 Host: ${event.hostDisplayName}\n`;
     message += `👥 ${event.totalHeadcount} confirmed attendees\n\n`;
 
-    if (event.officialPick) {
+    if (event.status === "COMPLETED") {
+      message += `🏆 *¡Game Night Finalizada!*\n`;
+      if (event.playedGames && event.playedGames.length > 0) {
+        message += `🎲 *Juegos que vieron mesa:*\n`;
+        event.playedGames.forEach((g, i) => {
+          const weightStr = g.weight ? ` (Peso: ${g.weight.toFixed(1)})` : "";
+          const timeStr = g.playingTime ? ` [~${g.playingTime}m]` : "";
+          message += `${i + 1}️⃣ *${g.name}*${timeStr}${weightStr}\n`;
+        });
+        message += `\n`;
+      }
+    } else if (event.officialPick) {
       message += `✨ *Official Game of the Night:*\n`;
       message += `👉 *${event.officialPick.name}*`;
       if (event.officialPickCarrier) message += ` (Brought by: ${event.officialPickCarrier})`;
@@ -750,26 +765,30 @@ export function EventClient() {
             )}
             <button
               type="button"
-              className="button-secondary button-small"
+              className={isCompleted ? "button button-small" : "button-secondary button-small"}
               onClick={handleCopyShareText}
             >
               {copiedShare ? "✓ Copied to Clipboard!" : "📋 Copy WhatsApp / Discord Summary"}
             </button>
-            <a
-              href={getGoogleCalendarUrl()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="button-quiet button-small"
-            >
-              📅 Add to Google Calendar
-            </a>
-            <button
-              type="button"
-              className="button-quiet button-small"
-              onClick={handleDownloadIcs}
-            >
-              📥 Download .ICS
-            </button>
+            {!isCompleted && (
+              <>
+                <a
+                  href={getGoogleCalendarUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="button-quiet button-small"
+                >
+                  📅 Add to Google Calendar
+                </a>
+                <button
+                  type="button"
+                  className="button-quiet button-small"
+                  onClick={handleDownloadIcs}
+                >
+                  📥 Download .ICS
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -796,60 +815,266 @@ export function EventClient() {
         )}
       </div>
 
-      {/* Completed Event Status Banner */}
-      {event?.status === "COMPLETED" && (
-        <section className="panel" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", marginBottom: "20px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
-            <div>
-              <span className="eyebrow" style={{ color: "#166534" }}>🏁 Event Finished &amp; Verified</span>
-              <h2 style={{ margin: "4px 0", color: "#14532d" }}>Game Night Completed</h2>
-              <p style={{ margin: "4px 0", fontSize: "14px", color: "#166534" }}>
-                👥 <strong>{event.totalHeadcount} attendees confirmed:</strong>{" "}
-                {[
-                  ...event.rsvps.filter((r) => r.status === "ATTENDING").map((r) => r.displayName),
-                  ...(event.confirmedGuestNames && event.confirmedGuestNames.length > 0
-                    ? event.confirmedGuestNames
-                    : event.rsvps.filter((r) => r.status === "ATTENDING").flatMap((r) => r.guestNames ?? [])),
-                ].join(", ") || "None recorded"}
-              </p>
-            </div>
-            {canManage && (
-              <button
-                type="button"
-                className="button-secondary button-small"
-                onClick={() => void handleOpenCloseEventModal()}
-              >
-                ✏️ Edit Played Games & Attendance
-              </button>
-            )}
-          </div>
+      {/* Completed Event Status Banner with Graphical Session Timeline */}
+      {event?.status === "COMPLETED" && (() => {
+        const playedGames = event.playedGames ?? [];
+        const attendeesList = [
+          ...event.rsvps.filter((r) => r.status === "ATTENDING").map((r) => ({
+            name: r.displayName,
+            isHost: r.userId === event.hostUserId,
+            isGuest: false,
+          })),
+          ...(event.confirmedGuestNames && event.confirmedGuestNames.length > 0
+            ? event.confirmedGuestNames.map((name) => ({ name, isHost: false, isGuest: true }))
+            : event.rsvps
+                .filter((r) => r.status === "ATTENDING")
+                .flatMap((r) => (r.guestNames ?? []).map((name) => ({ name, isHost: false, isGuest: true })))),
+        ];
 
-          <div style={{ marginTop: "12px", display: "flex", flexWrap: "wrap", gap: "10px" }}>
-            {event.playedGames && event.playedGames.length > 0 ? (
-              event.playedGames.map((g, idx) => (
-                <div
-                  key={g.bggId}
-                  style={{
-                    background: "#ffffff",
-                    border: "1px solid #bbf7d0",
-                    borderRadius: "8px",
-                    padding: "8px 12px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                  }}
-                >
-                  <span style={{ fontWeight: 700, color: "#166534" }}>{idx + 1}️⃣</span>
-                  <strong>{g.name}</strong>
-                  {g.weight && <span style={{ fontSize: "11px", color: "var(--muted)" }}>(Weight {g.weight.toFixed(1)})</span>}
+        const totalPlayingMinutes = playedGames.reduce((acc, g) => acc + (g.playingTime || 45), 0);
+        const totalBufferMinutes = Math.max(0, playedGames.length - 1) * 15;
+        const grandTotalMinutes = totalPlayingMinutes + totalBufferMinutes;
+
+        const validWeights = playedGames.filter((g) => g.weight && g.weight > 0);
+        const avgWeight = validWeights.length > 0
+          ? (validWeights.reduce((acc, g) => acc + g.weight!, 0) / validWeights.length).toFixed(1)
+          : null;
+
+        return (
+          <section className="completed-recap-wrap" aria-label="Game Night Recap">
+            {/* Hero Banner */}
+            <div className="completed-hero-banner">
+              <div className="completed-hero-header">
+                <div className="completed-hero-titles">
+                  <span className="completed-pill-tag">
+                    🏆 Evento Finalizado &amp; Verificado
+                  </span>
+                  <h2>
+                    {playedGames.length > 0
+                      ? `¡Qué gran noche! ${playedGames.length} ${playedGames.length === 1 ? "juego vio" : "juegos vieron"} mesa`
+                      : "Game Night Finalizada"}
+                  </h2>
+                  <p>
+                    {event.totalHeadcount} jugadores reunidos en torno a la mesa
+                    {event.location ? ` en ${event.location}` : ""}
+                    {event.hostDisplayName ? ` · Anfitrión: ${event.hostDisplayName}` : ""}
+                  </p>
                 </div>
-              ))
+                {canManage && (
+                  <button
+                    type="button"
+                    className="button-secondary button-small"
+                    onClick={() => void handleOpenCloseEventModal()}
+                  >
+                    ✏️ Editar juegos y asistencia
+                  </button>
+                )}
+              </div>
+
+              {/* Graphical Session Timeline Track */}
+              {playedGames.length > 0 && (
+                <div className="completed-timeline-track-card">
+                  <div className="completed-timeline-track-header">
+                    <span>⏱️ Línea de Tiempo de la Sesión</span>
+                    <span>~{grandTotalMinutes} min en total</span>
+                  </div>
+
+                  <div className="completed-timeline-bar" role="img" aria-label="Línea de tiempo de los juegos jugados">
+                    {playedGames.map((g, idx) => {
+                      const duration = g.playingTime || 45;
+                      const flexGrow = Math.max(duration, 30);
+                      const themeClass =
+                        playedGames.length === 1
+                          ? "theme-main"
+                          : idx === 0
+                          ? "theme-warm"
+                          : idx === playedGames.length - 1
+                          ? "theme-cool"
+                          : "theme-main";
+
+                      const roleLabel =
+                        playedGames.length === 1
+                          ? "Juego de la noche"
+                          : idx === 0
+                          ? "Apertura"
+                          : idx === playedGames.length - 1
+                          ? "Cierre"
+                          : `Juego ${idx + 1}`;
+
+                      return (
+                        <div key={g.bggId} style={{ display: "contents" }}>
+                          {idx > 0 && (
+                            <div
+                              className="timeline-segment-intermission"
+                              title="Pausa & Preparación de mesa (15 min)"
+                            >
+                              ☕ 15m
+                            </div>
+                          )}
+                          <div
+                            className={`timeline-segment-game ${themeClass}`}
+                            style={{ flex: `${flexGrow} 1 0%` }}
+                            title={`${roleLabel}: ${g.name} (~${duration} min)`}
+                          >
+                            <strong>#{idx + 1} {g.name}</strong>
+                            <span>{roleLabel} · ~{duration}m</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="completed-timeline-ruler">
+                    <span>Inicio (0m)</span>
+                    <span>☕ Intermedios incluidos</span>
+                    <span>Fin (~{grandTotalMinutes}m)</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Stats Row */}
+              <div className="completed-stats-row">
+                <div className="completed-stat-tile">
+                  <span className="completed-stat-number">{playedGames.length}</span>
+                  <span className="completed-stat-label">Juegos jugados</span>
+                </div>
+                <div className="completed-stat-tile">
+                  <span className="completed-stat-number">{event.totalHeadcount}</span>
+                  <span className="completed-stat-label">Jugadores en mesa</span>
+                </div>
+                <div className="completed-stat-tile">
+                  <span className="completed-stat-number">~{grandTotalMinutes} min</span>
+                  <span className="completed-stat-label">Duración total estimada</span>
+                </div>
+                <div className="completed-stat-tile">
+                  <span className="completed-stat-number">{avgWeight ? `${avgWeight} / 5.0` : "—"}</span>
+                  <span className="completed-stat-label">Dificultad media BGG</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Vertical Timeline Flow with Game Cards */}
+            {playedGames.length > 0 ? (
+              <div className="completed-flow-list">
+                {playedGames.map((g, idx) => {
+                  const duration = g.playingTime || 45;
+                  const roleLabel =
+                    playedGames.length === 1
+                      ? "Juego de la Noche"
+                      : idx === 0
+                      ? "Apertura · Warm-up"
+                      : idx === playedGames.length - 1
+                      ? "Cierre · Nightcap"
+                      : `Ronda ${idx + 1} · Main Event`;
+
+                  const weightClass =
+                    g.weight && g.weight <= 2.2
+                      ? "light"
+                      : g.weight && g.weight <= 3.5
+                      ? "medium"
+                      : g.weight
+                      ? "heavy"
+                      : "";
+
+                  return (
+                    <div key={g.bggId} className="completed-flow-item">
+                      {idx > 0 && (
+                        <div className="completed-intermission-step">
+                          ☕ 15m Intermedio &amp; Preparación de mesa
+                        </div>
+                      )}
+                      <div
+                        className="completed-slot-card"
+                        onClick={() => setSelectedModalGame(g)}
+                        style={{ cursor: "pointer" }}
+                        title="Haz clic para ver detalles del juego"
+                      >
+                        <div className="completed-slot-order">#{idx + 1}</div>
+                        <div className="completed-slot-cover">
+                          {g.coverUrl ? (
+                            <img src={gameCoverSrc(g.coverUrl)} alt="" />
+                          ) : (
+                            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px" }}>
+                              🎲
+                            </div>
+                          )}
+                        </div>
+                        <div className="completed-slot-info">
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>
+                            <h3>{g.name}</h3>
+                            <span className="slot-role-badge" style={{ fontSize: "11px" }}>{roleLabel}</span>
+                          </div>
+                          <div className="completed-slot-meta">
+                            <span>👥 {g.minPlayers}–{g.maxPlayers} jugadores</span>
+                            <span>⏱️ ~{duration} min</span>
+                            {g.weight && (
+                              <span className={`completed-weight-badge ${weightClass}`}>
+                                {weightLabel(g.weight)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center" }}>
+                          <span className="button-quiet button-small" style={{ fontSize: "12px" }}>
+                            Ver detalles ℹ️
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>No specific games marked as played.</p>
+              <div className="panel" style={{ textAlign: "center", padding: "24px", color: "var(--color-muted)" }}>
+                <p style={{ margin: 0 }}>No se marcaron juegos específicos como jugados en este evento.</p>
+              </div>
             )}
-          </div>
-        </section>
-      )}
+
+            {/* Table Crew Box */}
+            <div className="completed-crew-card">
+              <div className="completed-crew-title">
+                <span>👥 La Mesa de la Noche ({event.totalHeadcount} asistentes)</span>
+                {event.location && <span>📍 {event.location}</span>}
+              </div>
+              <div className="completed-crew-pills">
+                {attendeesList.map((a, i) => (
+                  <span
+                    key={i}
+                    className={`completed-crew-pill ${a.isHost ? "host" : ""}`}
+                  >
+                    {a.isHost ? "🏠" : a.isGuest ? "👤" : "🎲"} {a.name}
+                    {a.isHost && " (Host)"}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer Call to Action */}
+            <div className="completed-footer-actions">
+              <div>
+                <strong style={{ fontSize: "var(--text-md)", color: "var(--color-ink)" }}>
+                  ¿Se repite la próxima semana?
+                </strong>
+                <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--color-muted)" }}>
+                  Comparte el resumen con tu grupo o revisa las próximas fechas en el calendario.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="button button-small"
+                  onClick={handleCopyShareText}
+                >
+                  {copiedShare ? "✓ ¡Crónica copiada!" : "📋 Copiar crónica para WhatsApp / Discord"}
+                </button>
+                <Link href={`/groups/${groupId}/events`} className="button-secondary button-small">
+                  Ver calendario del grupo
+                </Link>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Active Group Voting Poll Banner */}
       {event?.menuPoll?.status === "OPEN" && event.menuPoll.options.length > 0 && (
@@ -2182,6 +2407,14 @@ export function EventClient() {
             </form>
           </div>
         </div>
+      )}
+
+      {selectedModalGame && (
+        <GameDetailModal
+          game={selectedModalGame}
+          isOpen={Boolean(selectedModalGame)}
+          onClose={() => setSelectedModalGame(null)}
+        />
       )}
     </div>
   );

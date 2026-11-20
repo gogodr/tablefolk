@@ -129,6 +129,7 @@ export interface Game {
   publishers: string[];
   categories: string[];
   mechanics: string[];
+  lastEnrichedAt?: string | null;
 }
 
 export interface CollectionGame extends Game {

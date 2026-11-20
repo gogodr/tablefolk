@@ -23,6 +23,7 @@ export function gameDto(game: DbGame): Game {
     publishers: game.publishers,
     categories: game.categories,
     mechanics: game.mechanics,
+    lastEnrichedAt: game.lastEnrichedAt ? game.lastEnrichedAt.toISOString() : null,
   };
 }
 
