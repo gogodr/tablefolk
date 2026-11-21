@@ -185,7 +185,12 @@ vi.mock("../db.js", () => {
       },
     },
     gameInterest: {
+      findMany: async () => [],
       deleteMany: async () => ({ count: 0 }),
+    },
+    user: {
+      findUnique: async () => ({ id: "user-ricardo", votingPoints: 5 }),
+      update: async () => ({ id: "user-ricardo", votingPoints: 5 }),
     },
     game: {
       findMany: async ({ where }: any) => {

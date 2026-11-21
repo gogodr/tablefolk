@@ -4,6 +4,66 @@ import { requireUser } from "../auth.js";
 import { db } from "../db.js";
 import { AppError, forbidden } from "../lib/errors.js";
 
+function hasMondayPassed(lastRefill: Date | null, now: Date = new Date()): boolean {
+  if (!lastRefill) return true;
+
+  // Day of week in UTC: 0 = Sun, 1 = Mon, ..., 6 = Sat
+  const day = now.getUTCDay();
+  const daysSinceMonday = (day + 6) % 7;
+  const currentWeekMonday = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() - daysSinceMonday,
+    0, 0, 0, 0
+  ));
+
+  return lastRefill.getTime() < currentWeekMonday.getTime();
+}
+
+async function ensureWeeklyRefill(userId: string, groupId: string) {
+  const dbUser = await db().user.findUnique({ where: { id: userId } });
+  if (!dbUser) return { totalPoints: 5, availablePoints: 5, usedPoints: 0 };
+
+  const now = new Date();
+  let totalPoints = dbUser.votingPoints;
+
+  const userInterests = await db().gameInterest.findMany({
+    where: { groupId, userId },
+  });
+  const usedPoints = userInterests.reduce((sum, i) => sum + i.points, 0);
+  let availablePoints = Math.max(0, totalPoints - usedPoints);
+
+  if (hasMondayPassed(dbUser.lastPointsRefillAt, now)) {
+    // Reload up to +3 points per week, with a strict cap of 5 liquid unspent points
+    if (availablePoints < 5) {
+      const pointsToAdd = Math.min(3, 5 - availablePoints);
+      if (pointsToAdd > 0) {
+        totalPoints += pointsToAdd;
+        availablePoints += pointsToAdd;
+        await db().user.update({
+          where: { id: userId },
+          data: {
+            votingPoints: totalPoints,
+            lastPointsRefillAt: now,
+          },
+        });
+      } else {
+        await db().user.update({
+          where: { id: userId },
+          data: { lastPointsRefillAt: now },
+        });
+      }
+    } else {
+      await db().user.update({
+        where: { id: userId },
+        data: { lastPointsRefillAt: now },
+      });
+    }
+  }
+
+  return { totalPoints, availablePoints, usedPoints };
+}
+
 export async function interestRoutes(app: FastifyInstance) {
   // Get voting points status and current interest scores for a group
   app.get("/v1/groups/:groupId/interest", async (request) => {
@@ -15,8 +75,7 @@ export async function interestRoutes(app: FastifyInstance) {
     });
     if (!member) throw forbidden("You are not a member of this group.");
 
-    const dbUser = await db().user.findUnique({ where: { id: user.id } });
-    const totalPoints = dbUser?.votingPoints ?? 5;
+    const { totalPoints, availablePoints, usedPoints } = await ensureWeeklyRefill(user.id, groupId);
 
     // Get all interests in this group
     const allInterests = await db().gameInterest.findMany({
@@ -24,7 +83,6 @@ export async function interestRoutes(app: FastifyInstance) {
     });
 
     const userInterests = allInterests.filter((i) => i.userId === user.id);
-    const usedPoints = userInterests.reduce((sum, i) => sum + i.points, 0);
 
     const scoresByGame: Record<number, number> = {};
     for (const interest of allInterests) {
@@ -40,7 +98,9 @@ export async function interestRoutes(app: FastifyInstance) {
       summary: {
         totalPoints,
         usedPoints,
-        availablePoints: Math.max(0, totalPoints - usedPoints),
+        availablePoints,
+        maxLiquidPoints: 5,
+        weeklyAllowance: 3,
       },
       scoresByGame,
       userVotesByGame,
@@ -67,8 +127,7 @@ export async function interestRoutes(app: FastifyInstance) {
       throw new AppError(404, "GAME_NOT_IN_GROUP", "This game is not shared in the group.");
     }
 
-    const dbUser = await db().user.findUnique({ where: { id: user.id } });
-    const totalPoints = dbUser?.votingPoints ?? 5;
+    const { totalPoints } = await ensureWeeklyRefill(user.id, groupId);
 
     // Check user's current allocated points
     const currentVotes = await db().gameInterest.findMany({

@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { EventDetail } from "@tablefolk/contracts";
 import { cleanExpansionName } from "@/components/game-card";
+import { GuestRsvpModal } from "@/components/guest-rsvp-modal";
 import { useApi } from "@/lib/api";
 import { queryKeys, useGroupDetailQuery, useGroupEventsQuery } from "@/lib/queries";
 
@@ -25,6 +26,7 @@ export function EventsClient() {
   const [error, setError] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [filter, setFilter] = useState<"all" | "upcoming" | "completed">("all");
+  const [managingGuestsEvent, setManagingGuestsEvent] = useState<EventDetail | null>(null);
 
   // Form state
   const [title, setTitle] = useState("Friday Game Night");
@@ -84,11 +86,15 @@ export function EventsClient() {
     }
   }
 
-  async function handleRsvp(eventId: string, status: "ATTENDING" | "DECLINED" | "MAYBE", additionalGuests = 0) {
+  async function handleRsvp(
+    eventId: string,
+    status: "ATTENDING" | "DECLINED" | "MAYBE",
+    guestNames: string[] = []
+  ) {
     try {
       await api(`/v1/events/${eventId}/rsvp`, {
         method: "POST",
-        body: JSON.stringify({ status, additionalGuests }),
+        body: JSON.stringify({ status, guestNames, additionalGuests: guestNames.length }),
       });
       await refreshEvents();
     } catch (cause) {
@@ -186,45 +192,38 @@ export function EventsClient() {
             <button
               type="button"
               className={`button-small ${myRsvp?.status === "ATTENDING" ? "button" : "button-secondary"}`}
-              onClick={() => void handleRsvp(event.id, "ATTENDING", myRsvp?.additionalGuests ?? 0)}
+              onClick={() => void handleRsvp(event.id, "ATTENDING", myRsvp?.guestNames ?? [])}
             >
               ✓ Attending
             </button>
             <button
               type="button"
               className={`button-small ${myRsvp?.status === "MAYBE" ? "button" : "button-secondary"}`}
-              onClick={() => void handleRsvp(event.id, "MAYBE", myRsvp?.additionalGuests ?? 0)}
+              onClick={() => void handleRsvp(event.id, "MAYBE", myRsvp?.guestNames ?? [])}
             >
               ? Maybe
             </button>
             <button
               type="button"
               className={`button-small ${myRsvp?.status === "DECLINED" ? "button-danger" : "button-secondary"}`}
-              onClick={() => void handleRsvp(event.id, "DECLINED", 0)}
+              onClick={() => void handleRsvp(event.id, "DECLINED", [])}
             >
               ✕ Can&apos;t go
             </button>
 
             {myRsvp?.status === "ATTENDING" && (
-              <div className="guests-stepper">
-                <span>+Guests:</span>
-                <button
-                  type="button"
-                  className="button-quiet button-small"
-                  disabled={myRsvp.additionalGuests <= 0}
-                  onClick={() => void handleRsvp(event.id, "ATTENDING", myRsvp.additionalGuests - 1)}
-                >
-                  -
-                </button>
-                <strong>{myRsvp.additionalGuests}</strong>
-                <button
-                  type="button"
-                  className="button-quiet button-small"
-                  onClick={() => void handleRsvp(event.id, "ATTENDING", myRsvp.additionalGuests + 1)}
-                >
-                  +
-                </button>
-              </div>
+              <button
+                type="button"
+                className="button-quiet button-small"
+                onClick={() => setManagingGuestsEvent(event)}
+                style={{ marginLeft: "8px", border: "1px dashed var(--border)", borderRadius: "6px" }}
+              >
+                👥 {myRsvp.guestNames && myRsvp.guestNames.length > 0
+                  ? `+${myRsvp.guestNames.length} (${myRsvp.guestNames.join(", ")})`
+                  : myRsvp.additionalGuests > 0
+                  ? `+${myRsvp.additionalGuests} Guests`
+                  : "+ Name Guests"}
+              </button>
             )}
           </div>
         ) : (
@@ -243,8 +242,12 @@ export function EventsClient() {
             : attendingList.map((r, i) => (
                 <span key={r.userId}>
                   {i > 0 && ", "}
-                  {r.displayName}
-                  {r.additionalGuests > 0 && ` (+${r.additionalGuests})`}
+                  <strong>{r.displayName}</strong>
+                  {r.guestNames && r.guestNames.length > 0 ? (
+                    <span style={{ color: "var(--muted)" }}> (+ {r.guestNames.join(", ")})</span>
+                  ) : r.additionalGuests > 0 ? (
+                    <span style={{ color: "var(--muted)" }}> (+{r.additionalGuests})</span>
+                  ) : null}
                 </span>
               ))}
         </div>
@@ -459,6 +462,20 @@ export function EventsClient() {
           filteredEvents.map(renderEventCard)
         )}
       </div>
+
+      {managingGuestsEvent && (
+        <GuestRsvpModal
+          isOpen={Boolean(managingGuestsEvent)}
+          onClose={() => setManagingGuestsEvent(null)}
+          eventTitle={managingGuestsEvent.title}
+          initialGuestNames={
+            managingGuestsEvent.rsvps.find((r) => r.userId === user?.id)?.guestNames ?? []
+          }
+          onSave={async (names) => {
+            await handleRsvp(managingGuestsEvent.id, "ATTENDING", names);
+          }}
+        />
+      )}
     </div>
   );
 }

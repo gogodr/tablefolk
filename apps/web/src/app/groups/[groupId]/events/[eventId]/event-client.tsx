@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useCallback, useEffect, useState, useRef, useMemo } from "react";
+import { useTranslations } from "next-intl";
 import type {
   EventDetail,
   EventMenuOption,
   EventMenuPoll,
+  Game,
   GroupDetail,
   GroupGame,
   Member,
@@ -15,12 +17,16 @@ import type {
   SessionLineupResult,
   SessionMenuTrioResult,
 } from "@tablefolk/contracts";
-import { GameCard, cleanExpansionName } from "@/components/game-card";
+import { GameCard, cleanExpansionName, weightLabel, playerRange } from "@/components/game-card";
+import { GameDetailModal } from "@/components/game-detail-modal";
+import { gameCoverSrc } from "@/lib/assets";
 import { useApi } from "@/lib/api";
 
 type Mode = "lineup" | "single";
 
 export function EventClient() {
+  const tEvents = useTranslations("events");
+  const tCard = useTranslations("gameCard");
   const { groupId, eventId } = useParams<{ groupId: string; eventId: string }>();
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
@@ -59,6 +65,8 @@ export function EventClient() {
   const [groupMembers, setGroupMembers] = useState<Member[]>([]);
   const [playedGameIds, setPlayedGameIds] = useState<number[]>([]);
   const [attendedUserIds, setAttendedUserIds] = useState<string[]>([]);
+  const [attendedGuestNames, setAttendedGuestNames] = useState<string[]>([]);
+  const [walkInGuestInput, setWalkInGuestInput] = useState("");
   const [showOtherGames, setShowOtherGames] = useState(false);
   const [otherGameSearch, setOtherGameSearch] = useState("");
   const [otherGameSource, setOtherGameSource] = useState<"group" | "bgg">("group");
@@ -67,6 +75,7 @@ export function EventClient() {
   const [bggSearching, setBggSearching] = useState(false);
   const [bggError, setBggError] = useState("");
   const [customGameNames, setCustomGameNames] = useState<Record<number, string>>({});
+  const [selectedModalGame, setSelectedModalGame] = useState<Game | null>(null);
   const closeDialogRef = useRef<HTMLDialogElement>(null);
 
   // Edit Event Modal
@@ -372,6 +381,14 @@ export function EventClient() {
       .map((r) => r.userId);
     setAttendedUserIds(initialAttendees);
 
+    const initialGuests = (event?.confirmedGuestNames && event.confirmedGuestNames.length > 0)
+      ? event.confirmedGuestNames
+      : (event?.rsvps ?? [])
+          .filter((r) => r.status === "ATTENDING")
+          .flatMap((r) => r.guestNames ?? []);
+    setAttendedGuestNames(initialGuests);
+    setWalkInGuestInput("");
+
     try {
       const data = await api<{ games: GroupGame[] }>(`/v1/groups/${groupId}/games`);
       setGroupGamesList(data.games);
@@ -393,6 +410,22 @@ export function EventClient() {
     );
   }
 
+  function handleToggleGuest(name: string) {
+    setAttendedGuestNames((prev) =>
+      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
+    );
+  }
+
+  function handleAddWalkInGuest(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    const trimmed = walkInGuestInput.trim();
+    if (!trimmed) return;
+    if (!attendedGuestNames.includes(trimmed)) {
+      setAttendedGuestNames((prev) => [...prev, trimmed]);
+    }
+    setWalkInGuestInput("");
+  }
+
   async function handleConfirmCloseEvent() {
     setClosingEvent(true);
     try {
@@ -401,6 +434,7 @@ export function EventClient() {
         body: JSON.stringify({
           playedBggIds: playedGameIds,
           attendedUserIds,
+          attendedGuestNames,
         }),
       });
       setEvent(res.event);
@@ -525,7 +559,18 @@ export function EventClient() {
     if (event.hostDisplayName) message += `🏠 Host: ${event.hostDisplayName}\n`;
     message += `👥 ${event.totalHeadcount} confirmed attendees\n\n`;
 
-    if (event.officialPick) {
+    if (event.status === "COMPLETED") {
+      message += `🏆 *¡Game Night Finalizada!*\n`;
+      if (event.playedGames && event.playedGames.length > 0) {
+        message += `🎲 *Juegos que vieron mesa:*\n`;
+        event.playedGames.forEach((g, i) => {
+          const weightStr = g.weight ? ` (Peso: ${g.weight.toFixed(1)})` : "";
+          const timeStr = g.playingTime ? ` [~${g.playingTime}m]` : "";
+          message += `${i + 1}️⃣ *${g.name}*${timeStr}${weightStr}\n`;
+        });
+        message += `\n`;
+      }
+    } else if (event.officialPick) {
       message += `✨ *Official Game of the Night:*\n`;
       message += `👉 *${event.officialPick.name}*`;
       if (event.officialPickCarrier) message += ` (Brought by: ${event.officialPickCarrier})`;
@@ -665,6 +710,32 @@ export function EventClient() {
             <strong>{event?.totalHeadcount}</strong> players confirmed
           </p>
 
+          {/* Attendees preview pill list */}
+          {event && event.rsvps.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px", margin: "8px 0 16px", fontSize: "13px" }}>
+              <span style={{ fontWeight: 600, color: "var(--muted)" }}>👥 Attending:</span>
+              {event.rsvps.filter((r) => r.status === "ATTENDING").map((r) => (
+                <span
+                  key={r.userId}
+                  style={{
+                    background: "var(--color-paper, #f9fafb)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "14px",
+                    padding: "2px 8px",
+                    fontSize: "12px",
+                  }}
+                >
+                  <strong>{r.displayName}</strong>
+                  {r.guestNames && r.guestNames.length > 0 ? (
+                    <span style={{ color: "var(--muted)" }}> (+ {r.guestNames.join(", ")})</span>
+                  ) : r.additionalGuests > 0 ? (
+                    <span style={{ color: "var(--muted)" }}> (+{r.additionalGuests})</span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* Event Quick Actions Bar: Share WhatsApp & Calendar */}
           <div className="event-quick-actions">
             {canManage && event?.status === "SCHEDULED" && (
@@ -697,26 +768,30 @@ export function EventClient() {
             )}
             <button
               type="button"
-              className="button-secondary button-small"
+              className={isCompleted ? "button button-small" : "button-secondary button-small"}
               onClick={handleCopyShareText}
             >
               {copiedShare ? "✓ Copied to Clipboard!" : "📋 Copy WhatsApp / Discord Summary"}
             </button>
-            <a
-              href={getGoogleCalendarUrl()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="button-quiet button-small"
-            >
-              📅 Add to Google Calendar
-            </a>
-            <button
-              type="button"
-              className="button-quiet button-small"
-              onClick={handleDownloadIcs}
-            >
-              📥 Download .ICS
-            </button>
+            {!isCompleted && (
+              <>
+                <a
+                  href={getGoogleCalendarUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="button-quiet button-small"
+                >
+                  📅 Add to Google Calendar
+                </a>
+                <button
+                  type="button"
+                  className="button-quiet button-small"
+                  onClick={handleDownloadIcs}
+                >
+                  📥 Download .ICS
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -743,54 +818,266 @@ export function EventClient() {
         )}
       </div>
 
-      {/* Completed Event Status Banner */}
-      {event?.status === "COMPLETED" && (
-        <section className="panel" style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", marginBottom: "20px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "10px" }}>
-            <div>
-              <span className="eyebrow" style={{ color: "#166534" }}>🏁 Event Finished &amp; Verified</span>
-              <h2 style={{ margin: "4px 0", color: "#14532d" }}>Game Night Completed</h2>
-              <p style={{ margin: "4px 0", fontSize: "14px", color: "#166534" }}>
-                Member want-to-play interest points have been consumed only for the games tabled below.
-              </p>
-            </div>
-            {canManage && (
-              <button
-                type="button"
-                className="button-secondary button-small"
-                onClick={() => void handleOpenCloseEventModal()}
-              >
-                ✏️ Edit Played Games & Attendance
-              </button>
-            )}
-          </div>
+      {/* Completed Event Status Banner with Graphical Session Timeline */}
+      {event?.status === "COMPLETED" && (() => {
+        const playedGames = event.playedGames ?? [];
+        const attendeesList = [
+          ...event.rsvps.filter((r) => r.status === "ATTENDING").map((r) => ({
+            name: r.displayName,
+            isHost: r.userId === event.hostUserId,
+            isGuest: false,
+          })),
+          ...(event.confirmedGuestNames && event.confirmedGuestNames.length > 0
+            ? event.confirmedGuestNames.map((name) => ({ name, isHost: false, isGuest: true }))
+            : event.rsvps
+                .filter((r) => r.status === "ATTENDING")
+                .flatMap((r) => (r.guestNames ?? []).map((name) => ({ name, isHost: false, isGuest: true })))),
+        ];
 
-          <div style={{ marginTop: "12px", display: "flex", flexWrap: "wrap", gap: "10px" }}>
-            {event.playedGames && event.playedGames.length > 0 ? (
-              event.playedGames.map((g, idx) => (
-                <div
-                  key={g.bggId}
-                  style={{
-                    background: "#ffffff",
-                    border: "1px solid #bbf7d0",
-                    borderRadius: "8px",
-                    padding: "8px 12px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                  }}
-                >
-                  <span style={{ fontWeight: 700, color: "#166534" }}>{idx + 1}️⃣</span>
-                  <strong>{g.name}</strong>
-                  {g.weight && <span style={{ fontSize: "11px", color: "var(--muted)" }}>(Weight {g.weight.toFixed(1)})</span>}
+        const totalPlayingMinutes = playedGames.reduce((acc, g) => acc + (g.playingTime || 45), 0);
+        const totalBufferMinutes = Math.max(0, playedGames.length - 1) * 15;
+        const grandTotalMinutes = totalPlayingMinutes + totalBufferMinutes;
+
+        const validWeights = playedGames.filter((g) => g.weight && g.weight > 0);
+        const avgWeight = validWeights.length > 0
+          ? (validWeights.reduce((acc, g) => acc + g.weight!, 0) / validWeights.length).toFixed(1)
+          : null;
+
+        return (
+          <section className="completed-recap-wrap" aria-label="Game Night Recap">
+            {/* Hero Banner */}
+            <div className="completed-hero-banner">
+              <div className="completed-hero-header">
+                <div className="completed-hero-titles">
+                  <span className="completed-pill-tag">
+                    {tEvents("eventFinishedVerified")}
+                  </span>
+                  <h2>
+                    {playedGames.length > 0
+                      ? tEvents("gamesTabled", { count: playedGames.length })
+                      : tEvents("gameNightCompleted")}
+                  </h2>
+                  <p>
+                    {tEvents("playersGathered", { count: event.totalHeadcount })}
+                    {event.location ? tEvents("atLocation", { location: event.location }) : ""}
+                    {event.hostDisplayName ? tEvents("hostPrefix", { name: event.hostDisplayName }) : ""}
+                  </p>
                 </div>
-              ))
+                {canManage && (
+                  <button
+                    type="button"
+                    className="button-secondary button-small"
+                    onClick={() => void handleOpenCloseEventModal()}
+                  >
+                    {tEvents("editGamesAndAttendance")}
+                  </button>
+                )}
+              </div>
+
+              {/* Graphical Session Timeline Track */}
+              {playedGames.length > 0 && (
+                <div className="completed-timeline-track-card">
+                  <div className="completed-timeline-track-header">
+                    <span>{tEvents("sessionTimeline")}</span>
+                    <span>{tEvents("totalMinutesEstimated", { minutes: grandTotalMinutes })}</span>
+                  </div>
+
+                  <div className="completed-timeline-bar" role="img" aria-label={tEvents("timelineAria")}>
+                    {playedGames.map((g, idx) => {
+                      const duration = g.playingTime || 45;
+                      const flexGrow = Math.max(duration, 30);
+                      const themeClass =
+                        playedGames.length === 1
+                          ? "theme-main"
+                          : idx === 0
+                          ? "theme-warm"
+                          : idx === playedGames.length - 1
+                          ? "theme-cool"
+                          : "theme-main";
+
+                      const roleLabel =
+                        playedGames.length === 1
+                          ? tEvents("gameOfTheNight")
+                          : idx === 0
+                          ? tEvents("warmUp")
+                          : idx === playedGames.length - 1
+                          ? tEvents("nightcap")
+                          : tEvents("gameNumber", { number: idx + 1 });
+
+                      return (
+                        <div key={g.bggId} style={{ display: "contents" }}>
+                          {idx > 0 && (
+                            <div
+                              className="timeline-segment-intermission"
+                              title={tEvents("intermissionTitle")}
+                            >
+                              {tEvents("intermissionShort")}
+                            </div>
+                          )}
+                          <div
+                            className={`timeline-segment-game ${themeClass}`}
+                            style={{ flex: `${flexGrow} 1 0%` }}
+                            title={`${roleLabel}: ${g.name} (~${duration} min)`}
+                          >
+                            <strong>#{idx + 1} {g.name}</strong>
+                            <span>{roleLabel} · ~{duration}m</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="completed-timeline-ruler">
+                    <span>{tEvents("timelineStart")}</span>
+                    <span>{tEvents("timelineIntermissions")}</span>
+                    <span>{tEvents("timelineEnd", { minutes: grandTotalMinutes })}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Stats Row */}
+              <div className="completed-stats-row">
+                <div className="completed-stat-tile">
+                  <span className="completed-stat-number">{playedGames.length}</span>
+                  <span className="completed-stat-label">{tEvents("gamesPlayedStat")}</span>
+                </div>
+                <div className="completed-stat-tile">
+                  <span className="completed-stat-number">{event.totalHeadcount}</span>
+                  <span className="completed-stat-label">{tEvents("playersAtTableStat")}</span>
+                </div>
+                <div className="completed-stat-tile">
+                  <span className="completed-stat-number">~{grandTotalMinutes} min</span>
+                  <span className="completed-stat-label">{tEvents("totalDurationStat")}</span>
+                </div>
+                <div className="completed-stat-tile">
+                  <span className="completed-stat-number">{avgWeight ? `${avgWeight} / 5.0` : "—"}</span>
+                  <span className="completed-stat-label">{tEvents("bggDifficultyStat")}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Vertical Timeline Flow with Game Cards */}
+            {playedGames.length > 0 ? (
+              <div className="completed-flow-list">
+                {playedGames.map((g, idx) => {
+                  const duration = g.playingTime || 45;
+                  const roleLabel =
+                    playedGames.length === 1
+                      ? tEvents("gameOfTheNight")
+                      : idx === 0
+                      ? tEvents("warmUpRole")
+                      : idx === playedGames.length - 1
+                      ? tEvents("nightcapRole")
+                      : tEvents("roundMainEvent", { number: idx + 1 });
+
+                  const weightClass =
+                    g.weight && g.weight <= 2.2
+                      ? "light"
+                      : g.weight && g.weight <= 3.5
+                      ? "medium"
+                      : g.weight
+                      ? "heavy"
+                      : "";
+
+                  return (
+                    <div key={g.bggId} className="completed-flow-item">
+                      {idx > 0 && (
+                        <div className="completed-intermission-step">
+                          {tEvents("intermissionStep")}
+                        </div>
+                      )}
+                      <div
+                        className="completed-slot-card"
+                        onClick={() => setSelectedModalGame(g)}
+                        style={{ cursor: "pointer" }}
+                        title={tEvents("clickForDetails")}
+                      >
+                        <div className="completed-slot-order">#{idx + 1}</div>
+                        <div className="completed-slot-cover">
+                          {g.coverUrl ? (
+                            <img src={gameCoverSrc(g.coverUrl)} alt="" />
+                          ) : (
+                            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px" }}>
+                              🎲
+                            </div>
+                          )}
+                        </div>
+                        <div className="completed-slot-info">
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>
+                            <h3>{g.name}</h3>
+                            <span className="slot-role-badge" style={{ fontSize: "11px" }}>{roleLabel}</span>
+                          </div>
+                          <div className="completed-slot-meta">
+                            <span>👥 {playerRange(g, (key, values) => tCard(key as any, values))}</span>
+                            <span>⏱️ ~{duration} min</span>
+                            {g.weight && (
+                              <span className={`completed-weight-badge ${weightClass}`}>
+                                {weightLabel(g.weight, (key, values) => tCard(key as any, values))}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center" }}>
+                          <span className="button-quiet button-small" style={{ fontSize: "12px" }}>
+                            {tEvents("viewDetails")}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
-              <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>No specific games marked as played.</p>
+              <div className="panel" style={{ textAlign: "center", padding: "24px", color: "var(--color-muted)" }}>
+                <p style={{ margin: 0 }}>{tEvents("noSpecificGames")}</p>
+              </div>
             )}
-          </div>
-        </section>
-      )}
+
+            {/* Table Crew Box */}
+            <div className="completed-crew-card">
+              <div className="completed-crew-title">
+                <span>{tEvents("theTableCrew", { count: event.totalHeadcount })}</span>
+                {event.location && <span>📍 {event.location}</span>}
+              </div>
+              <div className="completed-crew-pills">
+                {attendeesList.map((a, i) => (
+                  <span
+                    key={i}
+                    className={`completed-crew-pill ${a.isHost ? "host" : ""}`}
+                  >
+                    {a.isHost ? "🏠" : a.isGuest ? "👤" : "🎲"} {a.name}
+                    {a.isHost && tEvents("hostBadge")}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer Call to Action */}
+            <div className="completed-footer-actions">
+              <div>
+                <strong style={{ fontSize: "var(--text-md)", color: "var(--color-ink)" }}>
+                  {tEvents("repeatNextWeek")}
+                </strong>
+                <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--color-muted)" }}>
+                  {tEvents("repeatNextWeekDesc")}
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="button button-small"
+                  onClick={handleCopyShareText}
+                >
+                  {copiedShare ? tEvents("copiedRecap") : tEvents("copyRecap")}
+                </button>
+                <Link href={`/groups/${groupId}/events`} className="button-secondary button-small">
+                  {tEvents("viewGroupCalendar")}
+                </Link>
+              </div>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Active Group Voting Poll Banner */}
       {event?.menuPoll?.status === "OPEN" && event.menuPoll.options.length > 0 && (
@@ -1468,39 +1755,116 @@ export function EventClient() {
                   👥 Who actually attended tonight?
                 </h4>
                 <span style={{ fontSize: "12px", color: "var(--muted)" }}>
-                  {attendedUserIds.length} {attendedUserIds.length === 1 ? "person confirmed" : "people confirmed"}
+                  {attendedUserIds.length + attendedGuestNames.length} {attendedUserIds.length + attendedGuestNames.length === 1 ? "person confirmed" : "people confirmed"}
                 </span>
               </div>
               <p style={{ fontSize: "13px", color: "var(--muted)", margin: "0 0 10px" }}>
-                Check all members who attended. Their attendance will be saved in event records.
+                Check all members and guests who were at the table. Their attendance will be saved in event records.
               </p>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "8px", maxHeight: "150px", overflowY: "auto" }}>
-                {groupMembers.map((m) => {
-                  const checked = attendedUserIds.includes(m.userId);
-                  return (
-                    <label
-                      key={m.userId}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        padding: "8px 10px",
-                        borderRadius: "6px",
-                        border: checked ? "1px solid #16a34a" : "1px solid var(--border)",
-                        background: checked ? "#f0fdf4" : "var(--color-paper, #f9fafb)",
-                        fontSize: "13px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => handleToggleAttendee(m.userId)}
-                      />
-                      <span style={{ fontWeight: checked ? 600 : 400 }}>{m.displayName}</span>
-                    </label>
-                  );
-                })}
+
+              {/* Members */}
+              <div style={{ marginBottom: "12px" }}>
+                <span style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--muted)", marginBottom: "6px" }}>
+                  Group Members:
+                </span>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "8px", maxHeight: "150px", overflowY: "auto" }}>
+                  {groupMembers.map((m) => {
+                    const checked = attendedUserIds.includes(m.userId);
+                    return (
+                      <label
+                        key={m.userId}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          padding: "8px 10px",
+                          borderRadius: "6px",
+                          border: checked ? "1px solid #16a34a" : "1px solid var(--border)",
+                          background: checked ? "#f0fdf4" : "var(--color-paper, #f9fafb)",
+                          fontSize: "13px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => handleToggleAttendee(m.userId)}
+                        />
+                        <span style={{ fontWeight: checked ? 600 : 400 }}>{m.displayName}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Named Guests */}
+              <div>
+                <span style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--muted)", marginBottom: "6px" }}>
+                  Named Guests &amp; Walk-ins ({attendedGuestNames.length}):
+                </span>
+                {attendedGuestNames.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
+                    {attendedGuestNames.map((name) => (
+                      <span
+                        key={name}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          background: "#f0fdf4",
+                          border: "1px solid #16a34a",
+                          borderRadius: "16px",
+                          padding: "4px 10px",
+                          fontSize: "12px",
+                          fontWeight: 500,
+                          color: "#166534",
+                        }}
+                      >
+                        👤 {name}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleGuest(name)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#dc2626",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                            padding: "0 2px",
+                            lineHeight: 1,
+                          }}
+                          title="Remove guest"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: "8px", maxWidth: "340px" }}>
+                  <input
+                    type="text"
+                    placeholder="Add walk-in guest name..."
+                    value={walkInGuestInput}
+                    onChange={(e) => setWalkInGuestInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddWalkInGuest();
+                      }
+                    }}
+                    style={{ flex: 1, padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "13px" }}
+                  />
+                  <button
+                    type="button"
+                    className="button-secondary button-small"
+                    onClick={() => handleAddWalkInGuest()}
+                    disabled={!walkInGuestInput.trim()}
+                  >
+                    + Add Guest
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1901,7 +2265,7 @@ export function EventClient() {
                 disabled={closingEvent}
                 onClick={() => void handleConfirmCloseEvent()}
               >
-                {closingEvent ? "Wrapping Up…" : `Confirm & Wrap Up (${attendedUserIds.length} attended · ${playedGameIds.length} played)`}
+                {closingEvent ? "Wrapping Up…" : `Confirm & Wrap Up (${attendedUserIds.length + attendedGuestNames.length} attended · ${playedGameIds.length} played)`}
               </button>
             </div>
           </div>
@@ -2046,6 +2410,14 @@ export function EventClient() {
             </form>
           </div>
         </div>
+      )}
+
+      {selectedModalGame && (
+        <GameDetailModal
+          game={selectedModalGame}
+          isOpen={Boolean(selectedModalGame)}
+          onClose={() => setSelectedModalGame(null)}
+        />
       )}
     </div>
   );
