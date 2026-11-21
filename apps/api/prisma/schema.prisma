@@ -14,6 +14,7 @@ model User {
   bggUsername        String?
   lastBggSyncAt      DateTime?
   votingPoints       Int              @default(5)
+  lastPointsRefillAt DateTime?
   createdAt          DateTime         @default(now())
   collection         CollectionItem[]
   createdGroups      Group[]          @relation("GroupCreator")

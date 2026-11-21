@@ -568,12 +568,38 @@ export async function eventRoutes(app: FastifyInstance) {
 
     // Winning decay: reset/reduce interest votes on the winning game and its expansions
     const idsToClean = [chosenId, ...(chosenGame.expansions ?? []).map((e) => e.bggId)];
+    const clearedInterests = await db().gameInterest.findMany({
+      where: {
+        groupId: event.groupId,
+        bggId: { in: idsToClean },
+      },
+    });
+
     await db().gameInterest.deleteMany({
       where: {
         groupId: event.groupId,
         bggId: { in: idsToClean },
       },
     });
+
+    // Clamp available unspent points so they never exceed 5 in hand
+    const affectedUserIds = [...new Set(clearedInterests.map((ci) => ci.userId))];
+    for (const uid of affectedUserIds) {
+      const u = await db().user.findUnique({ where: { id: uid } });
+      if (u) {
+        const remainingInterests = await db().gameInterest.findMany({
+          where: { groupId: event.groupId, userId: uid },
+        });
+        const remainingUsed = remainingInterests.reduce((sum, i) => sum + i.points, 0);
+        const liquid = u.votingPoints - remainingUsed;
+        if (liquid > 5) {
+          await db().user.update({
+            where: { id: uid },
+            data: { votingPoints: remainingUsed + 5 },
+          });
+        }
+      }
+    }
 
     return {
       status: "picked",
@@ -1121,12 +1147,38 @@ export async function eventRoutes(app: FastifyInstance) {
 
     // Reset interest points ONLY for games that were ACTUALLY played
     if (body.playedBggIds.length > 0) {
+      const clearedInterests = await db().gameInterest.findMany({
+        where: {
+          groupId: event.groupId,
+          bggId: { in: body.playedBggIds },
+        },
+      });
+
       await db().gameInterest.deleteMany({
         where: {
           groupId: event.groupId,
           bggId: { in: body.playedBggIds },
         },
       });
+
+      // Clamp available unspent points so they never exceed 5 in hand
+      const affectedUserIds = [...new Set(clearedInterests.map((ci) => ci.userId))];
+      for (const uid of affectedUserIds) {
+        const u = await db().user.findUnique({ where: { id: uid } });
+        if (u) {
+          const remainingInterests = await db().gameInterest.findMany({
+            where: { groupId: event.groupId, userId: uid },
+          });
+          const remainingUsed = remainingInterests.reduce((sum, i) => sum + i.points, 0);
+          const liquid = u.votingPoints - remainingUsed;
+          if (liquid > 5) {
+            await db().user.update({
+              where: { id: uid },
+              data: { votingPoints: remainingUsed + 5 },
+            });
+          }
+        }
+      }
     }
 
     return { event: await serializeEventDetail(updated, user.id) };

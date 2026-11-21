@@ -223,8 +223,11 @@ export function GroupClient() {
                 Points only degrade when a game wins!
               </p>
             </div>
-            <div className="voting-points-badge">
-              <strong>⭐ {votingSummary.availablePoints}</strong> points available
+            <div
+              className="voting-points-badge"
+              title="Tus votos se invierten en juegos para aumentar su probabilidad de salir. Cada lunes recargas +3 puntos (hasta un máx de 5 en mano). Al jugarse un título en mesa, sus puntos se liberan."
+            >
+              <strong>⭐ {votingSummary.availablePoints}/5</strong> disponibles ({votingSummary.usedPoints} invertidos · +3 cada lunes)
             </div>
           </div>
         </div>

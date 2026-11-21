@@ -311,6 +311,8 @@ export interface UserVotingSummary {
   availablePoints: number;
   usedPoints: number;
   totalPoints: number;
+  maxLiquidPoints?: number;
+  weeklyAllowance?: number;
 }
 
 export interface ApiError {
