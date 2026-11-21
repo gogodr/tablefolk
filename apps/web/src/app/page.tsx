@@ -1,50 +1,53 @@
 import Link from "next/link";
 import { Show } from "@clerk/nextjs";
+import { getTranslations } from "next-intl/server";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const t = await getTranslations("home");
+
   return (
     <div className="home-page">
       <Show when="signed-in">
-        <aside className="home-signedin-banner" aria-label="Acceso rápido al dashboard">
+        <aside className="home-signedin-banner" aria-label={t("bannerAria")}>
           <div className="home-signedin-content">
             <span className="home-signedin-icon" aria-hidden="true">🎲</span>
-            <span>Sesión iniciada. Tus partidas, grupos y colección te esperan en tu Dashboard.</span>
+            <span>{t("bannerText")}</span>
           </div>
           <Link href="/dashboard" className="button button-small">
-            Ir a mi Dashboard →
+            {t("goToDashboard")}
           </Link>
         </aside>
       </Show>
       <section className="hero">
         <div>
-          <h1>Good games are better together.</h1>
-          <p>Bring everyone&apos;s games together and draw one that fits your table.</p>
+          <h1>{t("heroTitle")}</h1>
+          <p>{t("heroSubtitle")}</p>
           <div className="hero-buttons">
-            <Link className="button" href="/collection">Start your collection</Link>
-            <Link className="button-secondary" href="/groups">See your groups</Link>
+            <Link className="button" href="/collection">{t("startCollection")}</Link>
+            <Link className="button-secondary" href="/groups">{t("seeGroups")}</Link>
           </div>
         </div>
         <div className="hero-art" aria-hidden="true">
           <img src="/illustrations/tabletop-hero.png" alt="" />
         </div>
       </section>
-      <section className="home-strip" aria-label="How Tablefolk works">
-        <article><strong>Collect your favorites</strong><span>Find a game through BoardGameGeek once. Its details live in your collection from then on.</span></article>
-        <article><strong>Bring the group together</strong><span>Invite friends by email and share only the games you want the group to see.</span></article>
-        <article><strong>Draw the next game</strong><span>Enter your player count and get a random pick from games your group shares.</span></article>
+      <section className="home-strip" aria-label={t("stripAria")}>
+        <article><strong>{t("step1Title")}</strong><span>{t("step1Text")}</span></article>
+        <article><strong>{t("step2Title")}</strong><span>{t("step2Text")}</span></article>
+        <article><strong>{t("step3Title")}</strong><span>{t("step3Text")}</span></article>
       </section>
       <section className="home-preview">
         <div>
-          <h2>One table. Everyone&apos;s games.</h2>
-          <p>Each game appears once in a group, with the people who shared it right there. A game stays in the group even if one of several owners stops sharing.</p>
-          <Link href="/groups" className="text-link">Go to your groups</Link>
+          <h2>{t("previewTitle")}</h2>
+          <p>{t("previewSubtitle")}</p>
+          <Link href="/groups" className="text-link">{t("previewLink")}</Link>
         </div>
-        <div className="preview-board" aria-label="How a shared collection works">
-          <div className="preview-top"><strong>Your group collection</strong><span className="muted">Ready for game night</span></div>
+        <div className="preview-board" aria-label={t("previewBoardAria")}>
+          <div className="preview-top"><strong>{t("previewTopTitle")}</strong><span className="muted">{t("previewTopSubtitle")}</span></div>
           <div className="preview-rows">
-            <div className="preview-row"><span>Games brought together</span><span>One entry per title</span></div>
-            <div className="preview-row"><span>Sharing members</span><span>Shown beside each game</span></div>
-            <div className="preview-row"><span>Game night draw</span><span>Filtered by players</span></div>
+            <div className="preview-row"><span>{t("row1Label")}</span><span>{t("row1Value")}</span></div>
+            <div className="preview-row"><span>{t("row2Label")}</span><span>{t("row2Value")}</span></div>
+            <div className="preview-row"><span>{t("row3Label")}</span><span>{t("row3Value")}</span></div>
           </div>
         </div>
       </section>

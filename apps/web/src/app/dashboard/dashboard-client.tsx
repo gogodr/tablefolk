@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useMemo, useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   useGroupsQuery,
   useCollectionQuery,
@@ -12,6 +13,8 @@ import {
 import "./dashboard.css";
 
 export function DashboardClient() {
+  const t = useTranslations("dashboard");
+  const tCommon = useTranslations("common");
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
 
@@ -50,7 +53,7 @@ export function DashboardClient() {
   if (isLoading) {
     return (
       <div className="page dashboard-page">
-        <p className="loading">Cargando tu mesa de juegos…</p>
+        <p className="loading">{t("loading")}</p>
       </div>
     );
   }
@@ -58,14 +61,14 @@ export function DashboardClient() {
   if (!isSignedIn) {
     return (
       <section className="narrow-page notice-page">
-        <h1>Tu mesa de juegos empieza aquí.</h1>
-        <p>Inicia sesión para ver tus grupos, eventos y tu colección.</p>
-        <Link href="/sign-in" className="button">Iniciar sesión</Link>
+        <h1>{t("unauthTitle")}</h1>
+        <p>{t("unauthText")}</p>
+        <Link href="/sign-in" className="button">{tCommon("signIn")}</Link>
       </section>
     );
   }
 
-  const firstName = user?.firstName || user?.fullName || "jugador";
+  const firstName = user?.firstName || user?.fullName || t("defaultPlayer");
   const hasContent = groups.length > 0 || games.length > 0;
 
   return (
@@ -73,12 +76,12 @@ export function DashboardClient() {
       {/* Functional Header */}
       <header className="dashboard-header">
         <div className="dashboard-greeting">
-          <h1>¡Hola, {firstName}!</h1>
+          <h1>{t("greeting", { name: firstName })}</h1>
           <p>
             {nextEvent ? (
               <>
                 <span aria-hidden="true">🎲</span>
-                Próxima partida: <strong>{nextEvent.title}</strong> (
+                {t("nextEventPrefix")}<strong>{nextEvent.title}</strong> (
                 {new Date(nextEvent.scheduledDate).toLocaleDateString(undefined, {
                   weekday: "short",
                   month: "short",
@@ -87,19 +90,19 @@ export function DashboardClient() {
                 )
               </>
             ) : (
-              "Todo listo para organizar tu próxima noche de juegos."
+              t("readyToPlay")
             )}
           </p>
         </div>
         <div className="dashboard-actions">
           <Link href="/events" className="button">
-            📅 Ver calendario
+            {t("viewCalendar")}
           </Link>
           <Link href="/collection" className="button-secondary">
-            + Añadir juegos
+            {t("addGames")}
           </Link>
           <Link href="/groups" className="button-quiet">
-            Ver grupos
+            {t("viewGroups")}
           </Link>
         </div>
       </header>
@@ -113,10 +116,12 @@ export function DashboardClient() {
             <article className="dashboard-card dashboard-hero-event">
               <div className="dashboard-card-header">
                 <span className="dashboard-card-badge dashboard-card-badge-accent">
-                  Próxima Game Night
+                  {t("nextGameNight")}
                 </span>
                 <span className="hero-event-group-link">
-                  Grupo: {nextEvent.groupName || groups.find((g) => g.id === nextEvent.groupId)?.name || "Grupo"}
+                  {t("groupPrefix", {
+                    name: nextEvent.groupName || groups.find((g) => g.id === nextEvent.groupId)?.name || t("groupLabel"),
+                  })}
                 </span>
               </div>
 
@@ -140,7 +145,7 @@ export function DashboardClient() {
                   )}
                   {nextEvent.hostDisplayName && (
                     <span className="hero-event-meta-item">
-                      🏠 Anfitrión: {nextEvent.hostDisplayName}
+                      {t("hostPrefix", { name: nextEvent.hostDisplayName })}
                     </span>
                   )}
                 </div>
@@ -159,12 +164,14 @@ export function DashboardClient() {
                     <div className="hero-event-pick-cover" />
                   )}
                   <div className="hero-event-pick-details">
-                    <span>Juego elegido:</span>
+                    <span>{t("chosenGame")}</span>
                     <strong>{nextEvent.officialPick.name}</strong>
                     <span>
-                      {nextEvent.officialPick.minPlayers}-
-                      {nextEvent.officialPick.maxPlayers} jugadores ·{" "}
-                      {nextEvent.officialPick.playingTime} min
+                      {t("gameDetails", {
+                        min: nextEvent.officialPick.minPlayers ?? "?",
+                        max: nextEvent.officialPick.maxPlayers ?? "?",
+                        time: nextEvent.officialPick.playingTime ?? "?",
+                      })}
                     </span>
                   </div>
                 </div>
@@ -172,7 +179,7 @@ export function DashboardClient() {
 
               {/* Attendees summary */}
               <div className="hero-event-attendees">
-                <strong>Confirmados:</strong>{" "}
+                <strong>{t("confirmed")}</strong>{" "}
                 {nextEvent.rsvps.filter((r) => r.status === "ATTENDING").length > 0 ? (
                   nextEvent.rsvps
                     .filter((r) => r.status === "ATTENDING")
@@ -184,7 +191,7 @@ export function DashboardClient() {
                       </span>
                     ))
                 ) : (
-                  <span>Aún nadie ha confirmado asistencia</span>
+                  <span>{t("noConfirmedYet")}</span>
                 )}
               </div>
 
@@ -193,13 +200,13 @@ export function DashboardClient() {
                   href={`/groups/${nextEvent.groupId}/events/${nextEvent.id}`}
                   className="button"
                 >
-                  Entrar a la sala del evento →
+                  {t("enterEventRoom")}
                 </Link>
                 <Link
                   href={`/groups/${nextEvent.groupId}`}
                   className="text-link"
                 >
-                  Ir al grupo
+                  {t("goToGroup")}
                 </Link>
               </div>
             </article>
@@ -208,17 +215,14 @@ export function DashboardClient() {
               <span className="dashboard-empty-icon" aria-hidden="true">
                 🎲
               </span>
-              <h3>No tienes partidas agendadas</h3>
-              <p>
-                Reúne a tu mesa, propón una fecha y deja que Tablefolk elija el
-                juego perfecto para la cantidad de jugadores.
-              </p>
+              <h3>{t("noEventsTitle")}</h3>
+              <p>{t("noEventsSubtitle")}</p>
               <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
                 <Link href="/groups" className="button">
-                  Ver tus grupos
+                  {t("viewYourGroups")}
                 </Link>
                 <Link href="/events" className="button-secondary">
-                  Ver calendario de eventos
+                  {t("viewEventsCalendar")}
                 </Link>
               </div>
             </div>
@@ -229,17 +233,17 @@ export function DashboardClient() {
             <div className="dashboard-card">
               <div className="dashboard-card-header">
                 <h2 className="dashboard-card-title">
-                  <span>🎯</span> Selector rápido de juegos (Quick Draw)
+                  <span>🎯</span> {t("quickDrawTitle")}
                 </h2>
                 <span className="dashboard-card-badge">Game Night</span>
               </div>
               <div className="quick-draw-box">
                 <p style={{ margin: 0, color: "var(--color-muted)", fontSize: "var(--text-sm)" }}>
-                  Filtra al instante los juegos que tus amigos han compartido para encontrar el título ideal para hoy.
+                  {t("quickDrawSubtitle")}
                 </p>
                 <div className="quick-draw-controls">
                   <div className="quick-draw-field">
-                    <label htmlFor="dashboard-group-select">Grupo</label>
+                    <label htmlFor="dashboard-group-select">{t("groupLabel")}</label>
                     <select
                       id="dashboard-group-select"
                       className="quick-draw-select"
@@ -254,18 +258,18 @@ export function DashboardClient() {
                     </select>
                   </div>
                   <div className="quick-draw-field" style={{ maxWidth: "130px" }}>
-                    <label htmlFor="dashboard-players-select">Jugadores</label>
+                    <label htmlFor="dashboard-players-select">{t("playersLabel")}</label>
                     <select
                       id="dashboard-players-select"
                       className="quick-draw-select"
                       value={playerCount}
                       onChange={(e) => setPlayerCount(e.target.value)}
                     >
-                      <option value="2">2 jugadores</option>
-                      <option value="3">3 jugadores</option>
-                      <option value="4">4 jugadores</option>
-                      <option value="5">5 jugadores</option>
-                      <option value="6">6+ jugadores</option>
+                      <option value="2">{t("playersCount", { count: 2 })}</option>
+                      <option value="3">{t("playersCount", { count: 3 })}</option>
+                      <option value="4">{t("playersCount", { count: 4 })}</option>
+                      <option value="5">{t("playersCount", { count: 5 })}</option>
+                      <option value="6">{t("playersSixPlus")}</option>
                     </select>
                   </div>
                   {effectiveGroupId && (
@@ -274,7 +278,7 @@ export function DashboardClient() {
                       className="button"
                       style={{ height: "42px", display: "inline-flex", alignItems: "center" }}
                     >
-                      🎲 Abrir Game Night →
+                      {t("openGameNight")}
                     </Link>
                   )}
                 </div>
@@ -287,38 +291,32 @@ export function DashboardClient() {
             <div className="dashboard-card onboarding-card">
               <div className="dashboard-card-header">
                 <h2 className="dashboard-card-title">
-                  <span>🚀</span> Primeros pasos en Tablefolk
+                  <span>🚀</span> {t("onboardingTitle")}
                 </h2>
                 <span className="dashboard-card-badge dashboard-card-badge-accent">
-                  Guía de inicio
+                  {t("onboardingBadge")}
                 </span>
               </div>
               <div className="onboarding-steps">
                 <Link href="/collection" className="onboarding-step">
                   <span className="onboarding-step-icon">📦</span>
                   <div className="onboarding-step-text">
-                    <strong>1. Agrega o importa tus juegos</strong>
-                    <span>
-                      Sincroniza tu cuenta de BoardGameGeek o busca tus juegos favoritos uno a uno.
-                    </span>
+                    <strong>{t("step1Title")}</strong>
+                    <span>{t("step1Desc")}</span>
                   </div>
                 </Link>
                 <Link href="/groups" className="onboarding-step">
                   <span className="onboarding-step-icon">👥</span>
                   <div className="onboarding-step-text">
-                    <strong>2. Crea tu primer grupo de juego</strong>
-                    <span>
-                      Invita a tus amigos por correo o comparte un enlace directo para unir sus colecciones.
-                    </span>
+                    <strong>{t("step2Title")}</strong>
+                    <span>{t("step2Desc")}</span>
                   </div>
                 </Link>
                 <Link href="/events" className="onboarding-step">
                   <span className="onboarding-step-icon">🗓️</span>
                   <div className="onboarding-step-text">
-                    <strong>3. Programa tu primera noche de juegos</strong>
-                    <span>
-                      Establece una fecha, confirma quiénes van y sortea qué juego llega a la mesa.
-                    </span>
+                    <strong>{t("step3Title")}</strong>
+                    <span>{t("step3Desc")}</span>
                   </div>
                 </Link>
               </div>
@@ -332,10 +330,10 @@ export function DashboardClient() {
           <div className="dashboard-card">
             <div className="dashboard-card-header">
               <h2 className="dashboard-card-title">
-                <span>👥</span> Tus Grupos
+                <span>👥</span> {t("yourGroups")}
               </h2>
               <Link href="/groups" className="text-link" style={{ fontSize: "var(--text-xs)" }}>
-                Ver todos ({groups.length})
+                {t("viewAllGroups", { count: groups.length })}
               </Link>
             </div>
             {groups.length > 0 ? (
@@ -349,11 +347,11 @@ export function DashboardClient() {
                     <div className="dashboard-group-info">
                       <strong>{g.name}</strong>
                       <span>
-                        {g.memberCount} {g.memberCount === 1 ? "miembro" : "miembros"}
+                        {t("memberCount", { count: g.memberCount })}
                       </span>
                     </div>
                     <div className="dashboard-group-actions">
-                      <span className="button-quiet button-small">Ver →</span>
+                      <span className="button-quiet button-small">{t("viewArrow")}</span>
                     </div>
                   </Link>
                 ))}
@@ -361,10 +359,10 @@ export function DashboardClient() {
             ) : (
               <div style={{ textAlign: "center", padding: "var(--space-md) 0" }}>
                 <p style={{ color: "var(--color-muted)", fontSize: "var(--text-sm)", marginBottom: "var(--space-sm)" }}>
-                  Aún no formas parte de ningún grupo.
+                  {t("noGroups")}
                 </p>
                 <Link href="/groups" className="button button-small">
-                  + Crear o unirse a un grupo
+                  {t("createOrJoinGroup")}
                 </Link>
               </div>
             )}
@@ -374,20 +372,20 @@ export function DashboardClient() {
           <div className="dashboard-card">
             <div className="dashboard-card-header">
               <h2 className="dashboard-card-title">
-                <span>📦</span> Tu Colección
+                <span>📦</span> {t("yourCollection")}
               </h2>
               <Link href="/collection" className="text-link" style={{ fontSize: "var(--text-xs)" }}>
-                Gestionar
+                {t("manage")}
               </Link>
             </div>
             <div className="dashboard-stats-grid">
               <div className="dashboard-stat-tile">
                 <span className="dashboard-stat-value">{games.length}</span>
-                <span className="dashboard-stat-label">Juegos en colección</span>
+                <span className="dashboard-stat-label">{t("gamesInCollection")}</span>
               </div>
               <div className="dashboard-stat-tile">
                 <span className="dashboard-stat-value">{sharedGamesCount}</span>
-                <span className="dashboard-stat-label">Compartidos con grupos</span>
+                <span className="dashboard-stat-label">{t("gamesShared")}</span>
               </div>
             </div>
 
@@ -396,16 +394,16 @@ export function DashboardClient() {
               <div className="dashboard-bgg-sync">
                 <span>
                   <span className="dashboard-bgg-dot" aria-hidden="true">●</span>
-                  BGG: <strong>@{bggData.bggUsername}</strong>
+                  {t("bggPrefix")}<strong>@{bggData.bggUsername}</strong>
                 </span>
                 <Link href="/collection" className="button-quiet button-small" style={{ minHeight: "auto", padding: "2px 6px" }}>
-                  Sincronizar
+                  {t("syncBgg")}
                 </Link>
               </div>
             ) : (
               <div style={{ textAlign: "center", marginTop: "var(--space-xs)" }}>
                 <Link href="/collection" className="button-secondary button-small" style={{ width: "100%", justifyContent: "center" }}>
-                  Conectar con BoardGameGeek
+                  {t("connectBgg")}
                 </Link>
               </div>
             )}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useCallback, useEffect, useState, useRef, useMemo } from "react";
+import { useTranslations } from "next-intl";
 import type {
   EventDetail,
   EventMenuOption,
@@ -16,7 +17,7 @@ import type {
   SessionLineupResult,
   SessionMenuTrioResult,
 } from "@tablefolk/contracts";
-import { GameCard, cleanExpansionName, weightLabel } from "@/components/game-card";
+import { GameCard, cleanExpansionName, weightLabel, playerRange } from "@/components/game-card";
 import { GameDetailModal } from "@/components/game-detail-modal";
 import { gameCoverSrc } from "@/lib/assets";
 import { useApi } from "@/lib/api";
@@ -24,6 +25,8 @@ import { useApi } from "@/lib/api";
 type Mode = "lineup" | "single";
 
 export function EventClient() {
+  const tEvents = useTranslations("events");
+  const tCard = useTranslations("gameCard");
   const { groupId, eventId } = useParams<{ groupId: string; eventId: string }>();
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
@@ -847,17 +850,17 @@ export function EventClient() {
               <div className="completed-hero-header">
                 <div className="completed-hero-titles">
                   <span className="completed-pill-tag">
-                    🏆 Evento Finalizado &amp; Verificado
+                    {tEvents("eventFinishedVerified")}
                   </span>
                   <h2>
                     {playedGames.length > 0
-                      ? `¡Qué gran noche! ${playedGames.length} ${playedGames.length === 1 ? "juego vio" : "juegos vieron"} mesa`
-                      : "Game Night Finalizada"}
+                      ? tEvents("gamesTabled", { count: playedGames.length })
+                      : tEvents("gameNightCompleted")}
                   </h2>
                   <p>
-                    {event.totalHeadcount} jugadores reunidos en torno a la mesa
-                    {event.location ? ` en ${event.location}` : ""}
-                    {event.hostDisplayName ? ` · Anfitrión: ${event.hostDisplayName}` : ""}
+                    {tEvents("playersGathered", { count: event.totalHeadcount })}
+                    {event.location ? tEvents("atLocation", { location: event.location }) : ""}
+                    {event.hostDisplayName ? tEvents("hostPrefix", { name: event.hostDisplayName }) : ""}
                   </p>
                 </div>
                 {canManage && (
@@ -866,7 +869,7 @@ export function EventClient() {
                     className="button-secondary button-small"
                     onClick={() => void handleOpenCloseEventModal()}
                   >
-                    ✏️ Editar juegos y asistencia
+                    {tEvents("editGamesAndAttendance")}
                   </button>
                 )}
               </div>
@@ -875,11 +878,11 @@ export function EventClient() {
               {playedGames.length > 0 && (
                 <div className="completed-timeline-track-card">
                   <div className="completed-timeline-track-header">
-                    <span>⏱️ Línea de Tiempo de la Sesión</span>
-                    <span>~{grandTotalMinutes} min en total</span>
+                    <span>{tEvents("sessionTimeline")}</span>
+                    <span>{tEvents("totalMinutesEstimated", { minutes: grandTotalMinutes })}</span>
                   </div>
 
-                  <div className="completed-timeline-bar" role="img" aria-label="Línea de tiempo de los juegos jugados">
+                  <div className="completed-timeline-bar" role="img" aria-label={tEvents("timelineAria")}>
                     {playedGames.map((g, idx) => {
                       const duration = g.playingTime || 45;
                       const flexGrow = Math.max(duration, 30);
@@ -894,21 +897,21 @@ export function EventClient() {
 
                       const roleLabel =
                         playedGames.length === 1
-                          ? "Juego de la noche"
+                          ? tEvents("gameOfTheNight")
                           : idx === 0
-                          ? "Apertura"
+                          ? tEvents("warmUp")
                           : idx === playedGames.length - 1
-                          ? "Cierre"
-                          : `Juego ${idx + 1}`;
+                          ? tEvents("nightcap")
+                          : tEvents("gameNumber", { number: idx + 1 });
 
                       return (
                         <div key={g.bggId} style={{ display: "contents" }}>
                           {idx > 0 && (
                             <div
                               className="timeline-segment-intermission"
-                              title="Pausa & Preparación de mesa (15 min)"
+                              title={tEvents("intermissionTitle")}
                             >
-                              ☕ 15m
+                              {tEvents("intermissionShort")}
                             </div>
                           )}
                           <div
@@ -925,9 +928,9 @@ export function EventClient() {
                   </div>
 
                   <div className="completed-timeline-ruler">
-                    <span>Inicio (0m)</span>
-                    <span>☕ Intermedios incluidos</span>
-                    <span>Fin (~{grandTotalMinutes}m)</span>
+                    <span>{tEvents("timelineStart")}</span>
+                    <span>{tEvents("timelineIntermissions")}</span>
+                    <span>{tEvents("timelineEnd", { minutes: grandTotalMinutes })}</span>
                   </div>
                 </div>
               )}
@@ -936,19 +939,19 @@ export function EventClient() {
               <div className="completed-stats-row">
                 <div className="completed-stat-tile">
                   <span className="completed-stat-number">{playedGames.length}</span>
-                  <span className="completed-stat-label">Juegos jugados</span>
+                  <span className="completed-stat-label">{tEvents("gamesPlayedStat")}</span>
                 </div>
                 <div className="completed-stat-tile">
                   <span className="completed-stat-number">{event.totalHeadcount}</span>
-                  <span className="completed-stat-label">Jugadores en mesa</span>
+                  <span className="completed-stat-label">{tEvents("playersAtTableStat")}</span>
                 </div>
                 <div className="completed-stat-tile">
                   <span className="completed-stat-number">~{grandTotalMinutes} min</span>
-                  <span className="completed-stat-label">Duración total estimada</span>
+                  <span className="completed-stat-label">{tEvents("totalDurationStat")}</span>
                 </div>
                 <div className="completed-stat-tile">
                   <span className="completed-stat-number">{avgWeight ? `${avgWeight} / 5.0` : "—"}</span>
-                  <span className="completed-stat-label">Dificultad media BGG</span>
+                  <span className="completed-stat-label">{tEvents("bggDifficultyStat")}</span>
                 </div>
               </div>
             </div>
@@ -960,12 +963,12 @@ export function EventClient() {
                   const duration = g.playingTime || 45;
                   const roleLabel =
                     playedGames.length === 1
-                      ? "Juego de la Noche"
+                      ? tEvents("gameOfTheNight")
                       : idx === 0
-                      ? "Apertura · Warm-up"
+                      ? tEvents("warmUpRole")
                       : idx === playedGames.length - 1
-                      ? "Cierre · Nightcap"
-                      : `Ronda ${idx + 1} · Main Event`;
+                      ? tEvents("nightcapRole")
+                      : tEvents("roundMainEvent", { number: idx + 1 });
 
                   const weightClass =
                     g.weight && g.weight <= 2.2
@@ -980,14 +983,14 @@ export function EventClient() {
                     <div key={g.bggId} className="completed-flow-item">
                       {idx > 0 && (
                         <div className="completed-intermission-step">
-                          ☕ 15m Intermedio &amp; Preparación de mesa
+                          {tEvents("intermissionStep")}
                         </div>
                       )}
                       <div
                         className="completed-slot-card"
                         onClick={() => setSelectedModalGame(g)}
                         style={{ cursor: "pointer" }}
-                        title="Haz clic para ver detalles del juego"
+                        title={tEvents("clickForDetails")}
                       >
                         <div className="completed-slot-order">#{idx + 1}</div>
                         <div className="completed-slot-cover">
@@ -1005,18 +1008,18 @@ export function EventClient() {
                             <span className="slot-role-badge" style={{ fontSize: "11px" }}>{roleLabel}</span>
                           </div>
                           <div className="completed-slot-meta">
-                            <span>👥 {g.minPlayers}–{g.maxPlayers} jugadores</span>
+                            <span>👥 {playerRange(g, (key, values) => tCard(key as any, values))}</span>
                             <span>⏱️ ~{duration} min</span>
                             {g.weight && (
                               <span className={`completed-weight-badge ${weightClass}`}>
-                                {weightLabel(g.weight)}
+                                {weightLabel(g.weight, (key, values) => tCard(key as any, values))}
                               </span>
                             )}
                           </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center" }}>
                           <span className="button-quiet button-small" style={{ fontSize: "12px" }}>
-                            Ver detalles ℹ️
+                            {tEvents("viewDetails")}
                           </span>
                         </div>
                       </div>
@@ -1026,14 +1029,14 @@ export function EventClient() {
               </div>
             ) : (
               <div className="panel" style={{ textAlign: "center", padding: "24px", color: "var(--color-muted)" }}>
-                <p style={{ margin: 0 }}>No se marcaron juegos específicos como jugados en este evento.</p>
+                <p style={{ margin: 0 }}>{tEvents("noSpecificGames")}</p>
               </div>
             )}
 
             {/* Table Crew Box */}
             <div className="completed-crew-card">
               <div className="completed-crew-title">
-                <span>👥 La Mesa de la Noche ({event.totalHeadcount} asistentes)</span>
+                <span>{tEvents("theTableCrew", { count: event.totalHeadcount })}</span>
                 {event.location && <span>📍 {event.location}</span>}
               </div>
               <div className="completed-crew-pills">
@@ -1043,7 +1046,7 @@ export function EventClient() {
                     className={`completed-crew-pill ${a.isHost ? "host" : ""}`}
                   >
                     {a.isHost ? "🏠" : a.isGuest ? "👤" : "🎲"} {a.name}
-                    {a.isHost && " (Host)"}
+                    {a.isHost && tEvents("hostBadge")}
                   </span>
                 ))}
               </div>
@@ -1053,10 +1056,10 @@ export function EventClient() {
             <div className="completed-footer-actions">
               <div>
                 <strong style={{ fontSize: "var(--text-md)", color: "var(--color-ink)" }}>
-                  ¿Se repite la próxima semana?
+                  {tEvents("repeatNextWeek")}
                 </strong>
                 <p style={{ margin: "2px 0 0", fontSize: "13px", color: "var(--color-muted)" }}>
-                  Comparte el resumen con tu grupo o revisa las próximas fechas en el calendario.
+                  {tEvents("repeatNextWeekDesc")}
                 </p>
               </div>
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -1065,10 +1068,10 @@ export function EventClient() {
                   className="button button-small"
                   onClick={handleCopyShareText}
                 >
-                  {copiedShare ? "✓ ¡Crónica copiada!" : "📋 Copiar crónica para WhatsApp / Discord"}
+                  {copiedShare ? tEvents("copiedRecap") : tEvents("copyRecap")}
                 </button>
                 <Link href={`/groups/${groupId}/events`} className="button-secondary button-small">
-                  Ver calendario del grupo
+                  {tEvents("viewGroupCalendar")}
                 </Link>
               </div>
             </div>
