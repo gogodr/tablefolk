@@ -300,6 +300,7 @@ describe("Events management & attendance", () => {
     // Played games preserves the exact specified sequence [13, 999, 42] and enriches game 999 from BGG
     expect(closeRes.json().event.playedGames.map((g: any) => g.bggId)).toEqual([13, 999, 42]);
     expect(closeRes.json().event.playedGames[1].name).toBe("Terraforming Mars");
+    expect(closeRes.json().event.playedGames[1].coverUrl).toBe("/v1/covers/999");
     expect(closeRes.json().event.rsvps).toHaveLength(2);
     expect(closeRes.json().event.rsvps.every((r: any) => r.status === "ATTENDING")).toBe(true);
   });

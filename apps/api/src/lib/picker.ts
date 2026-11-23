@@ -165,6 +165,7 @@ export interface LineupPlannerOptions {
   excludeBggIds?: number[];
   mechanicsAffinity?: number;
   themeCategory?: string;
+  recipeId?: string;
   random?: () => number;
 }
 
@@ -180,6 +181,7 @@ export function planSessionLineup(
     excludeBggIds = [],
     mechanicsAffinity = 0,
     themeCategory,
+    recipeId,
     random = Math.random,
   } = options;
 
@@ -209,6 +211,23 @@ export function planSessionLineup(
     };
   }
 
+  // Check if an explicit recipe template was requested
+  const explicitRecipe = recipeId ? MENU_RECIPES.find((r) => r.id === recipeId) : undefined;
+  let effectiveAllowHeavy = allowHeavy;
+  let effectiveMechanicsAffinity = mechanicsAffinity;
+  let activeWeightsMap = new Map(weightsMap);
+
+  if (explicitRecipe) {
+    const recipeConfig = explicitRecipe.getWeightsAndOptions(eligible, activeWeightsMap);
+    activeWeightsMap = recipeConfig.weightsMap;
+    if (recipeConfig.allowHeavy !== undefined) {
+      effectiveAllowHeavy = recipeConfig.allowHeavy;
+    }
+    if (recipeConfig.mechanicsAffinity !== undefined) {
+      effectiveMechanicsAffinity = recipeConfig.mechanicsAffinity;
+    }
+  }
+
   // Helper classification
   const isHeavy = (g: GroupGame) => (g.weight ?? 0) > 3.2;
   const isLight = (g: GroupGame) => (g.weight ?? 2.0) <= 2.2;
@@ -226,7 +245,6 @@ export function planSessionLineup(
           hasAnyKeyword(g.mechanics, [themeCategory]))
     );
 
-  const activeWeightsMap = new Map(weightsMap);
   if (themeCategory) {
     const themedEligible = eligible.filter(matchesTheme);
     if (themedEligible.length > 0) {
@@ -244,7 +262,7 @@ export function planSessionLineup(
   // 1. Choose Main Event (Centerpiece / Anchor)
   // Look for candidates that fit within the total session time (with room for at least 15m transition if not the only game)
   let mainCandidates = eligible.filter((g) => {
-    if (!allowHeavy && isHeavy(g)) return false;
+    if (!effectiveAllowHeavy && isHeavy(g)) return false;
     const duration = getDuration(g);
     return duration <= totalMinutes + 15;
   });
@@ -343,14 +361,14 @@ export function planSessionLineup(
         const matchScore = sharedC.length * 2.5 + sharedM.length * 0.75;
 
         let multiplier = 1;
-        if (mechanicsAffinity > 0) {
+        if (effectiveMechanicsAffinity > 0) {
           // Boost games that share themes (categories) & mechanics with Main Game
           multiplier = matchScore > 0
-            ? 1 + mechanicsAffinity * (2 + matchScore * 1.5)
-            : Math.max(0.15, 1 - mechanicsAffinity * 0.7);
-        } else if (mechanicsAffinity < 0) {
+            ? 1 + effectiveMechanicsAffinity * (2 + matchScore * 1.5)
+            : Math.max(0.15, 1 - effectiveMechanicsAffinity * 0.7);
+        } else if (effectiveMechanicsAffinity < 0) {
           // Boost games that differ in themes & mechanics from Main Game (prevent fatigue)
-          const diversityStrength = Math.abs(mechanicsAffinity);
+          const diversityStrength = Math.abs(effectiveMechanicsAffinity);
           multiplier = matchScore === 0
             ? 1 + diversityStrength * 3
             : Math.max(0.1, 1 / (1 + diversityStrength * matchScore * 1.5));
@@ -428,7 +446,7 @@ export function planSessionLineup(
   if (themeCategory) {
     themeNotice = `🎭 Themed Night: ${themeCategory}`;
   } else if (selectedLineup.length > 1) {
-    if (mechanicsAffinity > 0.2) {
+    if (effectiveMechanicsAffinity > 0.2) {
       const mainSlot = selectedLineup.find((s) => s.role === "main");
       const mainCategories = new Set(mainSlot?.game.categories ?? []);
       const allSharedCategories = selectedLineup
@@ -448,10 +466,21 @@ export function planSessionLineup(
           themeNotice = "🎯 Themed Night: aligned mechanics & style";
         }
       }
-    } else if (mechanicsAffinity < -0.2) {
+    } else if (effectiveMechanicsAffinity < -0.2) {
       themeNotice = "🌈 Diverse Menu: contrasting mechanics to prevent mental fatigue";
     }
   }
+
+  // Detect matching template/recipe if not explicitly set
+  const mainGame = selectedLineup.find((s) => s.role === "main")?.game;
+  const detectedRecipe = (!explicitRecipe && mainGame)
+    ? MENU_RECIPES.find((r) => {
+        if (r.id === "wildcard_random" || r.id === "table_favorites") return false;
+        return r.isViable([mainGame], effectiveAllowHeavy);
+      })
+    : undefined;
+
+  const finalRecipe = explicitRecipe || detectedRecipe;
 
   return {
     status: selectedLineup.length > 0 ? "success" : "no_match",
@@ -461,6 +490,10 @@ export function planSessionLineup(
     targetMinutes: totalMinutes,
     hasHeavy: hasHeavyGame,
     themeNotice,
+    recipeId: finalRecipe?.id,
+    recipeTitle: finalRecipe?.titlePrefix,
+    recipeBadge: finalRecipe?.styleBadge,
+    recipeDescription: finalRecipe?.description,
   };
 }
 

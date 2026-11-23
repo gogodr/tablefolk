@@ -23,6 +23,9 @@ type WeightFilter = "all" | "light" | "medium" | "heavy";
 
 export function GroupClient() {
   const tVoting = useTranslations("groupVoting");
+  const tGroup = useTranslations("groupDetail");
+  const tNav = useTranslations("navigation");
+  const tCommon = useTranslations("common");
   const { groupId } = useParams<{ groupId: string }>();
   const { isLoaded, isSignedIn } = useAuth();
   const api = useApi();
@@ -173,12 +176,12 @@ export function GroupClient() {
   }
 
   const loading = !isLoaded || (isSignedIn && (groupLoading || gamesLoading));
-  if (loading) return <div className="page"><p className="loading">Loading group…</p></div>;
+  if (loading) return <div className="page"><p className="loading">{tGroup("loading")}</p></div>;
   if (!isSignedIn) {
     return (
       <section className="narrow-page notice-page">
-        <h1>Sign in to see this group.</h1>
-        <Link href="/sign-in" className="button">Sign in</Link>
+        <h1>{tGroup("signInPrompt")}</h1>
+        <Link href="/sign-in" className="button">{tNav("signIn")}</Link>
       </section>
     );
   }
@@ -187,8 +190,8 @@ export function GroupClient() {
     return (
       <section className="narrow-page">
         <div className="state-message error" role="alert">
-          <p>{error || (groupQueryError instanceof Error ? groupQueryError.message : "") || "Group not found."}</p>
-          <button className="button-quiet" onClick={() => void refreshGroup()}>Try again</button>
+          <p>{error || (groupQueryError instanceof Error ? groupQueryError.message : "") || tGroup("notFound")}</p>
+          <button className="button-quiet" onClick={() => void refreshGroup()}>{tGroup("tryAgain")}</button>
         </div>
       </section>
     );
@@ -198,19 +201,18 @@ export function GroupClient() {
 
   return (
     <div className="page">
-      <Link href="/groups" className="back-link">← All groups</Link>
+      <Link href="/groups" className="back-link">{tGroup("backLink")}</Link>
       <div className="page-header">
         <div>
           <h1>{group.name}</h1>
           <p>
-            {group.memberCount} {group.memberCount === 1 ? "member" : "members"} · {games.length}{" "}
-            {games.length === 1 ? "game" : "games"} ready to consider
+            {tGroup("memberCount", { count: group.memberCount, games: games.length })}
           </p>
         </div>
         <div className="page-actions">
-          <Link className="button-secondary" href={`/groups/${groupId}/events`}>📅 Events & RSVPs</Link>
-          <Link className="button-secondary" href={`/groups/${groupId}/members`}>Members</Link>
-          <Link className="button" href={`/groups/${groupId}/game-night`}>Quick Pick</Link>
+          <Link className="button-secondary" href={`/groups/${groupId}/events`}>{tGroup("eventsAndRsvps")}</Link>
+          <Link className="button-secondary" href={`/groups/${groupId}/members`}>{tGroup("members")}</Link>
+          <Link className="button" href={`/groups/${groupId}/game-night`}>{tGroup("quickPick")}</Link>
         </div>
       </div>
 
@@ -239,9 +241,9 @@ export function GroupClient() {
 
       <div className="section-title">
         <div>
-          <h2>Shared games</h2>
+          <h2>{tGroup("sharedGamesTitle")}</h2>
           <p>
-            Showing {shown.length} of {games.length} {games.length === 1 ? "game" : "games"} across all members
+            {tGroup("showingCount", { shown: shown.length, total: games.length })}
           </p>
         </div>
       </div>
@@ -250,9 +252,9 @@ export function GroupClient() {
         <div className="empty-state">
           <img src="/brand/tablefolk-mark.png" alt="" />
           <div>
-            <h2>No games on this table yet.</h2>
-            <p>Members can share games from their own collections.</p>
-            <Link className="text-link" href="/collection">Go to my collection</Link>
+            <h2>{tGroup("emptyTitle")}</h2>
+            <p>{tGroup("emptyDesc")}</p>
+            <Link className="text-link" href="/collection">{tGroup("goToCollection")}</Link>
           </div>
         </div>
       ) : (
@@ -265,7 +267,7 @@ export function GroupClient() {
               <input
                 type="search"
                 className="collection-search-input"
-                placeholder={`Search ${games.length} group games by title, owner, or designer…`}
+                placeholder={tGroup("searchPlaceholder")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
@@ -284,12 +286,12 @@ export function GroupClient() {
             {/* Kind & Status Count Chips */}
             <div className="count-filters" role="group" aria-label="Filter group games">
               {[
-                { id: "base", label: "Base games", count: games.filter((g) => g.kind !== "boardgameexpansion" || g.isStandalone).length },
-                { id: "all", label: "All items", count: games.length },
-                { id: "voted", label: "⭐ Wishlist voted", count: games.filter((g) => (g.interestScore ?? 0) > 0).length },
-                { id: "available", label: "Available to bring", count: games.filter((g) => g.owners.some((o) => o.isAvailable !== false)).length },
+                { id: "base", label: tGroup("filters.base"), count: games.filter((g) => g.kind !== "boardgameexpansion" || g.isStandalone).length },
+                { id: "all", label: tGroup("filters.all"), count: games.length },
+                { id: "voted", label: tGroup("filters.voted"), count: games.filter((g) => (g.interestScore ?? 0) > 0).length },
+                { id: "available", label: tGroup("filters.available"), count: games.filter((g) => g.owners.some((o) => o.isAvailable !== false)).length },
                 ...(games.some((g) => g.kind === "boardgameexpansion")
-                  ? [{ id: "expansions", label: "Expansions only", count: games.filter((g) => g.kind === "boardgameexpansion").length }]
+                  ? [{ id: "expansions", label: tGroup("filters.expansions"), count: games.filter((g) => g.kind === "boardgameexpansion").length }]
                   : []),
               ].map((item) => (
                 <button
@@ -315,10 +317,10 @@ export function GroupClient() {
                   onChange={(e) => setPlayerFilter(e.target.value as PlayerFilter)}
                   aria-label="Filter by player count"
                 >
-                  <option value="all">👥 Any player count</option>
-                  <option value="2">2 Players</option>
-                  <option value="3-4">3–4 Players</option>
-                  <option value="5+">5+ Players</option>
+                  <option value="all">{tGroup("anyPlayers")}</option>
+                  <option value="2">{tGroup("playersCount", { count: 2 })}</option>
+                  <option value="3-4">3–4 {tGroup("playersCount", { count: 4 }).split(" ")[1]}</option>
+                  <option value="5+">{tGroup("playersFivePlus")}</option>
                 </select>
 
                 {/* Complexity */}
@@ -328,10 +330,10 @@ export function GroupClient() {
                   onChange={(e) => setWeightFilter(e.target.value as WeightFilter)}
                   aria-label="Filter by complexity weight"
                 >
-                  <option value="all">⚖️ Any complexity</option>
-                  <option value="light">Light (≤ 2.2)</option>
-                  <option value="medium">Medium (2.2–3.5)</option>
-                  <option value="heavy">Heavy (&gt; 3.5)</option>
+                  <option value="all">{tGroup("anyWeight")}</option>
+                  <option value="light">{tGroup("light")}</option>
+                  <option value="medium">{tGroup("medium")}</option>
+                  <option value="heavy">{tGroup("heavy")}</option>
                 </select>
 
                 {/* Member / Owner filter */}
@@ -342,7 +344,7 @@ export function GroupClient() {
                     onChange={(e) => setOwnerFilter(e.target.value)}
                     aria-label="Filter by member"
                   >
-                    <option value="all">👤 All members</option>
+                    <option value="all">👤 {tCommon("all")}</option>
                     {sharingMembers.map((m) => (
                       <option key={m.userId} value={m.userId}>
                         👤 {m.displayName}
@@ -359,22 +361,22 @@ export function GroupClient() {
                     type="button"
                     className={`view-mode-btn ${viewMode === "grouped" ? "active" : ""}`}
                     onClick={() => setViewMode("grouped")}
-                    title="Group expansions under base games"
+                    title={tGroup("filters.base")}
                   >
-                    🧩 Grouped
+                    🧩 {tGroup("filters.base")}
                   </button>
                   <button
                     type="button"
                     className={`view-mode-btn ${viewMode === "flat" ? "active" : ""}`}
                     onClick={() => setViewMode("flat")}
-                    title="Show all individual expansion cards"
+                    title={tGroup("filters.all")}
                   >
-                    📄 All boxes
+                    📄 {tGroup("filters.all")}
                   </button>
                 </div>
 
                 <label htmlFor="group-sort" style={{ fontSize: "13px", fontWeight: 700 }}>
-                  Sort:
+                  {tGroup("sort.nameAsc").split(":")[0]}:
                 </label>
                 <select
                   id="group-sort"
@@ -382,13 +384,13 @@ export function GroupClient() {
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as GroupSortOption)}
                 >
-                  <option value="votes-desc">⭐ Most wanted / voted</option>
-                  <option value="name-asc">Title: A → Z</option>
-                  <option value="name-desc">Title: Z → A</option>
-                  <option value="weight-desc">Complexity: High → Low</option>
-                  <option value="weight-asc">Complexity: Low → High</option>
-                  <option value="time-asc">Play time: Shortest</option>
-                  <option value="year-desc">Year: Newest</option>
+                  <option value="votes-desc">{tGroup("sort.votesDesc")}</option>
+                  <option value="name-asc">{tGroup("sort.nameAsc")}</option>
+                  <option value="name-desc">{tGroup("sort.nameDesc")}</option>
+                  <option value="weight-desc">{tGroup("sort.weightDesc")}</option>
+                  <option value="weight-asc">{tGroup("sort.weightAsc")}</option>
+                  <option value="time-asc">{tGroup("sort.timeAsc")}</option>
+                  <option value="year-desc">{tGroup("sort.yearDesc")}</option>
                 </select>
               </div>
             </div>
@@ -396,7 +398,7 @@ export function GroupClient() {
 
           {shown.length === 0 ? (
             <div className="state-message" style={{ margin: "24px 0", textAlign: "center" }}>
-              <p>No games match your current filter selection.</p>
+              <p>{tGroup("noMatchTitle")}</p>
               <button
                 type="button"
                 className="button-quiet"
@@ -409,7 +411,7 @@ export function GroupClient() {
                   setOwnerFilter("all");
                 }}
               >
-                Clear all filters
+                {tGroup("resetFilters")}
               </button>
             </div>
           ) : (

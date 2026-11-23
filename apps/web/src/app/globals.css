@@ -1091,19 +1091,146 @@ body { font-size: var(--text-md); }
 .draw-owner-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
+  gap: 6px;
+  padding: 5px 12px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--border);
   border-radius: 999px;
   font-size: 13px;
+  font-family: inherit;
   color: var(--text);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+}
+
+.draw-owner-chip:hover {
+  border-color: var(--color-primary, #0284c7);
+  transform: translateY(-1px);
+}
+
+.draw-owner-chip.active {
+  background: var(--surface);
+  border-color: var(--color-primary, #0284c7);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.15);
+}
+
+.draw-owner-chip.inactive {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--border);
+  color: var(--muted);
+  opacity: 0.65;
+  box-shadow: none;
+}
+
+.draw-owner-chip.inactive:hover {
+  opacity: 0.9;
+  border-color: var(--muted);
+}
+
+.draw-owner-chip-indicator {
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-paper-2);
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.draw-owner-chip.active .draw-owner-chip-indicator {
+  background: var(--color-primary, #0284c7);
+  color: #fff;
+}
+
+.draw-owner-chip.inactive .owner-chip-count {
+  color: var(--muted);
+}
+
+.draw-owners-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  font-size: 12px;
+}
+
+.draw-owners-quick-btn {
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--color-primary, #0284c7);
+  cursor: pointer;
+  border-radius: 4px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.draw-owners-quick-btn:hover {
+  background: var(--color-paper-2);
+}
+
+.draw-owners-hint {
+  width: 100%;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
 }
 
 .owner-chip-count {
   color: var(--color-primary-dark, #0284c7);
   font-weight: 700;
+}
+
+/* Lineup Template / Recipe Banner */
+.lineup-recipe-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.05) 100%);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius-surface);
+  margin-bottom: var(--space-md);
+}
+
+.lineup-recipe-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lineup-recipe-tag {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--accent);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+}
+
+.lineup-recipe-badge {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.lineup-recipe-desc {
+  font-size: 13px;
+  color: var(--color-muted);
+  line-height: 1.4;
+  margin: 0;
 }
 
 .owned-expansions-list {

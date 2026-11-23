@@ -17,7 +17,7 @@ export function gameDto(game: DbGame): Game {
     maxPlayingTime: game.maxPlayingTime,
     weight: game.weight,
     minAge: game.minAge,
-    coverUrl: game.coverUrl,
+    coverUrl: game.coverUrl ?? (game.bggId > 0 ? `/v1/covers/${game.bggId}` : null),
     sourceUrl: game.sourceUrl,
     designers: game.designers,
     publishers: game.publishers,

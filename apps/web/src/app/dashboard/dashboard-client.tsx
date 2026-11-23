@@ -10,6 +10,7 @@ import {
   useEventsCalendarQuery,
   useBggProfileQuery,
 } from "@/lib/queries";
+import { gameCoverSrc } from "@/lib/assets";
 import "./dashboard.css";
 
 export function DashboardClient() {
@@ -156,9 +157,12 @@ export function DashboardClient() {
                 <div className="hero-event-pick">
                   {nextEvent.officialPick.coverUrl ? (
                     <img
-                      src={nextEvent.officialPick.coverUrl}
+                      src={gameCoverSrc(nextEvent.officialPick.coverUrl)}
                       alt=""
                       className="hero-event-pick-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
                     />
                   ) : (
                     <div className="hero-event-pick-cover" />

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import type { GroupSummary } from "@tablefolk/contracts";
 import { useApi } from "@/lib/api";
 
@@ -19,6 +20,7 @@ export function ShareControl({
   onChanged: () => void;
   onClose?: () => void;
 }) {
+  const t = useTranslations("shareControl");
   const api = useApi();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -34,19 +36,19 @@ export function ShareControl({
       });
       onChanged();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not change sharing.");
+      setError(cause instanceof Error ? cause.message : t("error"));
     } finally {
       setBusyId(null);
     }
   }
 
-  if (groups.length === 0) return <p className="muted">Create or join a group to share this game.</p>;
+  if (groups.length === 0) return <p className="muted">{t("noGroups")}</p>;
   return <div>
-    <div className="share-list" aria-label="Share with groups">
+    <div className="share-list" aria-label={t("ariaLabel")}>
       {groups.map((group) => {
         const shared = sharedGroupIds.includes(group.id);
         return <button key={group.id} type="button" className={`share-pill ${shared ? "active" : ""}`} aria-pressed={shared} disabled={busyId !== null} onClick={() => toggle(group.id)}>
-          <span>{group.name}</span><span>{busyId === group.id ? "Saving…" : shared ? "Shared" : "Share"}</span>
+          <span>{group.name}</span><span>{busyId === group.id ? t("saving") : shared ? t("shared") : t("share")}</span>
         </button>;
       })}
     </div>

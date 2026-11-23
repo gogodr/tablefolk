@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { useApi } from "@/lib/api";
 
 interface SearchResult { bggId: number; kind: "boardgame" | "boardgameexpansion"; name: string; yearPublished: number | null }
 
 export function GameSearch({ onAdded }: { onAdded: () => void }) {
+  const t = useTranslations("gameSearch");
   const api = useApi();
   const inputId = useId();
   const listId = `${inputId}-results`;
@@ -79,9 +81,9 @@ export function GameSearch({ onAdded }: { onAdded: () => void }) {
   return (
     <div className={`panel game-search-panel${expanded ? " game-search-panel-open" : ""}`}>
       {expanded && <div className="game-search-veil" aria-hidden="true" onPointerDown={(event) => { event.preventDefault(); setOpen(false); }} />}
-      <div className="panel-header"><h2>Add a game</h2><a className="bgg-credit" href="https://boardgamegeek.com" target="_blank" rel="noreferrer"><img src="/vendor/powered_by_bgg.webp" alt="Powered by BoardGameGeek" width="200" height="59" /></a></div>
+      <div className="panel-header"><h2>{t("title")}</h2><a className="bgg-credit" href="https://boardgamegeek.com" target="_blank" rel="noreferrer"><img src="/vendor/powered_by_bgg.webp" alt="Powered by BoardGameGeek" width="200" height="59" /></a></div>
       <div className="field">
-        <label htmlFor={inputId}>Game name</label>
+        <label htmlFor={inputId}>{t("gameNameLabel")}</label>
         <div className="game-search-combobox" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false); }}>
           <input
             ref={inputRef}
@@ -113,14 +115,14 @@ export function GameSearch({ onAdded }: { onAdded: () => void }) {
                 if (selected) void addGame(selected.bggId);
               }
             }}
-            placeholder="Search for a board game or expansion"
+            placeholder={t("placeholder")}
             autoComplete="off"
           />
           {expanded && (
             <div className="game-search-dropdown">
-              {searching && <p className="game-search-message" role="status">Searching BoardGameGeek…</p>}
+              {searching && <p className="game-search-message" role="status">{t("searching")}</p>}
               {error && <p className="game-search-message form-error" role="alert">{error}</p>}
-              {!searching && !error && results.length === 0 && <p className="game-search-message">No games found for that search.</p>}
+              {!searching && !error && results.length === 0 && <p className="game-search-message">{t("noResults")}</p>}
               {results.length > 0 && <div id={listId} ref={listRef} role="listbox" aria-label="Search results">
                 {results.map((game, index) => <button
                   key={game.bggId}
@@ -134,14 +136,14 @@ export function GameSearch({ onAdded }: { onAdded: () => void }) {
                   onClick={() => void addGame(game.bggId)}
                   disabled={addingId !== null}
                 >
-                  <span><strong>{game.name}</strong><small>{game.kind === "boardgameexpansion" ? "Expansion" : "Board game"}{game.yearPublished ? ` (${game.yearPublished})` : ""}</small></span>
-                  <span className="text-link">{addingId === game.bggId ? "Adding…" : "Add"}</span>
+                  <span><strong>{game.name}</strong><small>{game.kind === "boardgameexpansion" ? t("expansion") : t("boardGame")}{game.yearPublished ? ` (${game.yearPublished})` : ""}</small></span>
+                  <span className="text-link">{addingId === game.bggId ? t("adding") : t("add")}</span>
                 </button>)}
               </div>}
             </div>
           )}
         </div>
-        <span className="field-hint">Game details are saved here when you add one.</span>
+        <span className="field-hint">{t("hint")}</span>
       </div>
     </div>
   );

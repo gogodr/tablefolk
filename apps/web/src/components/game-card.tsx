@@ -57,12 +57,47 @@ interface GameCardProps {
 
 export function GameCard({ game, eagerCover = false, owners, actions, interestScore, onVote, canVote }: GameCardProps) {
   const t = useTranslations("gameCard");
+  const tCollection = useTranslations("collection");
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
   const complexity = weightLabel(game.weight, (key, values) => t(key as any, values));
   const versionName = "versionName" in game ? (game as CollectionGame).versionName : null;
   const isAvailable = "isAvailable" in game ? (game as CollectionGame).isAvailable : true;
   const unavailableReason = "unavailableReason" in game ? (game as CollectionGame).unavailableReason : null;
   const expansions = "expansions" in game ? game.expansions : undefined;
+
+  function formatReason(raw: string | null | undefined): string | null {
+    if (!raw) return null;
+    switch (raw) {
+      case "In storage":
+      case "Guardado en almacén":
+        return tCollection("inStorage");
+      case "Lent out":
+      case "Prestado a un amigo":
+        return tCollection("lentOut");
+      case "Too heavy to transport":
+      case "Demasiado pesado para transportar":
+        return tCollection("tooHeavy");
+      case "Home only":
+      case "Solo en casa (jugar en mi casa)":
+        return tCollection("homeOnlyReason");
+      case "Missing pieces":
+      case "Piezas faltantes / en reparación":
+        return tCollection("missingPieces");
+      case "Not ready to play":
+      case "No listo para jugar / sin destroquelar":
+        return tCollection("notReadyToPlay");
+      case "At another location / in transit":
+      case "En otra casa / en tránsito":
+        return tCollection("inTransit");
+      case "Needs sleeving / organizing":
+      case "Pendiente de enfundar u organizar":
+        return tCollection("needsOrganizing");
+      default:
+        return raw;
+    }
+  }
+
+  const displayedReason = formatReason(unavailableReason) || t("homeOnly");
 
   return (
     <>
@@ -78,7 +113,16 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
       >
         <div className="game-cover">
           {game.coverUrl ? (
-            <img src={gameCoverSrc(game.coverUrl)} alt={`${game.name} cover`} loading={eagerCover ? "eager" : "lazy"} fetchPriority={eagerCover ? "high" : undefined} />
+            <img
+              src={gameCoverSrc(game.coverUrl)}
+              alt={`${game.name} cover`}
+              loading={eagerCover ? "eager" : "lazy"}
+              fetchPriority={eagerCover ? "high" : undefined}
+              onError={(e) => {
+                e.currentTarget.src = "/brand/tablefolk-mark.png";
+                e.currentTarget.className = "cover-placeholder";
+              }}
+            />
           ) : (
             <img className="cover-placeholder" src="/brand/tablefolk-mark.png" alt="" />
           )}
@@ -105,8 +149,8 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
               type="button"
               className="game-info-trigger"
               onClick={() => setIsDetailsOpen(true)}
-              title="View full mechanics, categories & details"
-              aria-label="View game details"
+              title={t("viewDetailsTitle")}
+              aria-label={t("viewDetailsAria")}
             >
               ℹ️
             </button>
@@ -138,7 +182,7 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
               📦 {expansions.length === 1 && expansions[0] ? `+ ${cleanExpansionName(game.name, expansions[0].name)}` : `+ ${expansions.length} expansions`}
             </span>
           )}
-          {!isAvailable && <span className="meta-pill meta-unavailable" title={unavailableReason || t("unavailable")}>{unavailableReason || t("homeOnly")}</span>}
+          {!isAvailable && <span className="meta-pill meta-unavailable" title={displayedReason}>{displayedReason}</span>}
         </p>
 
         {interestScore !== undefined && interestScore > 0 && (
@@ -186,7 +230,7 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
                   {gameOwner.versionName && ` (${gameOwner.versionName})`}
                   {gameOwner.isAvailable === false && (
                     <span className="owner-unavailable">
-                      {" "}[{gameOwner.unavailableReason || t("unavailable")}]
+                      {" "}[{formatReason(gameOwner.unavailableReason) || t("unavailable")}]
                     </span>
                   )}
                   {owner.bggUsername && (

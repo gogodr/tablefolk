@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import type { EventDetail } from "@tablefolk/contracts";
 import { cleanExpansionName } from "@/components/game-card";
 import { GuestRsvpModal } from "@/components/guest-rsvp-modal";
@@ -14,6 +15,7 @@ type ViewMode = "calendar" | "list";
 type EventFilter = "all" | "upcoming" | "attending" | "voting" | "completed";
 
 export function EventsCalendarClient() {
+  const t = useTranslations("calendar");
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const api = useApi();
@@ -149,9 +151,9 @@ export function EventsCalendarClient() {
             style={isCompleted ? { background: "#f0fdf4", color: "#166534", borderColor: "#bbf7d0" } : undefined}
           >
             {isCompleted ? (
-              <strong>🏁 Completed · {event.totalHeadcount} attended</strong>
+              <strong>{t("completedBadge", { count: event.totalHeadcount })}</strong>
             ) : (
-              <><strong>{event.totalHeadcount}</strong> players attending</>
+              <><strong>{event.totalHeadcount}</strong> {t("attendingBadge", { count: event.totalHeadcount })}</>
             )}
           </div>
         </div>
@@ -159,9 +161,9 @@ export function EventsCalendarClient() {
         {/* Voting Banner */}
         {event.menuPoll?.status === "OPEN" && !isCompleted && (
           <div style={{ background: "#fef3c7", border: "1px solid #fde68a", padding: "10px 14px", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span>🗳️ <strong>Voting Open:</strong> Group is deciding between 3 curated game menus!</span>
+            <span>{t("votingOpenBanner")}</span>
             <Link href={`/groups/${event.groupId}/events/${event.id}`} className="button-small">
-              Cast Vote
+              {t("castVote")}
             </Link>
           </div>
         )}
@@ -169,7 +171,7 @@ export function EventsCalendarClient() {
         {/* Official Lineup / Pick */}
         {(event.officialPick || (event.officialLineup && event.officialLineup.length > 0)) && !isCompleted && (
           <div className="event-official-badge-card">
-            <span className="official-tag">🎲 Official Selection:</span>
+            <span className="official-tag">{t("officialSelection")}</span>
             {event.officialPick && (
               <span className="official-game-name">
                 <strong>{event.officialPick.name}</strong>
@@ -193,11 +195,11 @@ export function EventsCalendarClient() {
         {/* Completed status with actually played games */}
         {isCompleted && (
           <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", padding: "10px 14px", borderRadius: "8px", fontSize: "13px" }}>
-            <span style={{ fontWeight: 700, color: "#166534" }}>🏁 Event Completed</span>
+            <span style={{ fontWeight: 700, color: "#166534" }}>{t("eventCompleted")}</span>
             {event.playedGames && event.playedGames.length > 0 ? (
-              <span> — Actually played: <strong>{event.playedGames.map((g) => g.name).join(", ")}</strong></span>
+              <span>{t("actuallyPlayed", { games: event.playedGames.map((g) => g.name).join(", ") })}</span>
             ) : (
-              <span> — Game night wrapped up.</span>
+              <span>{t("wrappedUp")}</span>
             )}
           </div>
         )}
@@ -207,27 +209,27 @@ export function EventsCalendarClient() {
         {/* RSVP Controls - ONLY active for upcoming / scheduled events */}
         {!isCompleted ? (
           <div className="event-rsvp-bar">
-            <span className="rsvp-label">Your RSVP:</span>
+            <span className="rsvp-label">{t("yourRsvp")}</span>
             <button
               type="button"
               className={`button-small ${myRsvp?.status === "ATTENDING" ? "button" : "button-secondary"}`}
               onClick={() => void handleRsvp(event.id, "ATTENDING", myRsvp?.guestNames ?? [])}
             >
-              ✓ Attending
+              {t("attending")}
             </button>
             <button
               type="button"
               className={`button-small ${myRsvp?.status === "MAYBE" ? "button" : "button-secondary"}`}
               onClick={() => void handleRsvp(event.id, "MAYBE", myRsvp?.guestNames ?? [])}
             >
-              ? Maybe
+              {t("maybe")}
             </button>
             <button
               type="button"
               className={`button-small ${myRsvp?.status === "DECLINED" ? "button-danger" : "button-secondary"}`}
               onClick={() => void handleRsvp(event.id, "DECLINED", [])}
             >
-              ✕ Can&apos;t go
+              {t("cantGo")}
             </button>
 
             {myRsvp?.status === "ATTENDING" && (
@@ -240,24 +242,24 @@ export function EventsCalendarClient() {
                 👥 {myRsvp.guestNames && myRsvp.guestNames.length > 0
                   ? `+${myRsvp.guestNames.length} (${myRsvp.guestNames.join(", ")})`
                   : myRsvp.additionalGuests > 0
-                  ? `+${myRsvp.additionalGuests} Guests`
-                  : "+ Name Guests"}
+                  ? t("guestsCount", { count: myRsvp.additionalGuests })
+                  : t("nameGuests")}
               </button>
             )}
           </div>
         ) : (
           <div className="event-rsvp-bar" style={{ background: "transparent", padding: "4px 0", borderTop: "1px dashed var(--border)" }}>
             <span style={{ fontSize: "13px", color: myRsvp?.status === "ATTENDING" ? "#166534" : "var(--muted)", fontWeight: myRsvp?.status === "ATTENDING" ? 600 : 400 }}>
-              {myRsvp?.status === "ATTENDING" ? "✓ You attended this session" : "You were marked as not attending"}
+              {myRsvp?.status === "ATTENDING" ? t("youAttended") : t("youDidNotAttend")}
             </span>
           </div>
         )}
 
         {/* Attendees Summary */}
         <div className="event-attendees">
-          <strong>{isCompleted ? "Confirmed Attendees:" : "Attendees:"}</strong>{" "}
+          <strong>{isCompleted ? t("confirmedAttendees") : t("attendees")}</strong>{" "}
           {attendingList.length === 0
-            ? "Nobody confirmed yet."
+            ? t("nobodyConfirmed")
             : attendingList.map((r, i) => (
                 <span key={r.userId}>
                   {i > 0 && ", "}
@@ -324,19 +326,19 @@ export function EventsCalendarClient() {
               className={`view-mode-btn ${viewMode === "calendar" ? "active" : ""}`}
               onClick={() => setViewMode("calendar")}
             >
-              📅 Calendar
+              {t("viewCalendar")}
             </button>
             <button
               type="button"
               className={`view-mode-btn ${viewMode === "list" ? "active" : ""}`}
               onClick={() => setViewMode("list")}
             >
-              📋 List View ({filteredEvents.length})
+              {t("viewList")} ({filteredEvents.length})
             </button>
           </div>
 
           <Link href="/groups" className="button-secondary">
-            Browse Groups →
+            {t("exploreGroups")} →
           </Link>
         </div>
       </header>
@@ -350,35 +352,35 @@ export function EventsCalendarClient() {
           className={`filter-chip ${filter === "all" ? "filter-chip-active" : ""}`}
           onClick={() => setFilter("all")}
         >
-          All ({events.length})
+          {t("filterAll", { count: events.length })}
         </button>
         <button
           type="button"
           className={`filter-chip ${filter === "upcoming" ? "filter-chip-active" : ""}`}
           onClick={() => setFilter("upcoming")}
         >
-          📅 Upcoming ({events.filter((e) => e.status !== "COMPLETED").length})
+          {t("filterUpcoming", { count: events.filter((e) => e.status !== "COMPLETED").length })}
         </button>
         <button
           type="button"
           className={`filter-chip ${filter === "attending" ? "filter-chip-active" : ""}`}
           onClick={() => setFilter("attending")}
         >
-          ✓ My RSVPs ({events.filter((e) => e.rsvps.some((r) => r.userId === user?.id && r.status === "ATTENDING")).length})
+          {t("filterAttending", { count: events.filter((e) => e.rsvps.some((r) => r.userId === user?.id && r.status === "ATTENDING")).length })}
         </button>
         <button
           type="button"
           className={`filter-chip ${filter === "voting" ? "filter-chip-active" : ""}`}
           onClick={() => setFilter("voting")}
         >
-          🗳️ Voting Active ({events.filter((e) => e.menuPoll?.status === "OPEN").length})
+          {t("filterVoting", { count: events.filter((e) => e.menuPoll?.status === "OPEN").length })}
         </button>
         <button
           type="button"
           className={`filter-chip ${filter === "completed" ? "filter-chip-active" : ""}`}
           onClick={() => setFilter("completed")}
         >
-          🏁 Past & Completed ({events.filter((e) => e.status === "COMPLETED").length})
+          {t("filterCompleted", { count: events.filter((e) => e.status === "COMPLETED").length })}
         </button>
       </div>
 
@@ -386,9 +388,9 @@ export function EventsCalendarClient() {
         <div className="panel empty-state">
           <img src="/brand/tablefolk-mark.png" alt="" />
           <div>
-            <h2>No game night events yet</h2>
-            <p>You haven&apos;t joined any groups with scheduled events yet. Create a group or ask a friend for an invite link!</p>
-            <Link className="button" href="/groups">Explore Groups</Link>
+            <h2>{t("noEventsTitle")}</h2>
+            <p>{t("noEventsDesc")}</p>
+            <Link className="button" href="/groups">{t("exploreGroups")}</Link>
           </div>
         </div>
       ) : viewMode === "calendar" ? (
@@ -400,26 +402,26 @@ export function EventsCalendarClient() {
             </div>
             <div className="calendar-nav-buttons">
               <button type="button" className="button-secondary button-small" onClick={prevMonth}>
-                ← Prev
+                {t("prev")}
               </button>
               <button type="button" className="button-quiet button-small" onClick={goToToday}>
-                Today
+                {t("today")}
               </button>
               <button type="button" className="button-secondary button-small" onClick={nextMonth}>
-                Next →
+                {t("next")}
               </button>
             </div>
           </div>
 
           {/* Days of Week Header */}
           <div className="calendar-grid-header">
-            <span>Sun</span>
-            <span>Mon</span>
-            <span>Tue</span>
-            <span>Wed</span>
-            <span>Thu</span>
-            <span>Fri</span>
-            <span>Sat</span>
+            <span>{t("sun")}</span>
+            <span>{t("mon")}</span>
+            <span>{t("tue")}</span>
+            <span>{t("wed")}</span>
+            <span>{t("thu")}</span>
+            <span>{t("fri")}</span>
+            <span>{t("sat")}</span>
           </div>
 
           {/* Calendar Day Grid */}
@@ -546,7 +548,7 @@ export function EventsCalendarClient() {
         /* Timeline / List View */
         <div className="events-list">
           {filteredEvents.length === 0 ? (
-            <p className="empty">No events match the selected filter.</p>
+            <p className="empty">{t("noEventsFitFilter")}</p>
           ) : filter === "all" ? (
             (() => {
               const upcoming = filteredEvents.filter((e) => e.status !== "COMPLETED");
@@ -557,8 +559,7 @@ export function EventsCalendarClient() {
                   {upcoming.length > 0 && (
                     <div style={{ marginBottom: "16px" }}>
                       <h3 style={{ margin: "0 0 12px", fontSize: "16px", display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span>📅 Upcoming Game Nights</span>
-                        <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 400 }}>({upcoming.length})</span>
+                        <span>{t("filterUpcoming", { count: upcoming.length })}</span>
                       </h3>
                       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                         {upcoming.map(renderEventCard)}
@@ -569,8 +570,7 @@ export function EventsCalendarClient() {
                   {completed.length > 0 && (
                     <div style={{ marginTop: upcoming.length > 0 ? "32px" : 0 }}>
                       <h3 style={{ margin: "0 0 12px", fontSize: "16px", display: "flex", alignItems: "center", gap: "8px", color: "#166534" }}>
-                        <span>🏁 Past & Completed Sessions</span>
-                        <span style={{ fontSize: "12px", color: "var(--muted)", fontWeight: 400 }}>({completed.length})</span>
+                        <span>{t("filterCompleted", { count: completed.length })}</span>
                       </h3>
                       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                         {completed.map(renderEventCard)}

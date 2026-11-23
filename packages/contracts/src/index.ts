@@ -10,6 +10,7 @@ export const pickSchema = z.object({
   excludeBggId: z.number().int().positive().optional(),
   maxDuration: z.number().int().positive().optional(),
   maxWeight: z.number().min(1).max(5).optional(),
+  includedOwnerIds: z.array(z.string()).optional(),
 });
 
 export const collectionAvailabilitySchema = z.object({
@@ -71,6 +72,8 @@ export const sessionPlanSchema = z.object({
   excludeBggIds: z.array(z.number().int().positive()).optional(),
   mechanicsAffinity: z.number().min(-1).max(1).default(0),
   themeCategory: z.string().optional(),
+  includedOwnerIds: z.array(z.string()).optional(),
+  recipeId: z.string().optional(),
 });
 
 export const eventSetOfficialSchema = z.object({
@@ -220,7 +223,93 @@ export interface SessionLineupResult {
   targetMinutes: number;
   hasHeavy: boolean;
   themeNotice?: string;
+  recipeId?: string;
+  recipeTitle?: string;
+  recipeBadge?: string;
+  recipeDescription?: string;
 }
+
+export interface SessionTemplateSummary {
+  id: string;
+  titlePrefix: string;
+  styleBadge: string;
+  description: string;
+}
+
+export const SESSION_TEMPLATES: SessionTemplateSummary[] = [
+  {
+    id: "heavy_euro_brainburner",
+    titlePrefix: "Brain Burners & Heavy Euros",
+    styleBadge: "🧠 Heavy Euro & Brain Burner",
+    description: "Deep economic systems, worker placement, and complex optimization for players seeking heavy crunch.",
+  },
+  {
+    id: "epic_strategy",
+    titlePrefix: "Epic & Grand Strategy",
+    styleBadge: "🔴 Heavy Strategy",
+    description: "Centerpiece heavyweight strategy game with dedicated setup and mental reset transition buffers.",
+  },
+  {
+    id: "tactical_conflict",
+    titlePrefix: "Area Control & Tactical Combat",
+    styleBadge: "⚔️ Area Control & Clashes",
+    description: "Territorial struggle, tactical movement, and direct tabletop combat with high stakes.",
+  },
+  {
+    id: "cooperative_survival",
+    titlePrefix: "Cooperative Survival & Teamwork",
+    styleBadge: "🤝 Co-op & Team Survival",
+    description: "High-tension cooperative crisis management, pandemic response, and shared puzzle solving.",
+  },
+  {
+    id: "engine_building",
+    titlePrefix: "Engine Building & Synergies",
+    styleBadge: "⚙️ Engine Building",
+    description: "Combos, chain reactions, and satisfying tableaus where small actions snowball into massive turns.",
+  },
+  {
+    id: "spatial_puzzle",
+    titlePrefix: "Tile Placement & Spatial Puzzles",
+    styleBadge: "🧩 Spatial & Tile Puzzles",
+    description: "Pattern building, polyomino fitting, and spatial geometry that rewards careful spatial foresight.",
+  },
+  {
+    id: "social_deduction",
+    titlePrefix: "Social Deduction & Table Talk",
+    styleBadge: "🎭 Social & Deduction",
+    description: "Bluffing, hidden roles, lively debate, and reading the table for memorable social interactions.",
+  },
+  {
+    id: "party_mayhem",
+    titlePrefix: "Party Mayhem & Push-Your-Luck",
+    styleBadge: "🎲 Party & Push-Your-Luck",
+    description: "High energy, fast laughter, press-your-luck drama, and zero barrier to entry for any table.",
+  },
+  {
+    id: "thematic_narrative",
+    titlePrefix: "Thematic & Narrative Worlds",
+    styleBadge: "🏰 Thematic & Narrative",
+    description: "Rich worldbuilding, immersive lore, and storytelling where flavor drives every mechanical decision.",
+  },
+  {
+    id: "table_favorites",
+    titlePrefix: "Table Favorites & Wishlist",
+    styleBadge: "⭐ Table Favorites",
+    description: "Prioritizes titles with high community wishlist points that your group is most eager to table.",
+  },
+  {
+    id: "accessible_gateway",
+    titlePrefix: "Breezy Gateway & Modern Classics",
+    styleBadge: "🟢 Accessible Classics",
+    description: "Approachable rules, quick teach, and modern masterpieces welcoming newcomers and seasoned players alike.",
+  },
+  {
+    id: "wildcard_random",
+    titlePrefix: "Wildcard & Blind Draw",
+    styleBadge: "🎲 Wildcard & Chaos",
+    description: "Unfiltered random selection giving every eligible game an equal shot regardless of weight or votes.",
+  },
+];
 
 export interface EventRsvpMember {
   userId: string;

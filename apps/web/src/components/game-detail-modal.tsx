@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useTranslations } from "next-intl";
 import type { Game, CollectionGame, GroupGame, GameOwner, Member } from "@tablefolk/contracts";
 import { gameCoverSrc } from "@/lib/assets";
 import { playerRange, weightLabel, cleanExpansionName } from "@/components/game-card";
@@ -39,6 +40,7 @@ interface GameDetailModalProps {
 }
 
 export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailModalProps) {
+  const t = useTranslations("gameDetail");
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -94,7 +96,7 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
             )}
             {game.kind === "boardgameexpansion" && (
               <span className="game-kind">
-                {"isStandalone" in game && game.isStandalone ? "Standalone Expansion" : "Expansion"}
+                {"isStandalone" in game && game.isStandalone ? t("standaloneExpansion") : t("expansion")}
               </span>
             )}
           </div>
@@ -102,7 +104,7 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
             type="button"
             className="game-detail-close"
             onClick={onClose}
-            aria-label="Close details"
+            aria-label={t("close")}
           >
             ✕
           </button>
@@ -113,7 +115,14 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
           <div className="game-detail-media-col">
             <div className="game-detail-cover">
               {game.coverUrl ? (
-                <img src={gameCoverSrc(game.coverUrl)} alt={`${game.name} cover`} />
+                <img
+                  src={gameCoverSrc(game.coverUrl)}
+                  alt={`${game.name} cover`}
+                  onError={(e) => {
+                    e.currentTarget.src = "/brand/tablefolk-mark.png";
+                    e.currentTarget.className = "cover-placeholder";
+                  }}
+                />
               ) : (
                 <img className="cover-placeholder" src="/brand/tablefolk-mark.png" alt="" />
               )}
@@ -196,14 +205,14 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
                   ))}
                 </div>
               ) : (
-                <p className="detail-empty-text">No mechanics tagged on BGG yet.</p>
+                <p className="detail-empty-text">{t("noMechanics")}</p>
               )}
             </div>
 
             {/* Categories Tags */}
             <div className="detail-section">
               <h3 className="detail-section-title">
-                🏷️ Categories &amp; Themes {categories.length > 0 && `(${categories.length})`}
+                {t("categoriesThemes")} {categories.length > 0 && `(${categories.length})`}
               </h3>
               {categories.length > 0 ? (
                 <div className="detail-chips-wrap">
@@ -214,7 +223,7 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
                   ))}
                 </div>
               ) : (
-                <p className="detail-empty-text">No categories tagged on BGG yet.</p>
+                <p className="detail-empty-text">{t("noCategories")}</p>
               )}
             </div>
 
@@ -223,12 +232,12 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
               <div className="detail-section detail-expansions-section">
                 <div className="detail-expansions-header">
                   <h3 className="detail-section-title">
-                    📦 Included Expansions ({expansions.length})
+                    {t("includedExpansions", { count: expansions.length })}
                   </h3>
                   <span className="detail-expansions-summary-badge">
                     {expansions.some((e) => e.maxPlayers && e.maxPlayers > (game.maxPlayers ?? 0))
-                      ? `Expands table to ${Math.max(...expansions.map((e) => e.maxPlayers ?? 0))} players`
-                      : "Expands gameplay & content"}
+                      ? t("expandsToPlayers", { count: Math.max(...expansions.map((e) => e.maxPlayers ?? 0)) })
+                      : t("expandsContent")}
                   </span>
                 </div>
                 <div className="detail-expansions-grid">
@@ -243,7 +252,7 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
                             <strong className="detail-expansion-item-name">{cleaned}</strong>
                             {bumps && (
                               <span className="detail-expansion-bump-pill">
-                                👥 Up to {exp.maxPlayers} players (+{(exp.maxPlayers ?? 0) - (game.maxPlayers ?? 0)})
+                                {t("upToPlayers", { max: exp.maxPlayers ?? 0, bump: (exp.maxPlayers ?? 0) - (game.maxPlayers ?? 0) })}
                               </span>
                             )}
                           </div>
@@ -253,7 +262,7 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
                           target="_blank"
                           rel="noreferrer"
                           className="button-quiet button-small detail-expansion-bgg"
-                          title="View on BoardGameGeek"
+                          title={t("viewOnBgg")}
                         >
                           ↗ BGG
                         </a>
@@ -266,7 +275,7 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
 
             {/* Synopsis / Description */}
             <div className="detail-section">
-              <h3 className="detail-section-title">📖 Description</h3>
+              <h3 className="detail-section-title">{t("description")}</h3>
               {descriptionParagraphs.length > 0 ? (
                 <div className="detail-description">
                   {descriptionParagraphs.map((para, i) => (
@@ -274,7 +283,7 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
                   ))}
                 </div>
               ) : (
-                <p className="detail-empty-text">No synopsis available.</p>
+                <p className="detail-empty-text">{t("noSynopsis")}</p>
               )}
             </div>
 
@@ -283,12 +292,12 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
               <div className="detail-section detail-credits">
                 {game.designers.length > 0 && (
                   <p>
-                    <strong>Design:</strong> {game.designers.join(", ")}
+                    <strong>{t("design")}</strong> {game.designers.join(", ")}
                   </p>
                 )}
                 {game.publishers.length > 0 && (
                   <p>
-                    <strong>Publisher:</strong> {game.publishers.slice(0, 4).join(", ")}
+                    <strong>{t("publisher")}</strong> {game.publishers.slice(0, 4).join(", ")}
                   </p>
                 )}
               </div>

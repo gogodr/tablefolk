@@ -995,12 +995,29 @@ export function EventClient() {
                         <div className="completed-slot-order">#{idx + 1}</div>
                         <div className="completed-slot-cover">
                           {g.coverUrl ? (
-                            <img src={gameCoverSrc(g.coverUrl)} alt="" />
-                          ) : (
-                            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px" }}>
-                              🎲
-                            </div>
-                          )}
+                            <img
+                              src={gameCoverSrc(g.coverUrl)}
+                              alt=""
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                                const fallback = e.currentTarget.parentElement?.querySelector(".fallback-dice");
+                                if (fallback) (fallback as HTMLElement).style.display = "flex";
+                              }}
+                            />
+                          ) : null}
+                          <div
+                            className="fallback-dice"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              display: g.coverUrl ? "none" : "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "24px",
+                            }}
+                          >
+                            🎲
+                          </div>
                         </div>
                         <div className="completed-slot-info">
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>

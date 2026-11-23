@@ -26,6 +26,7 @@ import { AppError, forbidden, notFound } from "../lib/errors.js";
 import { eligibleGameIds, chooseWeightedGameId, planSessionLineup, planSessionMenuTrio } from "../lib/picker.js";
 import { groupGames, gameDto } from "../lib/serialize.js";
 import { getBggGame } from "../services/bgg.js";
+import { fetchCover } from "../services/cover-store.js";
 
 async function serializeEventDetail(e: any, currentUserId?: string): Promise<EventDetail> {
   const attendingRsvps = (e.rsvps ?? []).filter((r: any) => r.status === "ATTENDING");
@@ -710,6 +711,7 @@ export async function eventRoutes(app: FastifyInstance) {
       excludeBggIds: body.excludeBggIds,
       mechanicsAffinity: body.mechanicsAffinity,
       themeCategory: body.themeCategory,
+      recipeId: body.recipeId,
     });
 
     return result;
@@ -1068,9 +1070,23 @@ export async function eventRoutes(app: FastifyInstance) {
       for (const missingId of missing) {
         try {
           const details = await getBggGame(missingId);
+          let coverUrl: string | null = null;
+          if (details.imageUrl) {
+            const cover = await fetchCover(details.imageUrl);
+            if (cover) {
+              await db().gameCover.upsert({
+                where: { bggId: missingId },
+                create: { bggId: missingId, contentType: cover.contentType, data: cover.data },
+                update: { contentType: cover.contentType, data: cover.data },
+              });
+              coverUrl = `/v1/covers/${missingId}`;
+            } else {
+              coverUrl = details.imageUrl;
+            }
+          }
           await db().game.upsert({
             where: { bggId: missingId },
-            update: {},
+            update: coverUrl ? { coverUrl } : {},
             create: {
               bggId: missingId,
               kind: details.kind,
@@ -1090,6 +1106,7 @@ export async function eventRoutes(app: FastifyInstance) {
               categories: details.categories,
               mechanics: details.mechanics,
               sourceUrl: details.sourceUrl,
+              coverUrl,
               lastEnrichedAt: new Date(),
             },
           });

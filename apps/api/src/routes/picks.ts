@@ -11,11 +11,14 @@ export async function pickRoutes(app: FastifyInstance) {
   app.post("/v1/groups/:groupId/picks", async (request) => {
     const user = await requireUser(request);
     const { groupId } = request.params as { groupId: string };
-    const { playerCount, excludeBggId, maxDuration, maxWeight } = pickSchema.parse(request.body);
+    const { playerCount, excludeBggId, maxDuration, maxWeight, includedOwnerIds } = pickSchema.parse(request.body);
     await requireMember(groupId, user.id);
 
     const shares = await db().groupShare.findMany({
-      where: { groupId },
+      where: {
+        groupId,
+        ...(includedOwnerIds !== undefined ? { userId: { in: includedOwnerIds } } : {}),
+      },
       include: {
         game: true,
         collection: true,
@@ -30,7 +33,10 @@ export async function pickRoutes(app: FastifyInstance) {
 
     // Retrieve group interests for weighted voting
     const interests = await db().gameInterest.findMany({
-      where: { groupId },
+      where: {
+        groupId,
+        ...(includedOwnerIds !== undefined ? { userId: { in: includedOwnerIds } } : {}),
+      },
     });
     const interestMap = new Map<number, number>();
     for (const interest of interests) {
@@ -79,7 +85,10 @@ export async function pickRoutes(app: FastifyInstance) {
     await requireMember(groupId, user.id);
 
     const shares = await db().groupShare.findMany({
-      where: { groupId },
+      where: {
+        groupId,
+        ...(body.includedOwnerIds !== undefined ? { userId: { in: body.includedOwnerIds } } : {}),
+      },
       include: {
         game: true,
         collection: true,
@@ -99,7 +108,10 @@ export async function pickRoutes(app: FastifyInstance) {
     }
 
     const interests = await db().gameInterest.findMany({
-      where: { groupId },
+      where: {
+        groupId,
+        ...(body.includedOwnerIds !== undefined ? { userId: { in: body.includedOwnerIds } } : {}),
+      },
     });
 
     const interestMap = new Map<number, number>();
@@ -127,6 +139,7 @@ export async function pickRoutes(app: FastifyInstance) {
       excludeBggIds: body.excludeBggIds ?? [],
       mechanicsAffinity: body.mechanicsAffinity,
       themeCategory: body.themeCategory,
+      recipeId: body.recipeId,
     });
 
     audit("group.lineup_planned", {
