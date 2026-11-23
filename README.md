@@ -12,15 +12,17 @@ A friendly place to catalog board games, share selected games with a group, and 
 
 ## 📑 Quick Navigation
 
+- [📊 Personal Dashboard & Next Gathering Hero](#-personal-dashboard--next-gathering-hero)
 - [🍱 Evening Session Menu Planner](#-evening-session-menu-planner--anti-fatigue-engine)
-  - [🧠 Hierarchy & Anti-Fatigue Rules](#-hierarchy--anti-fatigue-engine) · [☕ Dynamic Setup & Transition Buffers](#-dynamic-setup--intermission-buffers) · [🗳️ 3 Menu Options & 12 Archetype Recipes](#️-3-contrasting-menu-options--12-archetype-recipes-anti-paralysis) · [💾 Saving & Sharing Lineups](#-saving-and-sharing-the-approved-lineup)
+  - [🧠 Hierarchy & Anti-Fatigue Rules](#-hierarchy--anti-fatigue-engine) · [☕ Dynamic Setup & Transition Buffers](#-dynamic-setup--intermission-buffers) · [🗳️ 3 Menu Options & 12 Archetype Recipes](#️-3-contrasting-menu-options--12-archetype-recipes-anti-paralysis) · [🎲 Contributor Toggles & Live Archetype Badges](#-contributor-toggles--live-archetype-badges)
 - [📅 Global Events Calendar](#-global-events-calendar)
-- [🏁 Event Completion & Played Games Reality](#-event-completion--played-games-reality)
+- [📜 Completed Session Timeline & Recap Share](#-completed-session-timeline--recap-share)
+- [🌐 Full Multilingual Support (i18n)](#-full-multilingual-support-i18n)
 - [👥 Redesigned Groups Experience](#-redesigned-groups-experience)
 - [🗺️ How It Works](#how-it-works) · [✨ Key Features](#key-features)
 - [📦 Local Setup](#local-setup)
   - [🐳 Docker Compose](#docker-compose) · [💻 Without Docker](#without-docker) · [🧪 Checks](#checks)
-- [🚀 Deployment](#vercel) · [🎯 Future Roadmap](#️-future-roadmap--ideas)
+- [🚀 Deployment](#vercel) · [🎯 Future Roadmap](#️-future-roadmap--priorities)
 
 ---
 
@@ -32,6 +34,18 @@ A friendly place to catalog board games, share selected games with a group, and 
 - `docs/designs/board-game-group-picker.md`: approved product and technical design.
 
 The group collection shows each BGG game once and lists all members who share it. A game stays available while at least one member shares it. Expansions are independent choices. BGG is called only when searching for or syncing a collection; normal use reads the app database.
+
+---
+
+## 📊 Personal Dashboard & Next Gathering Hero
+
+The personal dashboard (`/dashboard`) serves as your central command center across all your board game circles:
+
+* **Next Gathering Hero Card:** Instantly spotlights your nearest scheduled game night across all groups with a live countdown, location, host info, total attendee headcount, and 1-click RSVP status toggling.
+* **Official Pick & Lineup Preview:** If the host has already locked the session lineup, the hero card features the chosen game's cover art, player range, and estimated playtime upfront.
+* **Weekly Voting Points Bank:** Real-time balance of your "Want-to-Play" points with weekly reload countdown (+3 points on Mondays up to a max cap of 5 in hand).
+* **Quick Draw Launcher:** Spin for a game pick or multi-game menu immediately from your dashboard with automatic group collection selection.
+* **Active Groups & Upcoming Events Feed:** Direct quick-links to your groups with member counts and upcoming event timelines.
 
 ---
 
@@ -128,6 +142,13 @@ To eliminate the classic *"What should we play? I don't care, you pick"* paralys
 
 ---
 
+### 🎲 Contributor Toggles & Live Archetype Badges
+
+- **Selective Contributor Filtering (`excludedUserIds`):** In both Single Pick and Session Menu modes, hosts can activate or deactivate individual game owners who contributed titles to the candidate pool. If a member couldn't bring their bag or only certain attendees arrived, toggle their collection off with 1 click to restrict the draw exclusively to physical boxes present in the room.
+- **Session Template & Archetype Identification:** When rolling a Quick Pick or Session Menu, Tablefolk visibly badges the matched recipe archetype (e.g. `🎉 Party Night Express`, `🧠 Euro Engine Heavy`, `🤝 Co-op Anchor`, `☕ Light & Easy Warmup`) and its target playtime directly on the result card.
+
+---
+
 ### 📅 Global Events Calendar
 
 Access every upcoming and past game night across all your tabletop groups in one unified view (`/events` & top navigation):
@@ -137,11 +158,25 @@ Access every upcoming and past game night across all your tabletop groups in one
 
 ---
 
-### 🏁 Event Completion & Played Games Reality
+## 📜 Completed Session Timeline & Recap Share
 
-When game nights wrap up, reality sometimes differs from the planned menu: a game ran long, or a surprise filler hit the table.
-* **Finish & Record (`POST /v1/events/:eventId/close`):** The host reviews which games actually made it to the table (pre-filled with the official lineup, plus optional group shelf additions).
+When game nights wrap up, Tablefolk captures the living history of your tabletop sessions (`/groups/[groupId]/events/[eventId]`):
+
+* **Event Wrap-Up & Walk-In Headcount (`POST /v1/events/:eventId/close`):** Record who actually sat at the table with named walk-in guests (`confirmedGuestNames`), adjusting final attendee history beyond initial RSVPs.
+* **Narrative Timeline Flow:** Displays the exact sequence of titles played with chronological order (`#1`, `#2`, `#3`), duration badges, BGG complexity classification (`Light`, `Medium`, `Heavy`), and intermission steps.
+* **Auto-Healing Game Covers:** If an external title from BGG was tabled that wasn't in any member's collection, Tablefolk's backend on-demand fetcher (`/v1/covers/:bggId`) automatically downloads and caches high-resolution box art into local storage with graceful fallbacks.
+* **1-Click WhatsApp / Discord Recap (`📋 Copy Recap`):** Formats a clean, social-ready summary with emojis, attendee roster, and total games played to paste directly into your group chat.
 * **True Wishlist Point Decay:** Only the games that were **actually played** consume their voting points. Any planned title that didn't get tabled preserves its community interest points for future draws!
+
+---
+
+## 🌐 Full Multilingual Support (i18n)
+
+Tablefolk features a native, zero-runtime-overhead internationalization system built with `next-intl`:
+
+* **English & Spanish (EN / ES):** Complete UI coverage across navigation, dashboard, collection management, event scheduling, attendance reality, session menus, and game details.
+* **Preserved BGG Metadata:** Interface elements, slot roles, complexity badges, and notices adapt dynamically to the user's language while preserving authentic BoardGameGeek titles, designers, and mechanics.
+* **Instant Locale Switcher:** Toggle languages on the fly from the navigation bar without page reloads or losing active draw states.
 
 ---
 
@@ -185,13 +220,17 @@ flowchart LR
 
 ## Key Features
 
-- **Game Night Events & RSVPs**: Any group member can schedule game nights with date, time, location, and host assignment. Members RSVP (`Attending`, `Maybe`, `Declined`) with guest counts (`+Guests`), automatically calculating total table headcount.
-- **Physical Availability & Edition Tracking**: Mark personal copies as available to travel, "Home only" (which automatically become eligible when hosting!), or unavailable (lent out, too heavy, under repair), plus track specific edition names.
-- **BGG Collection Sync & Smart Enrichment**: Connect your BoardGameGeek username with 1-click remembered sync. Imports owned games, expansions, playtimes, player counts, categories, and mechanics. Manual enrichment processes up to 30 games per batch with a 30-day cooldown to prevent unrated titles from stalling the queue.
+- **Personal Gathering Dashboard (`/dashboard`)**: Central command center highlighting your next event with countdown, lineup preview, RSVP quick-switch, weekly voting points reload tracker, and one-click Quick Draw launcher.
+- **Game Night Events & RSVPs**: Any group member can schedule game nights with date, time, location, and host assignment. Members RSVP (`Attending`, `Maybe`, `Declined`) with guest counts and named guests (`Carlos (+ Andrea)`), automatically calculating table headcount.
+- **Physical Availability & Edition Tracking**: Mark personal copies as available to travel, "Home only" (which automatically become eligible when hosting!), "Stored in warehouse/storage", or unavailable (lent out, under repair), plus track specific edition names.
+- **BGG Collection Sync & Smart Enrichment**: Connect your BoardGameGeek username with 1-click remembered sync. Imports owned games, expansions, playtimes, player counts, categories, and mechanics. Manual enrichment processes up to 30 games per batch with a cooldown to prevent unrated titles from stalling the queue.
+- **On-Demand Cover Caching & Self-Healing Assets**: High-resolution box art is served locally via `/v1/covers/:bggId`. If an external or played game lacks a cached cover, the backend fetches and caches it on-demand from BGG with visual fallbacks.
 - **Rich Game Detail Modal & Clean Cards**: Keep shelves and tables visually clean while providing deep metadata on tap: high-resolution box art, player counts with expansion support, BGG weight, categories, mechanics chips, multi-paragraph synopsis, credits, and an included expansions showcase.
 - **Session Menu Planner with Mechanics Affinity Slider**: Curate 2 to 5-hour multi-game evenings with dynamic setup and cooldown buffers. Fine-tune selection with the **Mechanics & Style Affinity slider**—steer the table toward a themed night (`🎯 Themed`, e.g., secret roles/social deduction) or maximize variety across genres (`🌈 Variety`).
-- **"Want to Play" Wishlist & Weighted Draw**: Members earn voting points to back games they want to see on table. Points accumulate across weeks and increase the game's odds in the event draw, resetting only upon victory to rotate the group's library naturally.
-- **Contextual Event Picker**: Filters candidate games based on who is actually attending, excluding games that cannot travel unless hosted at the owner's home, with optional duration (`≤45m`, `≤90m`, `≤2h`) and BGG complexity filters.
+- **Contributor Toggles & Session Archetype Badges**: Dynamically toggle active contributor collections in the draw room, and inspect the matched tabletop archetype recipe (e.g. `🎉 Party Night Express`, `🧠 Euro Engine Heavy`) directly on the result card.
+- **"Want to Play" Wishlist & Weekly Points Refill**: Members allocate voting points to back games they want to see on table. Points accumulate across weeks, reload automatically (+3 points every Monday up to 5 max), and increase the game's odds in the event draw, resetting only upon victory to rotate the library naturally.
+- **Narrative Event Recap & Social Share**: Detailed chronological recap of games tabled, verified attendee roster, and 1-click WhatsApp / Discord summary generator.
+- **Full Multilingual Localization (i18n)**: Native English and Spanish interface powered by `next-intl` with instant navbar language switching.
 - **Unified Search, Filters & Expansion Views**: Search instantly, filter by ownership, wishlist popularity, player count (with expansion boosts), complexity, and toggle between `🧩 Grouped` and `📄 All boxes` view modes in both personal collection and shared group shelves.
 
 ---
@@ -276,16 +315,17 @@ See [operations](docs/operations.md) for deployment and recovery details.
 
 Tablefolk focuses on what happens **around the physical table**: social coordination, anti-fatigue session curation, and live gathering dynamics. **BoardGameGeek remains the undisputed single source of truth** for game metadata and personal play logs.
 
-### 🟢 Phase 1: In-Room Table Identity & Guest Enhancements (Near-term)
+### 🟢 Phase 1: In-Room Table Identity & Gathering Enhancements (Near-term)
 - [x] **⚡ Client-Side Reactive Caching**: Instant navigation and 0ms latency with TanStack Query.
+- [x] **👥 Named Guests & Attendance Reality**: Support naming additional guests in RSVPs (e.g., *"Carlos (+ Andrea)"* instead of anonymous `+1`) and precise attendance confirmation in event wrap-up to reflect who actually sat at the table.
+- [x] **📊 Personal Gathering Dashboard**: Live countdown to next game night, official lineup preview, voting points reload tracker, and 1-click Quick Draw launcher.
+- [x] **📜 Narrative Completed Session Timeline & Recap**: Chronological order of tabled games, intermission buffers, and 1-click WhatsApp / Discord recap generator.
+- [x] **🌐 Multilingual Interface (i18n)**: English & Spanish interface powered by `next-intl` (preserving authentic BGG metadata).
+- [ ] **⭐ BGG Rating, Geek Rank & Community Consensus**: Display BGG community rating, overall geek rank (`#42 BGG`), and community-recommended player counts ("Best at X") directly on cards and modals with 7-day refresh cycles.
 - [ ] **🎲 In-Room Mini-Kit & Animated Meeples**:
   - Interactive **First-Player Decider** featuring animated meeple avatars.
   - Optional **Turn / AP Timer** (Analysis Paralysis alert) for heavy turns.
   - 1-click **Rules Video & Reference links** on the locked official lineup.
-- [ ] **👥 Named Guests & Attendance Reality**:
-  - Support naming additional guests in RSVPs (e.g., *"Carlos (+ Andrea)"* instead of anonymous `+1`).
-  - Precise attendance confirmation in event wrap-up to reflect who actually sat at the table.
-- [ ] **🎯 BGG Community "Best at X" Badge**: Display community-recommended player count consensus directly on game cards.
 
 ### 🟡 Phase 2: Gathering Notifications & Group Logistics (Mid-term)
 - [ ] **🔔 Discord & WhatsApp Webhooks**:
@@ -297,5 +337,4 @@ Tablefolk focuses on what happens **around the physical table**: social coordina
 
 ### 🟣 Phase 3: Platform & Ecosystem Integrations (Long-term)
 - [ ] **🔄 BGG Play Logging Sync**: 1-click export of the completed session's played games directly to the attendee's personal BoardGameGeek play log.
-- [ ] **🌐 Multilingual Interface (i18n)**: English / Spanish toggle with `next-intl` (preserving original BGG metadata).
 - [ ] **📱 PWA & Offline Table Mode**: Full progressive web app with offline local caching for playing in cabins, basements, or venues with spotty connection.
