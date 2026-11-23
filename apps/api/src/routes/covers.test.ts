@@ -107,8 +107,19 @@ describe("coverRoutes", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toBe("image/png");
-    expect(res.headers["cache-control"]).toBe("public, max-age=86400");
+    expect(res.headers["cache-control"]).toBe("public, max-age=2592000, immutable");
+    expect(res.headers["etag"]).toBe('"100-3"');
     expect(res.rawPayload).toEqual(Buffer.from([10, 20, 30]));
+
+    // Test 304 Not Modified on ETag match
+    const res304 = await app.inject({
+      method: "GET",
+      url: "/v1/covers/100",
+      headers: {
+        "if-none-match": '"100-3"',
+      },
+    });
+    expect(res304.statusCode).toBe(304);
   });
 
   it("fetches on-demand from BGG and caches when missing from gameCover", async () => {
