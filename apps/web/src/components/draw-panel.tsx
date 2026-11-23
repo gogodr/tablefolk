@@ -7,6 +7,7 @@ import type { EventDetail, GroupGame, PickResult, SessionLineupResult } from "@t
 import { SESSION_TEMPLATES } from "@tablefolk/contracts";
 import { GameCard, cleanExpansionName } from "@/components/game-card";
 import { useApi } from "@/lib/api";
+import { useGroupGamesQuery } from "@/lib/queries";
 
 type Mode = "lineup" | "single";
 
@@ -14,6 +15,16 @@ interface GameOwnerSummary {
   userId: string;
   displayName: string;
   count: number;
+}
+
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&#039;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
 }
 
 export function DrawPanel({ groupId }: { groupId: string }) {
@@ -47,46 +58,37 @@ export function DrawPanel({ groupId }: { groupId: string }) {
   const [error, setError] = useState("");
 
   // Contributors / Attendees filtering
+  const { data: groupGamesData } = useGroupGamesQuery(groupId);
   const [allGames, setAllGames] = useState<GroupGame[]>([]);
   const [owners, setOwners] = useState<GameOwnerSummary[]>([]);
   const [selectedOwnerIds, setSelectedOwnerIds] = useState<string[]>([]);
 
   useEffect(() => {
-    let isMounted = true;
-    api<{ games: GroupGame[] }>(`/v1/groups/${groupId}/games`)
-      .then((data) => {
-        if (!isMounted) return;
-        setAllGames(data.games);
+    if (!groupGamesData?.games) return;
+    const games = groupGamesData.games;
+    setAllGames(games);
 
-        const countMap = new Map<string, GameOwnerSummary>();
-        for (const game of data.games) {
-          for (const owner of game.owners) {
-            const current = countMap.get(owner.userId);
-            if (current) {
-              current.count += 1;
-            } else {
-              countMap.set(owner.userId, {
-                userId: owner.userId,
-                displayName: owner.displayName,
-                count: 1,
-              });
-            }
-          }
+    const countMap = new Map<string, GameOwnerSummary>();
+    for (const game of games) {
+      for (const owner of game.owners) {
+        const current = countMap.get(owner.userId);
+        if (current) {
+          current.count += 1;
+        } else {
+          countMap.set(owner.userId, {
+            userId: owner.userId,
+            displayName: owner.displayName,
+            count: 1,
+          });
         }
-        const list = [...countMap.values()]
-          .filter((o) => o.count >= 1)
-          .sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName));
-        setOwners(list);
-        setSelectedOwnerIds(list.map((o) => o.userId));
-      })
-      .catch(() => {
-        // Non-critical owner summary
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [api, groupId]);
+      }
+    }
+    const list = [...countMap.values()]
+      .filter((o) => o.count >= 1)
+      .sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName));
+    setOwners(list);
+    setSelectedOwnerIds(list.map((o) => o.userId));
+  }, [groupGamesData?.games]);
 
   // Dynamically update available themes based on active contributors
   useEffect(() => {
@@ -95,7 +97,7 @@ export function DrawPanel({ groupId }: { groupId: string }) {
       ? allGames.filter((g) => g.owners.some((o) => selectedOwnerIds.includes(o.userId)))
       : [];
     const categories = Array.from(
-      new Set(activeGames.flatMap((g) => g.categories ?? []))
+      new Set(activeGames.flatMap((g) => (g.categories ?? []).map(decodeHtmlEntities)))
     ).filter(Boolean).sort((a, b) => a.localeCompare(b));
     setAvailableCategories(categories);
   }, [allGames, selectedOwnerIds]);
@@ -221,17 +223,33 @@ export function DrawPanel({ groupId }: { groupId: string }) {
     }
   }
 
+  const TEMPLATE_ALIAS_MAP: Record<string, string> = {
+    party_and_push: "party_mayhem",
+    cooperative_challenge: "cooperative_survival",
+    engine_combos: "engine_building",
+    high_interaction: "social_deduction",
+    thematic_adventure: "thematic_narrative",
+    group_favorites: "table_favorites",
+    accessible_classics: "accessible_gateway",
+  };
+
   function getTemplateBadge(id: string, fallback?: string): string {
+    const key = TEMPLATE_ALIAS_MAP[id] ?? id;
     try {
-      return tTemplates(`${id}.badge`);
+      const val = tTemplates(`${key}.badge`);
+      if (val && !val.startsWith("templates.")) return val;
+      return fallback ?? id;
     } catch {
       return fallback ?? id;
     }
   }
 
   function getTemplateDesc(id: string, fallback?: string): string {
+    const key = TEMPLATE_ALIAS_MAP[id] ?? id;
     try {
-      return tTemplates(`${id}.description`);
+      const val = tTemplates(`${key}.description`);
+      if (val && !val.startsWith("templates.")) return val;
+      return fallback ?? "";
     } catch {
       return fallback ?? "";
     }

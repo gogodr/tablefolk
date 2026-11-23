@@ -19,8 +19,21 @@ import type {
 } from "@tablefolk/contracts";
 import { GameCard, cleanExpansionName, weightLabel, playerRange } from "@/components/game-card";
 import { GameDetailModal } from "@/components/game-detail-modal";
+import { GuestRsvpModal } from "@/components/guest-rsvp-modal";
 import { gameCoverSrc } from "@/lib/assets";
 import { useApi } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys, useEventDetailQuery, useGroupGamesQuery, useGroupDetailQuery } from "@/lib/queries";
+
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&#039;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
 
 type Mode = "lineup" | "single";
 
@@ -31,9 +44,15 @@ export function EventClient() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const api = useApi();
+  const queryClient = useQueryClient();
+  const eventQuery = useEventDetailQuery(eventId);
+  const gamesQuery = useGroupGamesQuery(groupId);
+  const groupQuery = useGroupDetailQuery(groupId);
 
-  const [event, setEvent] = useState<EventDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [event, setEvent] = useState<EventDetail | null>(() => eventQuery.data?.event ?? null);
+  const [managingGuestAttendee, setManagingGuestAttendee] = useState<{ userId: string; displayName: string; guestNames: string[] } | null>(null);
+  const [rsvping, setRsvping] = useState(false);
+  const [loading, setLoading] = useState(() => !eventQuery.data?.event);
   const [error, setError] = useState("");
   const [savingOfficial, setSavingOfficial] = useState(false);
   const [copiedShare, setCopiedShare] = useState(false);
@@ -172,35 +191,63 @@ export function EventClient() {
 
   const availableCategories = useMemo(() => {
     return Array.from(
-      new Set(groupGamesList.flatMap((g) => g.categories ?? []))
+      new Set(groupGamesList.flatMap((g) => (g.categories ?? []).map(decodeHtmlEntities)))
     ).filter(Boolean).sort((a, b) => a.localeCompare(b));
   }, [groupGamesList]);
 
+  useEffect(() => {
+    if (eventQuery.data?.event) {
+      setEvent(eventQuery.data.event);
+      setPlayerCount((prev) => prev || eventQuery.data.event.totalHeadcount || 4);
+      setLoading(false);
+    }
+  }, [eventQuery.data?.event]);
+
+  useEffect(() => {
+    if (gamesQuery.data?.games) {
+      setGroupGamesList(gamesQuery.data.games);
+    }
+  }, [gamesQuery.data?.games]);
+
+  useEffect(() => {
+    if (groupQuery.data?.group?.members) {
+      setGroupMembers(groupQuery.data.group.members);
+    }
+  }, [groupQuery.data?.group?.members]);
+
   const load = useCallback(async () => {
     try {
-      const [eventRes, gamesRes, groupRes] = await Promise.all([
-        api<{ event: EventDetail }>(`/v1/events/${eventId}`),
-        api<{ games: GroupGame[] }>(`/v1/groups/${groupId}/games`).catch(() => ({ games: [] })),
-        api<{ group: GroupDetail }>(`/v1/groups/${groupId}`).catch(() => ({ group: null })),
+      const [eventRes] = await Promise.all([
+        queryClient.fetchQuery({
+          queryKey: queryKeys.eventDetail(eventId),
+          queryFn: () => api<{ event: EventDetail }>(`/v1/events/${eventId}`),
+        }),
+        queryClient.ensureQueryData({
+          queryKey: queryKeys.groupGames(groupId),
+          queryFn: () => api<{ games: GroupGame[] }>(`/v1/groups/${groupId}/games`),
+        }).catch(() => ({ games: [] })),
+        queryClient.ensureQueryData({
+          queryKey: queryKeys.groupDetail(groupId),
+          queryFn: () => api<{ group: GroupDetail }>(`/v1/groups/${groupId}`),
+        }).catch(() => ({ group: null })),
       ]);
       setEvent(eventRes.event);
-      setGroupGamesList(gamesRes.games);
-      if (groupRes.group?.members) {
-        setGroupMembers(groupRes.group.members);
-      }
-      setPlayerCount(eventRes.event.totalHeadcount || 4);
+      setPlayerCount((prev) => prev || eventRes.event.totalHeadcount || 4);
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not load this event.");
     } finally {
       setLoading(false);
     }
-  }, [api, eventId, groupId]);
+  }, [api, eventId, groupId, queryClient]);
 
   useEffect(() => {
-    if (isLoaded && isSignedIn) void load();
-    else if (isLoaded) setLoading(false);
-  }, [isLoaded, isSignedIn, load]);
+    if (isLoaded && isSignedIn && !eventQuery.data?.event) {
+      void load();
+    } else if (isLoaded && !isSignedIn) {
+      setLoading(false);
+    }
+  }, [isLoaded, isSignedIn, load, eventQuery.data?.event]);
 
   async function handleSinglePick(reroll = false) {
     if (!playerCount || playerCount <= 0) return;
@@ -284,6 +331,9 @@ export function EventClient() {
         method: "POST",
         body: JSON.stringify({ options }),
       });
+      queryClient.setQueryData(queryKeys.eventDetail(eventId), res);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.groupEvents(groupId) });
       setEvent(res.event);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not open voting poll.");
@@ -299,6 +349,7 @@ export function EventClient() {
         method: "POST",
         body: JSON.stringify({ optionId }),
       });
+      queryClient.setQueryData(queryKeys.eventDetail(eventId), res);
       setEvent(res.event);
     } catch (cause) {
       alert(cause instanceof Error ? cause.message : "Could not record vote.");
@@ -314,6 +365,9 @@ export function EventClient() {
         method: "POST",
         body: JSON.stringify({ winningOptionId }),
       });
+      queryClient.setQueryData(queryKeys.eventDetail(eventId), res);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.groupEvents(groupId) });
       setEvent(res.event);
     } catch (cause) {
       alert(cause instanceof Error ? cause.message : "Could not lock winning menu.");
@@ -438,6 +492,9 @@ export function EventClient() {
           attendedGuestNames,
         }),
       });
+      queryClient.setQueryData(queryKeys.eventDetail(eventId), res);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.groupEvents(groupId) });
       setEvent(res.event);
       setShowCloseModal(false);
     } catch (cause) {
@@ -445,6 +502,56 @@ export function EventClient() {
     } finally {
       setClosingEvent(false);
     }
+  }
+
+  async function handleRsvp(status: "ATTENDING" | "MAYBE" | "DECLINED", guestNames: string[] = []) {
+    if (!event || !user) return;
+    setRsvping(true);
+    try {
+      await api(`/v1/events/${eventId}/rsvp`, {
+        method: "POST",
+        body: JSON.stringify({ status, guestNames, additionalGuests: guestNames.length }),
+      });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.groupEvents(groupId) });
+      await load();
+    } catch (cause) {
+      alert(cause instanceof Error ? cause.message : "Could not update RSVP.");
+    } finally {
+      setRsvping(false);
+    }
+  }
+
+  async function handleSaveAttendeeGuests(guestNames: string[]) {
+    if (!managingGuestAttendee || !event) return;
+    const targetUserId = managingGuestAttendee.userId;
+    const currentRsvp = event.rsvps.find((r) => r.userId === targetUserId);
+    const status = currentRsvp?.status ?? "ATTENDING";
+
+    if (targetUserId === user?.id) {
+      await handleRsvp(status, guestNames);
+    } else {
+      try {
+        const res = await api<{ event: EventDetail }>(`/v1/events/${eventId}/attendance`, {
+          method: "PUT",
+          body: JSON.stringify({
+            rsvps: [{
+              userId: targetUserId,
+              status,
+              guestNames,
+              additionalGuests: guestNames.length,
+            }],
+          }),
+        });
+        queryClient.setQueryData(queryKeys.eventDetail(eventId), res);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.events });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.groupEvents(groupId) });
+        setEvent(res.event);
+      } catch (cause) {
+        alert(cause instanceof Error ? cause.message : "Could not update attendee guests.");
+      }
+    }
+    setManagingGuestAttendee(null);
   }
 
   function handleOpenEditModal() {
@@ -478,6 +585,9 @@ export function EventClient() {
           manualHeadcount: editManualHeadcount ? Number(editManualHeadcount) : null,
         }),
       });
+      queryClient.setQueryData(queryKeys.eventDetail(eventId), res);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.groupEvents(groupId) });
       setEvent(res.event);
       setShowEditModal(false);
     } catch (cause) {
@@ -536,6 +646,9 @@ export function EventClient() {
           }),
         });
       }
+      await queryClient.invalidateQueries({ queryKey: queryKeys.eventDetail(eventId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.events });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.groupEvents(groupId) });
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not announce official pick.");
@@ -662,16 +775,17 @@ export function EventClient() {
 
   const canManage = event?.canManage ?? (!event?.hostUserId || event?.hostUserId === user?.id);
   const isHostOrCreator = canManage;
+  const myRsvp = event?.rsvps.find((r) => r.userId === user?.id);
   const hasOfficialSelection = Boolean(
     event?.officialPick || (event?.officialLineup && event.officialLineup.length > 0)
   );
   const isCompleted = event?.status === "COMPLETED";
 
-  if (!isLoaded || loading) return <div className="page"><p className="loading">Entering Game Night room…</p></div>;
+  if (!isLoaded || loading) return <div className="page"><p className="loading">{tEvents("enteringGameNight")}</p></div>;
   if (!isSignedIn) {
     return (
       <section className="narrow-page notice-page">
-        <h1>Sign in to join this game night.</h1>
+        <h1>{tEvents("signInToJoin")}</h1>
         <Link href="/sign-in" className="button">Sign in</Link>
       </section>
     );
@@ -682,7 +796,7 @@ export function EventClient() {
       <section className="narrow-page">
         <div className="state-message error" role="alert">
           <p>{error || "Event not found."}</p>
-          <Link href={`/groups/${groupId}/events`} className="button-secondary">Back to Events</Link>
+          <Link href={`/groups/${groupId}/events`} className="button-secondary">{tEvents("backToEvents")}</Link>
         </div>
       </section>
     );
@@ -690,7 +804,7 @@ export function EventClient() {
 
   return (
     <div className="page">
-      <Link href={`/groups/${groupId}/events`} className="back-link">← All Events</Link>
+      <Link href={`/groups/${groupId}/events`} className="back-link">{tEvents("backToEvents")}</Link>
 
       <div className="page-header">
         <div>
@@ -708,13 +822,13 @@ export function EventClient() {
           <p>
             {event?.location ? `📍 ${event.location} · ` : ""}
             {event?.hostDisplayName ? `🏠 Host: ${event.hostDisplayName} · ` : ""}
-            <strong>{event?.totalHeadcount}</strong> players confirmed
+            <strong>{event?.totalHeadcount}</strong> {tEvents("headcountConfirmed", { count: event?.totalHeadcount ?? 0 })}
           </p>
 
           {/* Attendees preview pill list */}
           {event && event.rsvps.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px", margin: "8px 0 16px", fontSize: "13px" }}>
-              <span style={{ fontWeight: 600, color: "var(--muted)" }}>👥 Attending:</span>
+              <span style={{ fontWeight: 600, color: "var(--muted)" }}>{tEvents("theTableCrew", { count: event.rsvps.filter((r) => r.status === "ATTENDING").length })}:</span>
               {event.rsvps.filter((r) => r.status === "ATTENDING").map((r) => (
                 <span
                   key={r.userId}
@@ -724,6 +838,9 @@ export function EventClient() {
                     borderRadius: "14px",
                     padding: "2px 8px",
                     fontSize: "12px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "4px",
                   }}
                 >
                   <strong>{r.displayName}</strong>
@@ -732,8 +849,64 @@ export function EventClient() {
                   ) : r.additionalGuests > 0 ? (
                     <span style={{ color: "var(--muted)" }}> (+{r.additionalGuests})</span>
                   ) : null}
+                  {(canManage || r.userId === user?.id) && (
+                    <button
+                      type="button"
+                      className="button-quiet button-small"
+                      style={{ padding: "0 2px", fontSize: "11px", marginLeft: "2px", lineHeight: 1 }}
+                      title={tEvents("manageGuestsOf", { name: r.displayName })}
+                      onClick={() => setManagingGuestAttendee({ userId: r.userId, displayName: r.displayName, guestNames: r.guestNames ?? [] })}
+                    >
+                      ✏️
+                    </button>
+                  )}
                 </span>
               ))}
+            </div>
+          )}
+
+          {/* RSVP & Guest Control for current user */}
+          {event && event.status === "SCHEDULED" && (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px", margin: "10px 0 16px" }}>
+              <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--muted)" }}>
+                {tEvents("rsvpTitle")}
+              </span>
+              <button
+                type="button"
+                className={`button-small ${myRsvp?.status === "ATTENDING" ? "button-primary" : "button-secondary"}`}
+                disabled={rsvping}
+                onClick={() => void handleRsvp("ATTENDING", myRsvp?.guestNames ?? [])}
+              >
+                {tEvents("attending")}
+              </button>
+              <button
+                type="button"
+                className={`button-small ${myRsvp?.status === "MAYBE" ? "button-primary" : "button-secondary"}`}
+                disabled={rsvping}
+                onClick={() => void handleRsvp("MAYBE", myRsvp?.guestNames ?? [])}
+              >
+                {tEvents("maybe")}
+              </button>
+              <button
+                type="button"
+                className={`button-small ${myRsvp?.status === "DECLINED" ? "button-danger" : "button-secondary"}`}
+                disabled={rsvping}
+                onClick={() => void handleRsvp("DECLINED", [])}
+              >
+                {tEvents("declined")}
+              </button>
+              {myRsvp?.status === "ATTENDING" && user && (
+                <button
+                  type="button"
+                  className="button-quiet button-small"
+                  onClick={() => setManagingGuestAttendee({ userId: user.id, displayName: user.fullName || user.username || "You", guestNames: myRsvp.guestNames ?? [] })}
+                  style={{ border: "1px dashed var(--border)", borderRadius: "6px" }}
+                >
+                  👥 {myRsvp.guestNames && myRsvp.guestNames.length > 0
+                    ? `+${myRsvp.guestNames.length} (${myRsvp.guestNames.join(", ")})`
+                    : tEvents("manageMyGuests")}
+                </button>
+              )}
             </div>
           )}
 
@@ -746,7 +919,7 @@ export function EventClient() {
                 style={{ background: "#15803d", color: "#fff", borderColor: "#166534" }}
                 onClick={() => void handleOpenCloseEventModal()}
               >
-                🏁 Finish & Record Played Games
+                {tEvents("finishAndRecord")}
               </button>
             )}
             {canManage && event?.status === "COMPLETED" && (
@@ -755,7 +928,7 @@ export function EventClient() {
                 className="button-secondary button-small"
                 onClick={() => void handleOpenCloseEventModal()}
               >
-                ✏️ Edit Played Games & Attendance
+                {tEvents("editPlayedGamesAndAttendance")}
               </button>
             )}
             {canManage && (
@@ -764,7 +937,7 @@ export function EventClient() {
                 className="button-secondary button-small"
                 onClick={handleOpenEditModal}
               >
-                ⚙️ Edit Event Details
+                {tEvents("editEventDetails")}
               </button>
             )}
             <button
@@ -915,14 +1088,14 @@ export function EventClient() {
                               {tEvents("intermissionShort")}
                             </div>
                           )}
-                          <div
+                          <a
+                            href={`#game-card-${g.bggId}`}
                             className={`timeline-segment-game ${themeClass}`}
-                            style={{ flex: `${flexGrow} 1 0%` }}
+                            style={{ flex: `${flexGrow} 1 0%`, textDecoration: "none" }}
                             title={`${roleLabel}: ${g.name} (~${duration} min)`}
                           >
-                            <strong>#{idx + 1} {g.name}</strong>
-                            <span>{roleLabel} · ~{duration}m</span>
-                          </div>
+                            <span>#{idx + 1} · {duration}m</span>
+                          </a>
                         </div>
                       );
                     })}
@@ -981,7 +1154,7 @@ export function EventClient() {
                       : "";
 
                   return (
-                    <div key={g.bggId} className="completed-flow-item">
+                    <div key={g.bggId} id={`game-card-${g.bggId}`} className="completed-flow-item" style={{ scrollMarginTop: "24px" }}>
                       {idx > 0 && (
                         <div className="completed-intermission-step">
                           {tEvents("intermissionStep")}
@@ -1790,8 +1963,8 @@ export function EventClient() {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
               <div>
-                <span className="eyebrow" style={{ color: "#166534" }}>🏁 Wrap Up Game Night</span>
-                <h2 style={{ margin: "4px 0" }}>Which games were actually played?</h2>
+                <span className="eyebrow" style={{ color: "#166534" }}>{tEvents("wrapUpTitle")}</span>
+                <h2 style={{ margin: "4px 0" }}>{tEvents("whichGamesPlayedTitle")}</h2>
               </div>
               <button
                 type="button"
@@ -1803,28 +1976,27 @@ export function EventClient() {
             </div>
 
             <p style={{ fontSize: "14px", color: "var(--muted)", margin: "10px 0 16px", lineHeight: "1.5" }}>
-              Verify who actually attended and which games were tabled tonight.
-              {" "}<strong>Wishlist interest points are only consumed for games played</strong>.
+              {tEvents("verifyAttendanceAndGamesDesc")}
             </p>
 
             {/* Who actually attended section */}
             <div style={{ marginBottom: "20px", borderBottom: "1px solid var(--border)", paddingBottom: "16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "8px" }}>
                 <h4 style={{ margin: 0, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)" }}>
-                  👥 Who actually attended tonight?
+                  {tEvents("whoAttendedTitle")}
                 </h4>
                 <span style={{ fontSize: "12px", color: "var(--muted)" }}>
-                  {attendedUserIds.length + attendedGuestNames.length} {attendedUserIds.length + attendedGuestNames.length === 1 ? "person confirmed" : "people confirmed"}
+                  {tEvents("peopleConfirmed", { count: attendedUserIds.length + attendedGuestNames.length })}
                 </span>
               </div>
               <p style={{ fontSize: "13px", color: "var(--muted)", margin: "0 0 10px" }}>
-                Check all members and guests who were at the table. Their attendance will be saved in event records.
+                {tEvents("checkAttendanceDesc")}
               </p>
 
               {/* Members */}
               <div style={{ marginBottom: "12px" }}>
                 <span style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--muted)", marginBottom: "6px" }}>
-                  Group Members:
+                  {tEvents("groupMembersLabel")}
                 </span>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "8px", maxHeight: "150px", overflowY: "auto" }}>
                   {groupMembers.map((m) => {
@@ -1859,7 +2031,7 @@ export function EventClient() {
               {/* Named Guests */}
               <div>
                 <span style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--muted)", marginBottom: "6px" }}>
-                  Named Guests &amp; Walk-ins ({attendedGuestNames.length}):
+                  {tEvents("namedGuestsLabel", { count: attendedGuestNames.length })}
                 </span>
                 {attendedGuestNames.length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "10px" }}>
@@ -1892,7 +2064,7 @@ export function EventClient() {
                             padding: "0 2px",
                             lineHeight: 1,
                           }}
-                          title="Remove guest"
+                          title={tEvents("removeGuest")}
                         >
                           ✕
                         </button>
@@ -1904,7 +2076,7 @@ export function EventClient() {
                 <div style={{ display: "flex", gap: "8px", maxWidth: "340px" }}>
                   <input
                     type="text"
-                    placeholder="Add walk-in guest name..."
+                    placeholder={tEvents("addWalkInGuestPlaceholder")}
                     value={walkInGuestInput}
                     onChange={(e) => setWalkInGuestInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -1921,7 +2093,7 @@ export function EventClient() {
                     onClick={() => handleAddWalkInGuest()}
                     disabled={!walkInGuestInput.trim()}
                   >
-                    + Add Guest
+                    {tEvents("addGuestButton")}
                   </button>
                 </div>
               </div>
@@ -1931,16 +2103,16 @@ export function EventClient() {
             <div style={{ marginBottom: "20px", borderBottom: "1px solid var(--border)", paddingBottom: "16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "8px" }}>
                 <h4 style={{ margin: 0, fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)" }}>
-                  🎲 Played Games in Sequence ({playedGameIds.length})
+                  {tEvents("playedGamesSequenceTitle", { count: playedGameIds.length })}
                 </h4>
                 <span style={{ fontSize: "12px", color: "var(--muted)" }}>
-                  Play order (arrange with ▲ / ▼)
+                  {tEvents("playOrderHint")}
                 </span>
               </div>
 
               {playedGameIds.length === 0 ? (
                 <p style={{ fontSize: "13px", color: "var(--muted)", margin: "4px 0" }}>
-                  No games selected yet. Check the planned games below or search the group library.
+                  {tEvents("noGamesSelectedYet")}
                 </p>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -1969,7 +2141,7 @@ export function EventClient() {
                             type="button"
                             className="button-quiet button-small"
                             style={{ padding: "2px 6px", fontSize: "12px" }}
-                            title="Move earlier in play order"
+                            title={tEvents("moveEarlier")}
                             disabled={index === 0}
                             onClick={() => handleMovePlayedGame(index, "up")}
                           >
@@ -1979,7 +2151,7 @@ export function EventClient() {
                             type="button"
                             className="button-quiet button-small"
                             style={{ padding: "2px 6px", fontSize: "12px" }}
-                            title="Move later in play order"
+                            title={tEvents("moveLater")}
                             disabled={index === playedGameIds.length - 1}
                             onClick={() => handleMovePlayedGame(index, "down")}
                           >
@@ -1989,7 +2161,7 @@ export function EventClient() {
                             type="button"
                             className="button-quiet button-small"
                             style={{ padding: "2px 6px", fontSize: "12px", color: "var(--color-danger, #dc2626)" }}
-                            title="Remove from played list"
+                            title={tEvents("removeFromPlayedList")}
                             onClick={() => handleRemovePlayedGame(bggId)}
                           >
                             ✕
@@ -2005,7 +2177,7 @@ export function EventClient() {
             {/* Planned games section */}
             <div style={{ marginBottom: "16px" }}>
               <h4 style={{ margin: "0 0 8px", fontSize: "13px", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)" }}>
-                Planned games in this session
+                {tEvents("plannedGamesInSession")}
               </h4>
               <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                 {event?.officialLineup && event.officialLineup.length > 0 ? (
@@ -2038,7 +2210,7 @@ export function EventClient() {
                         </div>
                         {checked && (
                           <span style={{ fontSize: "12px", color: "#166534", fontWeight: 700 }}>
-                            {orderIndex + 1}️⃣ in play
+                            {tEvents("inPlayOrder", { order: orderIndex + 1 })}
                           </span>
                         )}
                       </label>
@@ -2065,16 +2237,16 @@ export function EventClient() {
                     />
                     <div style={{ flex: 1 }}>
                       <strong>{event.officialPick.name}</strong>
-                      <span style={{ marginLeft: "8px", fontSize: "12px", color: "var(--muted)" }}>(Official Pick)</span>
+                      <span style={{ marginLeft: "8px", fontSize: "12px", color: "var(--muted)" }}>({tEvents("featuredGameBadge")})</span>
                     </div>
                     {playedGameIds.includes(event.officialPick.bggId) && (
                       <span style={{ fontSize: "12px", color: "#166534", fontWeight: 700 }}>
-                        {playedGameIds.indexOf(event.officialPick.bggId) + 1}️⃣ in play
+                        {tEvents("inPlayOrder", { order: playedGameIds.indexOf(event.officialPick.bggId) + 1 })}
                       </span>
                     )}
                   </label>
                 ) : (
-                  <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>No official game was locked in advance.</p>
+                  <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>{tEvents("noOfficialGameLocked")}</p>
                 )}
               </div>
             </div>
@@ -2086,7 +2258,7 @@ export function EventClient() {
                 className="button-quiet button-small"
                 onClick={() => setShowOtherGames((v) => !v)}
               >
-                {showOtherGames ? "▲ Hide additional games" : "➕ Did you play another game not on the original menu?"}
+                {showOtherGames ? tEvents("hideAdditionalGames") : tEvents("playedAnotherGamePrompt")}
               </button>
 
               {showOtherGames && (
@@ -2099,7 +2271,7 @@ export function EventClient() {
                       style={{ fontSize: "12px", padding: "4px 10px" }}
                       onClick={() => setOtherGameSource("group")}
                     >
-                      🏛️ Group Library ({groupGamesList.length})
+                      {tEvents("groupLibraryTab", { count: groupGamesList.length })}
                     </button>
                     <button
                       type="button"
@@ -2107,7 +2279,7 @@ export function EventClient() {
                       style={{ fontSize: "12px", padding: "4px 10px" }}
                       onClick={() => setOtherGameSource("bgg")}
                     >
-                      🌐 Search BoardGameGeek (BGG)
+                      {tEvents("searchBggTab")}
                     </button>
                   </div>
 
@@ -2115,7 +2287,7 @@ export function EventClient() {
                     <>
                       <input
                         type="search"
-                        placeholder="🔍 Search group game by name…"
+                        placeholder={tEvents("searchGroupGamePlaceholder")}
                         value={otherGameSearch}
                         onChange={(e) => setOtherGameSearch(e.target.value)}
                         style={{
@@ -2131,7 +2303,7 @@ export function EventClient() {
                       />
 
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", fontSize: "12px", color: "var(--muted)" }}>
-                        <span>Showing {filteredOtherGames.length} of {groupGamesList.length} games</span>
+                        <span>{tEvents("showingCountOfTotal", { count: filteredOtherGames.length, total: groupGamesList.length })}</span>
                         {otherGameSearch && (
                           <button
                             type="button"
@@ -2139,7 +2311,7 @@ export function EventClient() {
                             style={{ padding: "0 4px", fontSize: "11px" }}
                             onClick={() => setOtherGameSearch("")}
                           >
-                            Clear search
+                            {tEvents("clearSearch")}
                           </button>
                         )}
                       </div>
@@ -2148,7 +2320,7 @@ export function EventClient() {
                         {filteredOtherGames.length === 0 ? (
                           <div style={{ textAlign: "center", padding: "12px 0" }}>
                             <p style={{ margin: "0 0 6px", fontSize: "13px", color: "var(--muted)" }}>
-                              No group games found matching &quot;{otherGameSearch}&quot;.
+                              {tEvents("noGroupGamesMatching", { query: otherGameSearch })}
                             </p>
                             <button
                               type="button"
@@ -2158,7 +2330,7 @@ export function EventClient() {
                                 setBggQuery(otherGameSearch);
                               }}
                             >
-                              🌐 Search on BoardGameGeek instead
+                              {tEvents("searchOnBggInstead")}
                             </button>
                           </div>
                         ) : (
@@ -2201,7 +2373,7 @@ export function EventClient() {
                     <>
                       <input
                         type="search"
-                        placeholder="🔍 Search any game on BoardGameGeek (e.g. Ark Nova, Heat, Cascadia)…"
+                        placeholder={tEvents("searchBggAnyPlaceholder")}
                         value={bggQuery}
                         onChange={(e) => setBggQuery(e.target.value)}
                         style={{
@@ -2219,10 +2391,10 @@ export function EventClient() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", fontSize: "12px", color: "var(--muted)" }}>
                         <span>
                           {bggSearching
-                            ? "⏳ Searching BGG catalog…"
+                            ? tEvents("searchingBggCatalog")
                             : bggQuery.trim().length < 2
-                            ? "Type at least 2 characters to search BGG"
-                            : `Found ${bggResults.length} matches on BoardGameGeek`}
+                            ? tEvents("typeAtLeast2Chars")
+                            : tEvents("foundBggMatches", { count: bggResults.length })}
                         </span>
                         {bggQuery && (
                           <button
@@ -2234,7 +2406,7 @@ export function EventClient() {
                               setBggResults([]);
                             }}
                           >
-                            Clear
+                            {tEvents("clear")}
                           </button>
                         )}
                       </div>
@@ -2248,7 +2420,7 @@ export function EventClient() {
                       <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "200px", overflowY: "auto" }}>
                         {bggQuery.trim().length >= 2 && !bggSearching && bggResults.length === 0 ? (
                           <p style={{ margin: "10px 0", fontSize: "13px", color: "var(--muted)", textAlign: "center" }}>
-                            No games found on BoardGameGeek for &quot;{bggQuery}&quot;.
+                            {tEvents("noBggMatchesFound", { query: bggQuery })}
                           </p>
                         ) : (
                           bggResults.map((g) => {
@@ -2295,7 +2467,7 @@ export function EventClient() {
                                     }
                                   }}
                                 >
-                                  {checked ? `✓ Added (#${orderIndex + 1})` : "+ Add"}
+                                  {checked ? tEvents("addedOrder", { order: orderIndex + 1 }) : tEvents("add")}
                                 </button>
                               </div>
                             );
@@ -2315,7 +2487,7 @@ export function EventClient() {
                 disabled={closingEvent}
                 onClick={() => setShowCloseModal(false)}
               >
-                Cancel
+                {tEvents("cancel")}
               </button>
               <button
                 type="button"
@@ -2324,7 +2496,7 @@ export function EventClient() {
                 disabled={closingEvent}
                 onClick={() => void handleConfirmCloseEvent()}
               >
-                {closingEvent ? "Wrapping Up…" : `Confirm & Wrap Up (${attendedUserIds.length + attendedGuestNames.length} attended · ${playedGameIds.length} played)`}
+                {closingEvent ? tEvents("wrappingUp") : tEvents("confirmAndWrapUp", { attended: attendedUserIds.length + attendedGuestNames.length, played: playedGameIds.length })}
               </button>
             </div>
           </div>
@@ -2363,8 +2535,8 @@ export function EventClient() {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
               <div>
-                <span className="eyebrow">⚙️ Manage Event</span>
-                <h2 style={{ margin: "4px 0" }}>Edit Event Details</h2>
+                <span className="eyebrow">{tEvents("manageEvent")}</span>
+                <h2 style={{ margin: "4px 0" }}>{tEvents("editEventDetailsTitle")}</h2>
               </div>
               <button
                 type="button"
@@ -2377,7 +2549,7 @@ export function EventClient() {
 
             <form onSubmit={handleSaveEdit} style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "14px" }}>
               <div className="field">
-                <label htmlFor="edit-event-title">Event Title</label>
+                <label htmlFor="edit-event-title">{tEvents("eventTitleLabel")}</label>
                 <input
                   id="edit-event-title"
                   type="text"
@@ -2388,7 +2560,7 @@ export function EventClient() {
               </div>
 
               <div className="field">
-                <label htmlFor="edit-event-date">Date & Time</label>
+                <label htmlFor="edit-event-date">{tEvents("dateTimeLabel")}</label>
                 <input
                   id="edit-event-date"
                   type="datetime-local"
@@ -2399,51 +2571,51 @@ export function EventClient() {
               </div>
 
               <div className="field">
-                <label htmlFor="edit-event-host">Event Host</label>
+                <label htmlFor="edit-event-host">{tEvents("eventHostLabel")}</label>
                 <select
                   id="edit-event-host"
                   value={editHostUserId}
                   onChange={(e) => setEditHostUserId(e.target.value)}
                 >
-                  <option value="">No specific host</option>
+                  <option value="">{tEvents("noSpecificHost")}</option>
                   {groupMembers.map((m) => (
                     <option key={m.userId} value={m.userId}>
                       {m.displayName}
                     </option>
                   ))}
                 </select>
-                <span className="field-hint">Host&apos;s home games are automatically eligible to play.</span>
+                <span className="field-hint">{tEvents("hostHomeGamesHint")}</span>
               </div>
 
               <div className="field">
-                <label htmlFor="edit-event-location">Location / Venue</label>
+                <label htmlFor="edit-event-location">{tEvents("locationVenueLabel")}</label>
                 <input
                   id="edit-event-location"
                   type="text"
-                  placeholder="e.g. Carlos's place, Board Game Cafe"
+                  placeholder={tEvents("locationPlaceholder")}
                   value={editLocation}
                   onChange={(e) => setEditLocation(e.target.value)}
                 />
               </div>
 
               <div className="field">
-                <label htmlFor="edit-event-desc">Notes / Description (Optional)</label>
+                <label htmlFor="edit-event-desc">{tEvents("notesDescriptionLabel")}</label>
                 <input
                   id="edit-event-desc"
                   type="text"
-                  placeholder="e.g. Bring snacks, starting promptly at 7pm"
+                  placeholder={tEvents("notesPlaceholder")}
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
                 />
               </div>
 
               <div className="field">
-                <label htmlFor="edit-event-headcount">Override Total Headcount (Optional)</label>
+                <label htmlFor="edit-event-headcount">{tEvents("overrideHeadcountLabel")}</label>
                 <input
                   id="edit-event-headcount"
                   type="number"
                   min={1}
-                  placeholder="Leave blank to calculate from RSVPs"
+                  placeholder={tEvents("overrideHeadcountPlaceholder")}
                   value={editManualHeadcount}
                   onChange={(e) => setEditManualHeadcount(e.target.value)}
                 />
@@ -2456,19 +2628,29 @@ export function EventClient() {
                   disabled={savingEdit}
                   onClick={() => setShowEditModal(false)}
                 >
-                  Cancel
+                  {tEvents("cancel")}
                 </button>
                 <button
                   type="submit"
                   className="button"
                   disabled={savingEdit}
                 >
-                  {savingEdit ? "Saving…" : "Save Changes"}
+                  {savingEdit ? tEvents("savingChanges") : tEvents("saveChanges")}
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {managingGuestAttendee && (
+        <GuestRsvpModal
+          isOpen={Boolean(managingGuestAttendee)}
+          onClose={() => setManagingGuestAttendee(null)}
+          eventTitle={`${event?.title ?? ""} · ${tEvents("manageGuestsOf", { name: managingGuestAttendee.displayName })}`}
+          initialGuestNames={managingGuestAttendee.guestNames}
+          onSave={handleSaveAttendeeGuests}
+        />
       )}
 
       {selectedModalGame && (

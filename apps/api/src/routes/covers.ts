@@ -34,9 +34,15 @@ export async function coverRoutes(app: FastifyInstance) {
     }
 
     if (!cover) throw notFound("Cover not found");
+    const etag = `"${bggId}-${cover.data.length}"`;
+    if (request.headers["if-none-match"] === etag) {
+      return reply.status(304).send();
+    }
+
     return reply
       .header("Content-Type", cover.contentType)
-      .header("Cache-Control", "public, max-age=86400")
+      .header("Cache-Control", "public, max-age=2592000, immutable")
+      .header("ETag", etag)
       .send(Buffer.from(cover.data));
   });
 }

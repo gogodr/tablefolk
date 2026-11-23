@@ -29,7 +29,10 @@ export function EventsClient() {
   const [error, setError] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [filter, setFilter] = useState<"all" | "upcoming" | "completed">("all");
-  const [managingGuestsEvent, setManagingGuestsEvent] = useState<EventDetail | null>(null);
+  const [managingGuestsTarget, setManagingGuestsTarget] = useState<{
+    event: EventDetail;
+    user: { userId: string; displayName: string; guestNames: string[] };
+  } | null>(null);
 
   // Form state
   const [title, setTitle] = useState("Friday Game Night");
@@ -214,11 +217,11 @@ export function EventsClient() {
               {tCal("cantGo")}
             </button>
 
-            {myRsvp?.status === "ATTENDING" && (
+            {myRsvp?.status === "ATTENDING" && user && (
               <button
                 type="button"
                 className="button-quiet button-small"
-                onClick={() => setManagingGuestsEvent(event)}
+                onClick={() => setManagingGuestsTarget({ event, user: { userId: user.id, displayName: user.fullName || user.username || "You", guestNames: myRsvp.guestNames ?? [] } })}
                 style={{ marginLeft: "8px", border: "1px dashed var(--border)", borderRadius: "6px" }}
               >
                 👥 {myRsvp.guestNames && myRsvp.guestNames.length > 0
@@ -243,7 +246,7 @@ export function EventsClient() {
           {attendingList.length === 0
             ? tCal("nobodyConfirmed")
             : attendingList.map((r, i) => (
-                <span key={r.userId}>
+                <span key={r.userId} style={{ display: "inline-flex", alignItems: "center", gap: "2px" }}>
                   {i > 0 && ", "}
                   <strong>{r.displayName}</strong>
                   {r.guestNames && r.guestNames.length > 0 ? (
@@ -251,6 +254,17 @@ export function EventsClient() {
                   ) : r.additionalGuests > 0 ? (
                     <span style={{ color: "var(--muted)" }}> (+{r.additionalGuests})</span>
                   ) : null}
+                  {(event.canManage || r.userId === user?.id) && !isCompleted && (
+                    <button
+                      type="button"
+                      className="button-quiet button-small"
+                      style={{ padding: "0 2px", fontSize: "11px", marginLeft: "2px", lineHeight: 1 }}
+                      title={tCal("manageGuestsOf", { name: r.displayName })}
+                      onClick={() => setManagingGuestsTarget({ event, user: { userId: r.userId, displayName: r.displayName, guestNames: r.guestNames ?? [] } })}
+                    >
+                      ✏️
+                    </button>
+                  )}
                 </span>
               ))}
         </div>
@@ -465,16 +479,34 @@ export function EventsClient() {
         )}
       </div>
 
-      {managingGuestsEvent && (
+      {managingGuestsTarget && (
         <GuestRsvpModal
-          isOpen={Boolean(managingGuestsEvent)}
-          onClose={() => setManagingGuestsEvent(null)}
-          eventTitle={managingGuestsEvent.title}
-          initialGuestNames={
-            managingGuestsEvent.rsvps.find((r) => r.userId === user?.id)?.guestNames ?? []
-          }
+          isOpen={Boolean(managingGuestsTarget)}
+          onClose={() => setManagingGuestsTarget(null)}
+          eventTitle={managingGuestsTarget.event.title}
+          title={managingGuestsTarget.user.userId === user?.id ? undefined : tCal("guestsOf", { name: managingGuestsTarget.user.displayName })}
+          initialGuestNames={managingGuestsTarget.user.guestNames}
           onSave={async (names) => {
-            await handleRsvp(managingGuestsEvent.id, "ATTENDING", names);
+            const { event, user: targetUser } = managingGuestsTarget;
+            if (targetUser.userId === user?.id) {
+              const myStatus = event.rsvps.find((r) => r.userId === user?.id)?.status ?? "ATTENDING";
+              await handleRsvp(event.id, myStatus, names);
+            } else {
+              const currentRsvp = event.rsvps.find((r) => r.userId === targetUser.userId);
+              const status = currentRsvp?.status ?? "ATTENDING";
+              await api(`/v1/events/${event.id}/attendance`, {
+                method: "PUT",
+                body: JSON.stringify({
+                  rsvps: [{
+                    userId: targetUser.userId,
+                    status,
+                    guestNames: names,
+                    additionalGuests: names.length,
+                  }],
+                }),
+              });
+              await refreshEvents();
+            }
           }}
         />
       )}

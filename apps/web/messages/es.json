@@ -264,7 +264,94 @@
     "repeatNextWeekDesc": "Comparte el resumen con tu grupo o revisa las próximas fechas en el calendario.",
     "copyRecap": "📋 Copiar crónica para WhatsApp / Discord",
     "copiedRecap": "✓ ¡Crónica copiada!",
-    "viewGroupCalendar": "Ver calendario del grupo"
+    "viewGroupCalendar": "Ver calendario del grupo",
+    "wrapUpTitle": "🏁 Cerrar y Registrar Game Night",
+    "whichGamesPlayedTitle": "¿Qué juegos vieron mesa realmente?",
+    "verifyAttendanceAndGamesDesc": "Verifica quiénes asistieron y qué juegos se jugaron esta noche. Los puntos de interés de la lista de deseos solo se descuentan de los juegos efectivamente jugados.",
+    "whoAttendedTitle": "👥 ¿Quiénes asistieron esta noche?",
+    "peopleConfirmed": "{count} {count, plural, =1 {persona confirmada} other {personas confirmadas}}",
+    "checkAttendanceDesc": "Marca a todos los miembros e invitados que estuvieron en la mesa. Su asistencia quedará guardada en el historial del evento.",
+    "groupMembersLabel": "Miembros del grupo:",
+    "namedGuestsLabel": "Invitados con nombre y espontáneos ({count}):",
+    "removeGuest": "Quitar invitado",
+    "addWalkInGuestPlaceholder": "Nombre del invitado espontáneo...",
+    "addGuestButton": "+ Añadir invitado",
+    "playedGamesSequenceTitle": "🎲 Juegos jugados en orden ({count})",
+    "playOrderHint": "Orden de juego (reorganiza con ▲ / ▼)",
+    "noGamesSelectedYet": "Aún no hay juegos seleccionados. Elige entre los juegos previstos abajo o busca en la colección del grupo.",
+    "moveEarlier": "Mover antes en el orden",
+    "moveLater": "Mover después en el orden",
+    "removeFromPlayedList": "Quitar de la lista de jugados",
+    "addAnotherGamePrompt": "Añadir otro juego de la colección del grupo o buscar en BGG",
+    "searchGroupGamesPlaceholder": "Buscar en juegos del grupo...",
+    "searchBggPlaceholder": "Buscar en BoardGameGeek un juego que no esté en la colección...",
+    "lookingUpBgg": "Buscando juegos en BGG...",
+    "noBggFound": "No se encontraron juegos en BGG.",
+    "confirmAndClose": "Confirmar y Cerrar Game Night",
+    "savingRecords": "Guardando registros...",
+    "manageGuestsOf": "Invitados de {name}",
+    "manageGuests": "Gestionar invitados",
+    "addGuestForMember": "+ Añadir invitado para {name}",
+    "editEventDetailsTitle": "Editar detalles del evento",
+    "eventTitleLabel": "Título del evento",
+    "dateTimeLabel": "Fecha y hora",
+    "eventHostLabel": "Anfitrión del evento",
+    "noSpecificHost": "Sin anfitrión específico",
+    "hostHomeGamesHint": "Los juegos del anfitrión estarán disponibles automáticamente para jugar.",
+    "locationVenueLabel": "Lugar / Ubicación",
+    "locationPlaceholder": "ej. Casa de Carlos, Club de Juegos",
+    "notesDescriptionLabel": "Notas / Descripción (Opcional)",
+    "notesPlaceholder": "ej. Traer botanas, comenzamos puntual a las 7pm",
+    "overrideHeadcountLabel": "Sobrescribir cantidad total de jugadores (Opcional)",
+    "overrideHeadcountPlaceholder": "Dejar en blanco para calcular a partir de las confirmaciones",
+    "saveChanges": "Guardar cambios",
+    "savingChanges": "Guardando...",
+    "cancel": "Cancelar",
+    "manageEvent": "⚙️ Administrar evento",
+    "officialSelectionTitle": "Selección oficial para la noche de juegos",
+    "officialSelectionDesc": "El anfitrión ha fijado esta selección como la oficial para el evento.",
+    "officialAnnouncementEyebrow": "📢 Anuncio Oficial",
+    "featuredGameBadge": "Juego Destacado",
+    "scheduledLineupBadge": "Menú Programado",
+    "carrierBadge": "🎒 Lo lleva: {name}",
+    "groupVotingInProgress": "🗳️ Votación grupal en curso",
+    "groupVotingTitle": "¿Qué menú de juegos jugaremos esta noche?",
+    "lockOfficialOption": "Fijar esta opción como oficial",
+    "votersLabel": "Votantes:",
+    "enteringGameNight": "Entrando a la sala de Game Night…",
+    "signInToJoin": "Inicia sesión para unirte a esta noche de juegos.",
+    "backToEvents": "← Todos los eventos",
+    "finishAndRecord": "🏁 Finalizar y registrar juegos jugados",
+    "editPlayedGamesAndAttendance": "✏️ Editar juegos jugados y asistencia",
+    "editEventDetails": "⚙️ Editar detalles del evento",
+    "rsvpTitle": "Tu confirmación de asistencia:",
+    "attending": "✓ Asistiré",
+    "maybe": "? Tal vez",
+    "declined": "✕ No asistiré",
+    "manageMyGuests": "👥 Gestionar mis invitados",
+    "headcountConfirmed": "{count} {count, plural, =1 {jugador confirmado} other {jugadores confirmados}}",
+    "plannedGamesInSession": "Juegos planificados en esta sesión",
+    "inPlayOrder": "{order}️⃣ en juego",
+    "noOfficialGameLocked": "No se fijó ningún juego oficial de antemano.",
+    "hideAdditionalGames": "▲ Ocultar juegos adicionales",
+    "playedAnotherGamePrompt": "➕ ¿Jugaron otro juego que no estaba en el menú original?",
+    "groupLibraryTab": "🏛️ Biblioteca del grupo ({count})",
+    "searchBggTab": "🌐 Buscar en BoardGameGeek (BGG)",
+    "searchGroupGamePlaceholder": "🔍 Buscar juego del grupo por nombre…",
+    "showingCountOfTotal": "Mostrando {count} de {total} juegos",
+    "clearSearch": "Limpiar búsqueda",
+    "noGroupGamesMatching": "No se encontraron juegos del grupo que coincidan con \"{query}\".",
+    "searchOnBggInstead": "🌐 Buscar en BoardGameGeek en su lugar",
+    "searchBggAnyPlaceholder": "🔍 Buscar cualquier juego en BoardGameGeek (ej. Ark Nova, Heat, Cascadia)…",
+    "searchingBggCatalog": "⏳ Buscando en catálogo de BGG…",
+    "typeAtLeast2Chars": "Escribe al menos 2 caracteres para buscar en BGG",
+    "foundBggMatches": "Se encontraron {count} coincidencias en BoardGameGeek",
+    "noBggMatchesFound": "No se encontraron juegos en BoardGameGeek para \"{query}\".",
+    "clear": "Limpiar",
+    "addedOrder": "✓ Añadido (#{order})",
+    "add": "+ Añadir",
+    "wrappingUp": "Registrando…",
+    "confirmAndWrapUp": "Confirmar y Cerrar ({attended} asistentes · {played} jugados)"
   },
   "groupVoting": {
     "title": "Want to Play · Lista de deseos del grupo",
@@ -371,6 +458,10 @@
     "optional": "(Opcional)",
     "openCollection": "🎲 Colección abierta (Sin temática específica)",
     "themeSettingHint": "Conecta tu velada con una ambientación temática de la colección (ej. Terror, Fantasía, Ciencia ficción).",
+    "templateSelectorLabel": "Plantilla / Receta de la sesión",
+    "templateAuto": "🎲 Automático (Combinación inteligente)",
+    "templateAutoHint": "El motor adapta el menú automáticamente a tu colección y tiempo disponible, o elige la temática más fuerte.",
+    "activeTemplateLabel": "Plantilla de la sesión",
     "affinityLabel": "Afinidad temática y mecánicas",
     "affinityBalanced": "⚖️ Balanceado (Neutral)",
     "affinitySimilar": "🎯 Temas similares",
@@ -456,6 +547,91 @@
       "badge": "🔴 Gran Estrategia & Conflicto",
       "title": "Gran Estrategia Épica",
       "description": "Gran estrategia épica, conflicto intenso en el tablero y decisiones tácticas profundas."
+    },
+    "tactical_conflict": {
+      "badge": "⚔️ Control de Área & Combate Táctico",
+      "title": "Control de Área y Batallas Tácticas",
+      "description": "Disputa territorial, movimiento táctico y enfrentamientos directos sobre el tablero con grandes riesgos."
+    },
+    "cooperative_survival": {
+      "badge": "🤝 Cooperativo & Supervivencia en Equipo",
+      "title": "Supervivencia Cooperativa y Trabajo en Equipo",
+      "description": "Todos los jugadores se unen contra el juego para resolver crisis, coordinar tácticas y vencer juntos."
+    },
+    "cooperative_challenge": {
+      "badge": "🤝 Cooperativo & Supervivencia en Equipo",
+      "title": "Supervivencia Cooperativa y Trabajo en Equipo",
+      "description": "Todos los jugadores se unen contra el juego para resolver crisis, coordinar tácticas y vencer juntos."
+    },
+    "engine_building": {
+      "badge": "⚙️ Construcción de Motores & Sinergias",
+      "title": "Construcción de Motores y Sinergias",
+      "description": "Drafteo de cartas, creación de tableros personales y producción exponencial de recursos."
+    },
+    "engine_combos": {
+      "badge": "⚙️ Construcción de Motores & Sinergias",
+      "title": "Construcción de Motores y Sinergias",
+      "description": "Drafteo de cartas, creación de tableros personales y producción exponencial de recursos."
+    },
+    "spatial_puzzle": {
+      "badge": "🧩 Puzzles Espaciales & Colocación de Losetas",
+      "title": "Colocación de Losetas y Puzzles Espaciales",
+      "description": "Construcción geométrica de patrones, drafteo de losetas y optimización espacial táctil."
+    },
+    "social_deduction": {
+      "badge": "🎭 Deducción Social & Alta Interacción",
+      "title": "Deducción Social y Debate en la Mesa",
+      "description": "Roles ocultos, faroleo ágil, negociación y animada conversación en la mesa."
+    },
+    "high_interaction": {
+      "badge": "🎭 Deducción Social & Alta Interacción",
+      "title": "Deducción Social y Debate en la Mesa",
+      "description": "Roles ocultos, faroleo ágil, negociación y animada conversación en la mesa."
+    },
+    "party_mayhem": {
+      "badge": "🎲 Fiesta & Arriesga tu Suerte",
+      "title": "Caos Festivo y Arriesga tu Suerte",
+      "description": "Mucha energía, risas, tensión al tentar la suerte y turnos rápidos para máxima diversión grupal."
+    },
+    "party_and_push": {
+      "badge": "🎲 Fiesta & Arriesga tu Suerte",
+      "title": "Caos Festivo y Arriesga tu Suerte",
+      "description": "Mucha energía, risas, tensión al tentar la suerte y turnos rápidos para máxima diversión grupal."
+    },
+    "thematic_narrative": {
+      "badge": "🏰 Mundos Temáticos & Narrativos",
+      "title": "Mundos Temáticos y Narrativa Inmersiva",
+      "description": "Inmersión temática profunda, ambientación rica de fantasía o ciencia ficción y aventuras épicas."
+    },
+    "thematic_adventure": {
+      "badge": "🏰 Mundos Temáticos & Narrativos",
+      "title": "Mundos Temáticos y Narrativa Inmersiva",
+      "description": "Inmersión temática profunda, ambientación rica de fantasía o ciencia ficción y aventuras épicas."
+    },
+    "table_favorites": {
+      "badge": "⭐ Favoritos de la Mesa & Deseados",
+      "title": "Favoritos de la Mesa y Lista de Deseos",
+      "description": "Destaca los títulos con mayores votos y puntos de interés de los asistentes confirmados."
+    },
+    "group_favorites": {
+      "badge": "⭐ Favoritos de la Mesa & Deseados",
+      "title": "Favoritos de la Mesa y Lista de Deseos",
+      "description": "Destaca los títulos con mayores votos y puntos de interés de los asistentes confirmados."
+    },
+    "accessible_gateway": {
+      "badge": "🟢 Clásicos Accesibles & Modernos",
+      "title": "Clásicos Modernos y Puerta de Entrada",
+      "description": "Reglas amigables, turnos fluidos y estrategia accesible ideal para cualquier tipo de mesa."
+    },
+    "accessible_classics": {
+      "badge": "🟢 Clásicos Accesibles & Modernos",
+      "title": "Clásicos Modernos y Puerta de Entrada",
+      "description": "Reglas amigables, turnos fluidos y estrategia accesible ideal para cualquier tipo de mesa."
+    },
+    "wildcard_random": {
+      "badge": "🎲 Comodín & Sorteo Puro",
+      "title": "Comodín al Azar y Sorteo Puro",
+      "description": "Sin algoritmos ni filtros de categoría: la pura suerte del sorteo entre toda la colección del grupo."
     },
     "thematic_immersion": {
       "badge": "🎭 Temático & Narrativo Inmersivo",
@@ -569,10 +745,13 @@
   },
   "guestRsvp": {
     "title": "👥 ¿Llevarás invitados?",
+    "manageTitle": "👥 Invitados de {name}",
     "inputPlaceholder": "Nombre del invitado (ej. Andrea, Alex)",
     "add": "+ Agregar",
     "yourGuests": "Tus invitados ({count}):",
+    "attendeeGuests": "Invitados ({count}):",
     "noGuests": "No has agregado invitados aún. ¡Irás solo!",
+    "noGuestsForAttendee": "No hay invitados registrados para esta persona.",
     "removeGuest": "Quitar invitado",
     "cancel": "Cancelar",
     "save": "Guardar invitados",
@@ -614,6 +793,8 @@
     "cantGo": "✕ No puedo ir",
     "nameGuests": "+ Agregar invitados",
     "guestsCount": "+{count} invitados",
+    "guestsOf": "Invitados de {name}",
+    "manageGuestsOf": "Gestionar invitados de {name}",
     "youAttended": "✓ Asististe a esta sesión",
     "youDidNotAttend": "Marcado como no asistente",
     "confirmedAttendees": "Asistentes confirmados:",

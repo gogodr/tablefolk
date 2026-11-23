@@ -264,7 +264,94 @@
     "repeatNextWeekDesc": "Share the recap with your group or check upcoming dates on the calendar.",
     "copyRecap": "📋 Copy Recap for WhatsApp / Discord",
     "copiedRecap": "✓ Copied Recap!",
-    "viewGroupCalendar": "View group calendar"
+    "viewGroupCalendar": "View group calendar",
+    "wrapUpTitle": "🏁 Wrap Up Game Night",
+    "whichGamesPlayedTitle": "Which games were actually played?",
+    "verifyAttendanceAndGamesDesc": "Verify who actually attended and which games were tabled tonight. Wishlist interest points are only consumed for games played.",
+    "whoAttendedTitle": "👥 Who actually attended tonight?",
+    "peopleConfirmed": "{count} {count, plural, =1 {person confirmed} other {people confirmed}}",
+    "checkAttendanceDesc": "Check all members and guests who were at the table. Their attendance will be saved in event records.",
+    "groupMembersLabel": "Group Members:",
+    "namedGuestsLabel": "Named Guests & Walk-ins ({count}):",
+    "removeGuest": "Remove guest",
+    "addWalkInGuestPlaceholder": "Add walk-in guest name...",
+    "addGuestButton": "+ Add Guest",
+    "playedGamesSequenceTitle": "🎲 Played Games in Sequence ({count})",
+    "playOrderHint": "Play order (arrange with ▲ / ▼)",
+    "noGamesSelectedYet": "No games selected yet. Check the planned games below or search the group library.",
+    "moveEarlier": "Move earlier in play order",
+    "moveLater": "Move later in play order",
+    "removeFromPlayedList": "Remove from played list",
+    "addAnotherGamePrompt": "Add another game from group collection or search BGG",
+    "searchGroupGamesPlaceholder": "Search group games...",
+    "searchBggPlaceholder": "Search BoardGameGeek for a game not in your group collection...",
+    "lookingUpBgg": "Looking up games on BGG...",
+    "noBggFound": "No games found on BGG.",
+    "confirmAndClose": "Confirm & Close Game Night",
+    "savingRecords": "Saving records...",
+    "manageGuestsOf": "Guests of {name}",
+    "manageGuests": "Manage Guests",
+    "addGuestForMember": "+ Add guest for {name}",
+    "editEventDetailsTitle": "Edit Event Details",
+    "eventTitleLabel": "Event Title",
+    "dateTimeLabel": "Date & Time",
+    "eventHostLabel": "Event Host",
+    "noSpecificHost": "No specific host",
+    "hostHomeGamesHint": "Host's home games are automatically eligible to play.",
+    "locationVenueLabel": "Location / Venue",
+    "locationPlaceholder": "e.g. Carlos's place, Board Game Cafe",
+    "notesDescriptionLabel": "Notes / Description (Optional)",
+    "notesPlaceholder": "e.g. Bring snacks, starting promptly at 7pm",
+    "overrideHeadcountLabel": "Override Total Headcount (Optional)",
+    "overrideHeadcountPlaceholder": "Leave blank to calculate from RSVPs",
+    "saveChanges": "Save Changes",
+    "savingChanges": "Saving...",
+    "cancel": "Cancel",
+    "manageEvent": "⚙️ Manage Event",
+    "officialSelectionTitle": "Tonight's Official Game Night Selection",
+    "officialSelectionDesc": "The host has locked in this selection for the event.",
+    "officialAnnouncementEyebrow": "📢 Official Announcement",
+    "featuredGameBadge": "Featured Game",
+    "scheduledLineupBadge": "Scheduled Lineup",
+    "carrierBadge": "🎒 Bringer: {name}",
+    "groupVotingInProgress": "🗳️ Group Voting in Progress",
+    "groupVotingTitle": "Which Game Night Menu should we play?",
+    "lockOfficialOption": "Lock this specific option as official",
+    "votersLabel": "Voters:",
+    "enteringGameNight": "Entering Game Night room…",
+    "signInToJoin": "Sign in to join this game night.",
+    "backToEvents": "← All Events",
+    "finishAndRecord": "🏁 Finish & Record Played Games",
+    "editPlayedGamesAndAttendance": "✏️ Edit Played Games & Attendance",
+    "editEventDetails": "⚙️ Edit Event Details",
+    "rsvpTitle": "Your RSVP:",
+    "attending": "✓ Attending",
+    "maybe": "? Maybe",
+    "declined": "✕ Can't go",
+    "manageMyGuests": "👥 Manage my guests",
+    "headcountConfirmed": "{count} {count, plural, =1 {player confirmed} other {players confirmed}}",
+    "plannedGamesInSession": "Planned games in this session",
+    "inPlayOrder": "{order}️⃣ in play",
+    "noOfficialGameLocked": "No official game was locked in advance.",
+    "hideAdditionalGames": "▲ Hide additional games",
+    "playedAnotherGamePrompt": "➕ Did you play another game not on the original menu?",
+    "groupLibraryTab": "🏛️ Group Library ({count})",
+    "searchBggTab": "🌐 Search BoardGameGeek (BGG)",
+    "searchGroupGamePlaceholder": "🔍 Search group game by name…",
+    "showingCountOfTotal": "Showing {count} of {total} games",
+    "clearSearch": "Clear search",
+    "noGroupGamesMatching": "No group games found matching \"{query}\".",
+    "searchOnBggInstead": "🌐 Search on BoardGameGeek instead",
+    "searchBggAnyPlaceholder": "🔍 Search any game on BoardGameGeek (e.g. Ark Nova, Heat, Cascadia)…",
+    "searchingBggCatalog": "⏳ Searching BGG catalog…",
+    "typeAtLeast2Chars": "Type at least 2 characters to search BGG",
+    "foundBggMatches": "Found {count} matches on BoardGameGeek",
+    "noBggMatchesFound": "No games found on BoardGameGeek for \"{query}\".",
+    "clear": "Clear",
+    "addedOrder": "✓ Added (#{order})",
+    "add": "+ Add",
+    "wrappingUp": "Wrapping Up…",
+    "confirmAndWrapUp": "Confirm & Wrap Up ({attended} attended · {played} played)"
   },
   "groupVoting": {
     "title": "Want to Play · Group Wishlist",
@@ -461,6 +548,91 @@
       "title": "Epic & Grand Strategy",
       "description": "Epic grand strategy, intense board conflict, and deep tactical choices."
     },
+    "tactical_conflict": {
+      "badge": "⚔️ Area Control & Tactical Clashes",
+      "title": "Area Control & Tactical Combat",
+      "description": "Territorial struggle, tactical movement, and direct tabletop combat with high stakes."
+    },
+    "cooperative_survival": {
+      "badge": "🤝 Co-op & Team Survival",
+      "title": "Cooperative Survival & Teamwork",
+      "description": "All players unite to defeat the board, solve crises, and survive against escalating threats."
+    },
+    "cooperative_challenge": {
+      "badge": "🤝 Co-op & Team Survival",
+      "title": "Cooperative Survival & Teamwork",
+      "description": "All players unite to defeat the board, solve crises, and survive against escalating threats."
+    },
+    "engine_building": {
+      "badge": "⚙️ Engine Building",
+      "title": "Engine Building & Synergies",
+      "description": "Card drafting, tableau construction, and exponential resource production engines."
+    },
+    "engine_combos": {
+      "badge": "⚙️ Engine Building",
+      "title": "Engine Building & Synergies",
+      "description": "Card drafting, tableau construction, and exponential resource production engines."
+    },
+    "spatial_puzzle": {
+      "badge": "🧩 Spatial & Tile Puzzles",
+      "title": "Tile Placement & Spatial Puzzles",
+      "description": "Satisfying pattern building, tile drafting, and tactile spatial optimization."
+    },
+    "social_deduction": {
+      "badge": "🎭 Social & Deduction",
+      "title": "Social Deduction & Table Talk",
+      "description": "Fast-paced bluffing, secret roles, negotiation, and lively table conversation."
+    },
+    "high_interaction": {
+      "badge": "🎭 Social & Deduction",
+      "title": "Social Deduction & Table Talk",
+      "description": "Fast-paced bluffing, secret roles, negotiation, and lively table conversation."
+    },
+    "party_mayhem": {
+      "badge": "🎲 Party & Push-Your-Luck",
+      "title": "Party Mayhem & Push-Your-Luck",
+      "description": "High energy, laughter, push-your-luck thrills, and quick turns for maximum group fun."
+    },
+    "party_and_push": {
+      "badge": "🎲 Party & Push-Your-Luck",
+      "title": "Party Mayhem & Push-Your-Luck",
+      "description": "High energy, laughter, push-your-luck thrills, and quick turns for maximum group fun."
+    },
+    "thematic_narrative": {
+      "badge": "🏰 Thematic & Narrative",
+      "title": "Thematic & Narrative Worlds",
+      "description": "High-stakes narrative immersion, rich fantasy/sci-fi worldbuilding, and tabletop quests."
+    },
+    "thematic_adventure": {
+      "badge": "🏰 Thematic & Narrative",
+      "title": "Thematic & Narrative Worlds",
+      "description": "High-stakes narrative immersion, rich fantasy/sci-fi worldbuilding, and tabletop quests."
+    },
+    "table_favorites": {
+      "badge": "⭐ Table Favorites",
+      "title": "Table Favorites & Wishlist",
+      "description": "Showcases the titles with the highest collective want-to-play votes from confirmed attendees."
+    },
+    "group_favorites": {
+      "badge": "⭐ Table Favorites",
+      "title": "Table Favorites & Wishlist",
+      "description": "Showcases the titles with the highest collective want-to-play votes from confirmed attendees."
+    },
+    "accessible_gateway": {
+      "badge": "🟢 Accessible Classics",
+      "title": "Breezy Gateway & Modern Classics",
+      "description": "Smooth, easy-to-table modern classics that maximize play time and minimize rules friction."
+    },
+    "accessible_classics": {
+      "badge": "🟢 Accessible Classics",
+      "title": "Breezy Gateway & Modern Classics",
+      "description": "Smooth, easy-to-table modern classics that maximize play time and minimize rules friction."
+    },
+    "wildcard_random": {
+      "badge": "🎲 Wildcard & Chaos",
+      "title": "Wildcard & Blind Draw",
+      "description": "No algorithms, curated formulas, or category bias—pure luck of the draw from your group's collection."
+    },
     "thematic_immersion": {
       "badge": "🎭 Immersive Thematic",
       "title": "Thematic & Narrative Immersive Night",
@@ -573,10 +745,13 @@
   },
   "guestRsvp": {
     "title": "👥 Bringing Guests?",
+    "manageTitle": "👥 Guests of {name}",
     "inputPlaceholder": "Guest name (e.g. Andrea, Alex)",
     "add": "+ Add",
     "yourGuests": "Your Guests ({count}):",
+    "attendeeGuests": "Guests ({count}):",
     "noGuests": "No guests added yet. Coming solo!",
+    "noGuestsForAttendee": "No guests listed for this attendee.",
     "removeGuest": "Remove guest",
     "cancel": "Cancel",
     "save": "Save Guests",
@@ -618,6 +793,8 @@
     "cantGo": "✕ Can't go",
     "nameGuests": "+ Name Guests",
     "guestsCount": "+{count} Guests",
+    "guestsOf": "Guests of {name}",
+    "manageGuestsOf": "Manage guests of {name}",
     "youAttended": "✓ You attended this session",
     "youDidNotAttend": "You were marked as not attending",
     "confirmedAttendees": "Confirmed Attendees:",

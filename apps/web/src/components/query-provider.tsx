@@ -1,16 +1,21 @@
 "use client";
 
-import { QueryClient, QueryClientProvider, isServer } from "@tanstack/react-query";
-import { type ReactNode } from "react";
+import { QueryClient, isServer } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { type ReactNode, useMemo } from "react";
+
+// Keep cached data up to 3 days to enable instant 0ms offline rendering & background revalidation
+export const THREE_DAYS_MS = 1000 * 60 * 60 * 24 * 3;
 
 function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        // Keep data fresh for 1 minute before marking as stale
-        staleTime: 60 * 1000,
-        // Keep inactive cache in memory for 10 minutes
-        gcTime: 10 * 60 * 1000,
+        // Default staleTime: 2 minutes
+        staleTime: 2 * 60 * 1000,
+        // Keep inactive cache in storage for 3 days
+        gcTime: THREE_DAYS_MS,
         refetchOnWindowFocus: false,
         retry: 1,
       },
@@ -32,5 +37,30 @@ export function getQueryClient() {
 
 export function QueryProvider({ children }: { children: ReactNode }) {
   const queryClient = getQueryClient();
-  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+
+  const persister = useMemo(() => {
+    return createSyncStoragePersister({
+      storage: typeof window !== "undefined" ? window.localStorage : undefined,
+      key: "TABLEFOLK_OFFLINE_CACHE",
+    });
+  }, []);
+
+  return (
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister,
+        maxAge: THREE_DAYS_MS,
+        buster: "v2",
+        dehydrateOptions: {
+          shouldDehydrateQuery: (query) => {
+            // Persist all successful queries to enable immediate 0ms rendering and PWA readiness
+            return query.state.status === "success";
+          },
+        },
+      }}
+    >
+      {children}
+    </PersistQueryClientProvider>
+  );
 }

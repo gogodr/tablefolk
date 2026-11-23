@@ -387,8 +387,32 @@ export function planSessionLineup(
     };
   }
 
+  const RECIPE_ALIAS_MAP: Record<string, string> = {
+    cooperative_survival: "cooperative_challenge",
+    engine_building: "engine_combos",
+    social_deduction: "high_interaction",
+    party_mayhem: "party_and_push",
+    thematic_narrative: "thematic_adventure",
+    table_favorites: "group_favorites",
+    accessible_gateway: "accessible_classics",
+    cooperative_challenge: "cooperative_survival",
+    engine_combos: "engine_building",
+    high_interaction: "social_deduction",
+    party_and_push: "party_mayhem",
+    thematic_adventure: "thematic_narrative",
+    group_favorites: "table_favorites",
+    accessible_classics: "accessible_gateway",
+  };
+
   // Check if an explicit recipe template was requested
-  const explicitRecipe = recipeId ? MENU_RECIPES.find((r) => r.id === recipeId) : undefined;
+  const explicitRecipe = recipeId
+    ? MENU_RECIPES.find(
+        (r) =>
+          r.id === recipeId ||
+          r.id === RECIPE_ALIAS_MAP[recipeId] ||
+          RECIPE_ALIAS_MAP[r.id] === recipeId
+      )
+    : undefined;
   let effectiveAllowHeavy = allowHeavy;
   let effectiveMechanicsAffinity = mechanicsAffinity;
   let activeWeightsMap = new Map(weightsMap);

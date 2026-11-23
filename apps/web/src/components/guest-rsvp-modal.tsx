@@ -9,6 +9,7 @@ interface GuestRsvpModalProps {
   eventTitle: string;
   initialGuestNames: string[];
   onSave: (guestNames: string[]) => Promise<void>;
+  title?: string;
 }
 
 export function GuestRsvpModal({
@@ -17,6 +18,7 @@ export function GuestRsvpModal({
   eventTitle,
   initialGuestNames,
   onSave,
+  title,
 }: GuestRsvpModalProps) {
   const t = useTranslations("guestRsvp");
   const [guestNames, setGuestNames] = useState<string[]>(initialGuestNames);
@@ -87,7 +89,7 @@ export function GuestRsvpModal({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
           <div>
-            <h3 style={{ margin: "0 0 4px", fontSize: "18px" }}>{t("title")}</h3>
+            <h3 style={{ margin: "0 0 4px", fontSize: "18px" }}>{title ?? t("title")}</h3>
             <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>{eventTitle}</p>
           </div>
           <button type="button" className="button-quiet button-small" onClick={onClose} aria-label={t("cancel")}>
@@ -112,11 +114,11 @@ export function GuestRsvpModal({
 
         <div style={{ marginBottom: "20px" }}>
           <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--muted)", marginBottom: "8px" }}>
-            {t("yourGuests", { count: guestNames.length })}
+            {title ? t("attendeeGuests", { count: guestNames.length }) : t("yourGuests", { count: guestNames.length })}
           </label>
           {guestNames.length === 0 ? (
             <p style={{ fontSize: "13px", color: "var(--muted)", fontStyle: "italic", margin: "8px 0" }}>
-              {t("noGuests")}
+              {title ? t("noGuestsForAttendee") : t("noGuests")}
             </p>
           ) : (
             <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
