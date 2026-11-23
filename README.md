@@ -13,6 +13,8 @@ A friendly place to catalog board games, share selected games with a group, and 
 ## 📑 Quick Navigation
 
 - [📊 Personal Dashboard & Next Gathering Hero](#-personal-dashboard--next-gathering-hero)
+- [📦 Expansion Sharing & Box Management](#-expansion-sharing--granular-box-management)
+- [⭐ BGG Rating, Geek Rank & "Best at" Badges](#-bgg-rating-geek-rank--community-best-at-badges)
 - [🍱 Evening Session Menu Planner](#-evening-session-menu-planner--anti-fatigue-engine)
   - [🧠 Hierarchy & Anti-Fatigue Rules](#-hierarchy--anti-fatigue-engine) · [☕ Dynamic Setup & Transition Buffers](#-dynamic-setup--intermission-buffers) · [🗳️ 3 Menu Options & 12 Archetype Recipes](#️-3-contrasting-menu-options--12-archetype-recipes-anti-paralysis) · [🎲 Contributor Toggles & Live Archetype Badges](#-contributor-toggles--live-archetype-badges)
 - [📅 Global Events Calendar](#-global-events-calendar)
@@ -46,6 +48,32 @@ The personal dashboard (`/dashboard`) serves as your central command center acro
 * **Weekly Voting Points Bank:** Real-time balance of your "Want-to-Play" points with weekly reload countdown (+3 points on Mondays up to a max cap of 5 in hand).
 * **Quick Draw Launcher:** Spin for a game pick or multi-game menu immediately from your dashboard with automatic group collection selection.
 * **Active Groups & Upcoming Events Feed:** Direct quick-links to your groups with member counts and upcoming event timelines.
+
+---
+
+## 📦 Expansion Sharing & Granular Box Management
+
+Managing physical tabletop boxes and expansions across multiple groups is frictionless and precise:
+
+* **Cascaded Expansion Sharing:** When sharing a base game (e.g. *Catan* or *Gloomhaven*) with a group, all expansions **in your personal possession** are automatically shared by default. Group members immediately see the full playable set with its expanded player count without having to hunt down individual boxes.
+* **Granular Per-Group Checkboxes in Modal:** Inside the Share Inspector, each shared group reveals individual checkboxes for attached expansions:
+  * ☑️ *The Settlers of Catan: 5-6 Player Extension (up to 6p)*
+  * ☑️ *Edición Mallorca*
+  * ⬜ *Scenarios: Santa Claus*
+  * Unchecking a box removes only that specific expansion from that group, while keeping the base game and other expansions active.
+* **Intelligent Sub-Expansion Grouping in "All Boxes" View:** In `📄 All boxes` view mode, expansions are no longer scattered across the alphabet. Every owned expansion appears **immediately underneath its parent base game** with a visual connector banner (`↳ Catan`) and border accent, each retaining its independent `Share` and `Manage` controls.
+* **Clean Card Titles (Option A):** Game card headings display clean, short titles (e.g. `Catan`, `Gloomhaven`) while attached expansions are showcased in a dedicated, stylish purple box at the bottom (`📦 Included expansions (5)...`) with individual expansion names and player-count boosts.
+
+---
+
+## ⭐ BGG Rating, Geek Rank & Community "Best at" Badges
+
+Tablefolk enriches each game with critical consensus data from BoardGameGeek:
+
+* **BGG Average Rating & Overall Rank:** Visual badges display the official BGG score (e.g. `★ 8.4`) and global board game rank (`🏆 #15`).
+* **Community "Best at X" Badge:** Parsed directly from the BGG `suggested_numplayers` poll (e.g. `⭐ Best at 4`, `⭐ Best at 3–4`), highlighting the optimal headcount recommended by tabletop veterans.
+* **Gentle Background Auto-Enrichment:** On visit, Tablefolk runs a throttled, silent background sync that enriches missing metadata or refreshes titles older than 7 days.
+* **1-Click Modal Refresh:** A dedicated refresh button in the Game Detail Modal allows instant on-demand updates directly from BGG XML API.
 
 ---
 
@@ -321,7 +349,8 @@ Tablefolk focuses on what happens **around the physical table**: social coordina
 - [x] **📊 Personal Gathering Dashboard**: Live countdown to next game night, official lineup preview, voting points reload tracker, and 1-click Quick Draw launcher.
 - [x] **📜 Narrative Completed Session Timeline & Recap**: Chronological order of tabled games, intermission buffers, and 1-click WhatsApp / Discord recap generator.
 - [x] **🌐 Multilingual Interface (i18n)**: English & Spanish interface powered by `next-intl` (preserving authentic BGG metadata).
-- [x] **⭐ BGG Rating, Geek Rank & Community Consensus**: Display BGG community rating, overall geek rank (`#42 BGG`), and community-recommended player counts ("Best at X") directly on cards and modals with 7-day refresh cycles.
+- [x] **⭐ BGG Rating, Geek Rank & Community Consensus**: Display BGG community rating, overall geek rank (`#42 BGG`), and community-recommended player counts ("Best at X") directly on cards and modals with gentle background auto-enrichment and single-game refresh.
+- [x] **📦 Cascaded Expansion Sharing & Granular Checkboxes**: Auto-share owned expansions with base games, per-group toggle checkboxes in the share modal, and intelligent sub-expansion grouping in "All boxes" view.
 - [ ] **🎲 In-Room Mini-Kit & Animated Meeples**:
   - Interactive **First-Player Decider** featuring animated meeple avatars.
   - Optional **Turn / AP Timer** (Analysis Paralysis alert) for heavy turns.
