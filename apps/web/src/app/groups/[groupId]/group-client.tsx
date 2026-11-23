@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import type { UserVotingSummary } from "@tablefolk/contracts";
 import { GameCard } from "@/components/game-card";
 import { useApi } from "@/lib/api";
@@ -21,6 +22,7 @@ type PlayerFilter = "all" | "2" | "3-4" | "5+";
 type WeightFilter = "all" | "light" | "medium" | "heavy";
 
 export function GroupClient() {
+  const tVoting = useTranslations("groupVoting");
   const { groupId } = useParams<{ groupId: string }>();
   const { isLoaded, isSignedIn } = useAuth();
   const api = useApi();
@@ -217,14 +219,19 @@ export function GroupClient() {
         <div className="panel voting-banner">
           <div className="panel-header">
             <div>
-              <h3>Want to Play · Group Wishlist</h3>
+              <h3>{tVoting("title")}</h3>
               <p>
-                Vote for any game (yours or a friend&apos;s!) to increase its chances in upcoming Game Nights.
-                Points only degrade when a game wins!
+                {tVoting("description")}
               </p>
             </div>
-            <div className="voting-points-badge">
-              <strong>⭐ {votingSummary.availablePoints}</strong> points available
+            <div
+              className="voting-points-badge"
+              title={tVoting("badgeTooltip")}
+            >
+              {tVoting("badgeText", {
+                available: votingSummary.availablePoints,
+                used: votingSummary.usedPoints,
+              })}
             </div>
           </div>
         </div>

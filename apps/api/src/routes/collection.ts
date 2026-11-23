@@ -359,16 +359,16 @@ export async function collectionRoutes(app: FastifyInstance) {
       include: { game: true },
     });
 
-    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
     const now = Date.now();
 
     // Priority 1: Games never enriched yet
-    // Priority 2: Games enriched >30 days ago that still lack weight or local cover
+    // Priority 2: Games enriched >7 days ago that still lack weight or local cover
     const candidates = items
       .filter((item) => {
         if (!item.game.lastEnrichedAt) return true;
         const missingData = item.game.weight === null || !item.game.coverUrl?.startsWith("/v1/covers/");
-        const isStale = (now - item.game.lastEnrichedAt.getTime()) > THIRTY_DAYS_MS;
+        const isStale = (now - item.game.lastEnrichedAt.getTime()) > SEVEN_DAYS_MS;
         return missingData && isStale;
       })
       .sort((a, b) => {

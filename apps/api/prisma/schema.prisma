@@ -14,6 +14,7 @@ model User {
   bggUsername        String?
   lastBggSyncAt      DateTime?
   votingPoints       Int              @default(5)
+  lastPointsRefillAt DateTime?
   createdAt          DateTime         @default(now())
   collection         CollectionItem[]
   createdGroups      Group[]          @relation("GroupCreator")
@@ -181,8 +182,9 @@ model Event {
   officialPickCarrier String?
   officialLineup  Json?
   menuPoll        Json?
-  playedBggIds    Int[]       @default([])
-  createdAt       DateTime    @default(now())
+  playedBggIds        Int[]       @default([])
+  confirmedGuestNames String[]    @default([])
+  createdAt           DateTime    @default(now())
   group           Group       @relation(fields: [groupId], references: [id], onDelete: Cascade)
   creator         User?       @relation("EventCreator", fields: [creatorId], references: [id], onDelete: SetNull)
   host            User?       @relation("EventHost", fields: [hostUserId], references: [id])
@@ -200,6 +202,7 @@ model EventRsvp {
   userId           String
   status           String   @default("ATTENDING")
   additionalGuests Int      @default(0)
+  guestNames       String[] @default([])
   updatedAt        DateTime @updatedAt
   event            Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
