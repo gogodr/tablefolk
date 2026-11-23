@@ -22,7 +22,15 @@ export async function collectionRoutes(app: FastifyInstance) {
     });
 
     // Map expansions owned by the user to their base games
-    const expansionsByBase = new Map<number, { bggId: number; name: string; maxPlayers: number | null; sharedGroupIds: string[] }[]>();
+    const expansionsByBase = new Map<number, {
+      bggId: number;
+      name: string;
+      maxPlayers: number | null;
+      weight?: number | null;
+      playingTime?: number | null;
+      mechanics?: string[];
+      sharedGroupIds: string[];
+    }[]>();
     for (const item of items) {
       if (item.game.baseGameBggId) {
         const list = expansionsByBase.get(item.game.baseGameBggId) ?? [];
@@ -30,6 +38,9 @@ export async function collectionRoutes(app: FastifyInstance) {
           bggId: item.game.bggId,
           name: item.game.name,
           maxPlayers: item.game.maxPlayers,
+          weight: item.game.weight,
+          playingTime: item.game.playingTime,
+          mechanics: item.game.mechanics,
           sharedGroupIds: item.shares.map((share) => share.groupId),
         });
         expansionsByBase.set(item.game.baseGameBggId, list);

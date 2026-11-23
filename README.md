@@ -122,7 +122,9 @@ To prevent unbalanced sessions (e.g., an intense 60-minute cooperative game bein
 > - **🍕 Warm-up:** Strictly capped at $\le 35$ min and weight $\le 2.2$ (Light). It must always be shorter and lighter than the Main Game ($duration \le mainDuration$ and $weight \le mainWeight$).
 > - **☕ Cooldown:** Capped at $\le 45$ min. If the Main Game was Heavy ($weight > 3.2$), the Cooldown is strictly restricted to light games ($weight \le 2.0$) to prevent brain burn.
 > - **🛡️ Anti-Fatigue Limit:** Never more than **1 Heavy game** per session, and a maximum of **3 games** total per gathering.
-> - **📦 Expansion Bundling & Exclusion:** Standalone expansions (e.g. *Rising Sun: Daimyo Box*, *Survive 5-6 Player Mini Expansion*) are excluded as independent picks. Instead, they dynamically boost the base game's player count and are bundled together in the draw and session menu (e.g., `Rising Sun + Daimyo Box`).
+> - **📦 Modular Expansion Selection & Dynamic Weight:** Standalone expansions (e.g. *Rising Sun: Daimyo Box*, *Survive 5-6 Player Mini Expansion*) are excluded as independent picks. Instead, the session planner evaluates playable variants: **Vanilla (base game only)** vs. **Base + Specific Expansions**.
+>   - **Player Extensions (e.g. 5-6p):** Mandatory when table headcount exceeds the base game limit; automatically omitted when headcount fits vanilla to prevent unnecessary components.
+>   - **Content & Gameplay Expansions:** Evaluated dynamically against the session recipe. Playing with expansions computes **effective complexity weight** ($\max(baseWeight, expWeight)$), **adjusted playtime** ($baseTime + \sum expTime$), and surfaces **added mechanics** (e.g. *Catan* + *Cities & Knights* elevates weight from 2.3 to 3.1, adding *Hand Management* and scaling setup buffers from 20m to 25m).
 
 ---
 
@@ -350,7 +352,7 @@ Tablefolk focuses on what happens **around the physical table**: social coordina
 - [x] **📜 Narrative Completed Session Timeline & Recap**: Chronological order of tabled games, intermission buffers, and 1-click WhatsApp / Discord recap generator.
 - [x] **🌐 Multilingual Interface (i18n)**: English & Spanish interface powered by `next-intl` (preserving authentic BGG metadata).
 - [x] **⭐ BGG Rating, Geek Rank & Community Consensus**: Display BGG community rating, overall geek rank (`#42 BGG`), and community-recommended player counts ("Best at X") directly on cards and modals with gentle background auto-enrichment and single-game refresh.
-- [x] **📦 Cascaded Expansion Sharing & Granular Checkboxes**: Auto-share owned expansions with base games, per-group toggle checkboxes in the share modal, and intelligent sub-expansion grouping in "All boxes" view.
+- [x] **📦 Cascaded Expansion Sharing & Modular Session Planning**: Auto-share owned expansions with base games, per-group toggle checkboxes in the share modal, sub-expansion grouping in "All boxes" view, and modular session engine selection (Vanilla vs. Expansions with dynamic BGG complexity weight, duration, and added mechanics).
 - [ ] **🎲 In-Room Mini-Kit & Animated Meeples**:
   - Interactive **First-Player Decider** featuring animated meeple avatars.
   - Optional **Turn / AP Timer** (Analysis Paralysis alert) for heavy turns.

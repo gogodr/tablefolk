@@ -974,7 +974,9 @@ export async function eventRoutes(app: FastifyInstance) {
         name: slot.game.name,
         estimatedMinutes: slot.estimatedMinutes,
         carrierDisplayName: carrier,
-        expansions: slot.game.expansions?.map((e) => ({ bggId: e.bggId, name: e.name })),
+        expansions: slot.expansions ?? (slot.game.expansions?.map((e) => ({ bggId: e.bggId, name: e.name })) ?? []),
+        effectiveWeight: slot.effectiveWeight,
+        addedMechanics: slot.addedMechanics,
       };
     });
 

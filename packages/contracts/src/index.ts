@@ -91,6 +91,8 @@ export const eventSetOfficialSchema = z.object({
       bggId: z.number().int().positive(),
       name: z.string(),
     })).optional(),
+    effectiveWeight: z.number().nullable().optional(),
+    addedMechanics: z.array(z.string()).optional(),
   })).optional(),
 });
 
@@ -138,6 +140,16 @@ export interface Game {
   lastEnrichedAt?: string | null;
 }
 
+export interface AttachedExpansion {
+  bggId: number;
+  name: string;
+  maxPlayers: number | null;
+  weight?: number | null;
+  playingTime?: number | null;
+  mechanics?: string[];
+  sharedGroupIds?: string[];
+}
+
 export interface CollectionGame extends Game {
   sharedGroupIds: string[];
   isAvailable: boolean;
@@ -147,7 +159,7 @@ export interface CollectionGame extends Game {
   isStandalone?: boolean | null;
   effectiveMaxPlayers?: number | null;
   expansionCount?: number;
-  expansions?: { bggId: number; name: string; maxPlayers: number | null; sharedGroupIds?: string[] }[];
+  expansions?: AttachedExpansion[];
 }
 
 export interface Member {
@@ -177,7 +189,7 @@ export interface GroupGame extends Game {
   userVotedPoints?: number;
   effectiveMaxPlayers?: number | null;
   expansionCount?: number;
-  expansions?: { bggId: number; name: string; maxPlayers: number | null; sharedGroupIds?: string[] }[];
+  expansions?: AttachedExpansion[];
   isStandalone?: boolean | null;
 }
 
@@ -216,6 +228,9 @@ export interface SessionGameSlot {
   transitionBeforeMinutes?: number;
   transitionReason?: string;
   sharedMechanics?: string[];
+  expansions?: { bggId: number; name: string }[];
+  effectiveWeight?: number | null;
+  addedMechanics?: string[];
 }
 
 export interface SessionLineupResult {
@@ -332,6 +347,8 @@ export interface OfficialLineupItem {
   estimatedMinutes: number;
   carrierDisplayName?: string;
   expansions?: { bggId: number; name: string }[];
+  effectiveWeight?: number | null;
+  addedMechanics?: string[];
 }
 
 export interface EventMenuVote {
