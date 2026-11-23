@@ -564,7 +564,12 @@
     "saving": "Saving…",
     "shared": "Shared",
     "share": "Share",
-    "error": "Could not change sharing."
+    "error": "Could not change sharing.",
+    "includesExpansions": "Includes {count} owned expansions",
+    "expansionsShareHint": "Sharing this game automatically shares all its owned expansions with the group.",
+    "sharedExpansionsTitle": "Expansions shared with this group ({count})",
+    "includesBaseGame": "Expansion for {baseGame}",
+    "baseGameShareHint": "Sharing this expansion also shares its base game so it can be brought and played."
   },
   "guestRsvp": {
     "title": "👥 Bringing Guests?",

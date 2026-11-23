@@ -5,7 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import type { BggSyncResult } from "@tablefolk/contracts";
+import type { BggSyncResult, CollectionGame } from "@tablefolk/contracts";
 import { GameCard } from "@/components/game-card";
 import { GameSearch } from "@/components/game-search";
 import { ShareControl } from "@/components/share-control";
@@ -282,6 +282,11 @@ export function CollectionClient() {
     }).length;
   }, [games]);
 
+  const ownedBaseGameIds = useMemo(
+    () => new Set(games.filter((g) => g.kind !== "boardgameexpansion").map((g) => g.bggId)),
+    [games]
+  );
+
   // Filtered & Sorted Collection List
   const shown = useMemo(() => {
     let list = [...games];
@@ -299,9 +304,6 @@ export function CollectionClient() {
     }
 
     // 2. View Mode (Grouped under Base Game vs Flat view)
-    const ownedBaseGameIds = new Set(
-      games.filter((g) => g.kind !== "boardgameexpansion").map((g) => g.bggId)
-    );
     if (viewMode === "grouped" && filter !== "boardgameexpansion") {
       list = list.filter((g) => {
         if (g.kind !== "boardgameexpansion") return true;
@@ -358,6 +360,45 @@ export function CollectionClient() {
       if (sortBy === "year-desc") return (b.yearPublished ?? 0) - (a.yearPublished ?? 0);
       return 0; // Default recent DB order
     });
+
+    // 7. In Flat view ("All boxes"), group expansions immediately following their base game
+    if (viewMode === "flat" && filter !== "boardgameexpansion") {
+      const childrenByBase = new Map<number, CollectionGame[]>();
+      const basesAndOrphans: CollectionGame[] = [];
+
+      for (const item of list) {
+        if (item.kind === "boardgameexpansion" && item.baseGameBggId) {
+          const arr = childrenByBase.get(item.baseGameBggId) ?? [];
+          arr.push(item);
+          childrenByBase.set(item.baseGameBggId, arr);
+        } else {
+          basesAndOrphans.push(item);
+        }
+      }
+
+      const finalList: CollectionGame[] = [];
+      const placedChildIds = new Set<number>();
+
+      for (const item of basesAndOrphans) {
+        finalList.push(item);
+        const children = childrenByBase.get(item.bggId);
+        if (children) {
+          for (const child of children) {
+            finalList.push(child);
+            placedChildIds.add(child.bggId);
+          }
+        }
+      }
+
+      // Any expansions whose base game was NOT in basesAndOrphans (e.g. orphan expansions)
+      for (const item of list) {
+        if (item.kind === "boardgameexpansion" && !placedChildIds.has(item.bggId)) {
+          finalList.push(item);
+        }
+      }
+
+      return finalList;
+    }
 
     return list;
   }, [games, searchQuery, filter, playerFilter, weightFilter, sharedFilter, sortBy]);
@@ -675,37 +716,52 @@ export function CollectionClient() {
         </div>
       ) : (
         <div className="game-grid collection-grid">
-          {shown.map((game, index) => (
-            <div className="collection-card-wrap" key={game.bggId}>
-              <GameCard
-                game={game}
-                eagerCover={index === 0}
-                actions={
-                  <div className="collection-card-actions">
-                    <button
-                      type="button"
-                      className="collection-action"
-                      onClick={() => openInspector(game.bggId, "share")}
-                      aria-label={`${t("shareAction")} ${game.name}`}
-                    >
-                      {t("shareAction")} {game.sharedGroupIds.length > 0 && <span>{game.sharedGroupIds.length}</span>}
-                    </button>
-                    <button
-                      type="button"
-                      className="collection-action"
-                      onClick={() => openInspector(game.bggId, "details")}
-                      aria-label={`${t("manageAction")} ${game.name}`}
-                    >
-                      {t("manageAction")}
-                    </button>
+          {shown.map((game, index) => {
+            const isSubExpansionInFlat =
+              viewMode === "flat" &&
+              game.kind === "boardgameexpansion" &&
+              Boolean(game.baseGameBggId && ownedBaseGameIds.has(game.baseGameBggId));
+
+            return (
+              <div
+                className={`collection-card-wrap ${isSubExpansionInFlat ? "collection-card-wrap-subexpansion" : ""}`}
+                key={game.bggId}
+              >
+                {isSubExpansionInFlat && game.baseGameTitle && (
+                  <div className="subexpansion-banner">
+                    <span>↳ {game.baseGameTitle}</span>
                   </div>
-                }
-              />
-              <span className={`collection-status ${game.isAvailable ? "" : "collection-status-unavailable"}`}>
-                {game.isAvailable ? t("availableToTravel") : formatReason(game.unavailableReason)}
-              </span>
-            </div>
-          ))}
+                )}
+                <GameCard
+                  game={game}
+                  eagerCover={index === 0}
+                  actions={
+                    <div className="collection-card-actions">
+                      <button
+                        type="button"
+                        className="collection-action"
+                        onClick={() => openInspector(game.bggId, "share")}
+                        aria-label={`${t("shareAction")} ${game.name}`}
+                      >
+                        {t("shareAction")} {game.sharedGroupIds.length > 0 && <span>{game.sharedGroupIds.length}</span>}
+                      </button>
+                      <button
+                        type="button"
+                        className="collection-action"
+                        onClick={() => openInspector(game.bggId, "details")}
+                        aria-label={`${t("manageAction")} ${game.name}`}
+                      >
+                        {t("manageAction")}
+                      </button>
+                    </div>
+                  }
+                />
+                <span className={`collection-status ${game.isAvailable ? "" : "collection-status-unavailable"}`}>
+                  {game.isAvailable ? t("availableToTravel") : formatReason(game.unavailableReason)}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -742,6 +798,9 @@ export function CollectionClient() {
                 <h3>{t("shareWithGroups")}</h3>
                 <ShareControl
                   bggId={game.bggId}
+                  gameName={game.name}
+                  baseGameTitle={game.baseGameTitle}
+                  expansions={game.expansions}
                   sharedGroupIds={game.sharedGroupIds}
                   groups={groups}
                   onChanged={() => void refreshCollection()}

@@ -147,7 +147,7 @@ export interface CollectionGame extends Game {
   isStandalone?: boolean | null;
   effectiveMaxPlayers?: number | null;
   expansionCount?: number;
-  expansions?: { bggId: number; name: string; maxPlayers: number | null }[];
+  expansions?: { bggId: number; name: string; maxPlayers: number | null; sharedGroupIds?: string[] }[];
 }
 
 export interface Member {
@@ -177,7 +177,7 @@ export interface GroupGame extends Game {
   userVotedPoints?: number;
   effectiveMaxPlayers?: number | null;
   expansionCount?: number;
-  expansions?: { bggId: number; name: string; maxPlayers: number | null }[];
+  expansions?: { bggId: number; name: string; maxPlayers: number | null; sharedGroupIds?: string[] }[];
   isStandalone?: boolean | null;
 }
 

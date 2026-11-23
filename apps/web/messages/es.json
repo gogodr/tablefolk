@@ -560,7 +560,12 @@
     "saving": "Guardando…",
     "shared": "Compartido",
     "share": "Compartir",
-    "error": "No se pudo actualizar el estado de compartido."
+    "error": "No se pudo actualizar el estado de compartido.",
+    "includesExpansions": "Incluye {count} expansiones de tu colección",
+    "expansionsShareHint": "Al compartir este juego, sus expansiones se compartirán automáticamente en el grupo.",
+    "sharedExpansionsTitle": "Expansiones compartidas con este grupo ({count})",
+    "includesBaseGame": "Expansión para {baseGame}",
+    "baseGameShareHint": "Al compartir esta expansión, el juego base también se compartirá para poder jugarlo."
   },
   "guestRsvp": {
     "title": "👥 ¿Llevarás invitados?",

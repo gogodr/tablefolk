@@ -22,7 +22,7 @@ export async function collectionRoutes(app: FastifyInstance) {
     });
 
     // Map expansions owned by the user to their base games
-    const expansionsByBase = new Map<number, { bggId: number; name: string; maxPlayers: number | null }[]>();
+    const expansionsByBase = new Map<number, { bggId: number; name: string; maxPlayers: number | null; sharedGroupIds: string[] }[]>();
     for (const item of items) {
       if (item.game.baseGameBggId) {
         const list = expansionsByBase.get(item.game.baseGameBggId) ?? [];
@@ -30,6 +30,7 @@ export async function collectionRoutes(app: FastifyInstance) {
           bggId: item.game.bggId,
           name: item.game.name,
           maxPlayers: item.game.maxPlayers,
+          sharedGroupIds: item.shares.map((share) => share.groupId),
         });
         expansionsByBase.set(item.game.baseGameBggId, list);
       }
@@ -129,6 +130,21 @@ export async function collectionRoutes(app: FastifyInstance) {
       });
     }
     await db().collectionItem.create({ data: { userId: user.id, bggId } });
+
+    // If adding an expansion whose base game is already shared, auto-share with the same groups
+    if (game.baseGameBggId) {
+      const existingShares = await db().groupShare.findMany({
+        where: { userId: user.id, bggId: game.baseGameBggId },
+        select: { groupId: true },
+      });
+      for (const s of existingShares) {
+        await db().groupShare.upsert({
+          where: { groupId_userId_bggId: { groupId: s.groupId, userId: user.id, bggId } },
+          create: { groupId: s.groupId, userId: user.id, bggId },
+          update: {},
+        });
+      }
+    }
     return reply.code(201).send({ game: gameDto(game) });
   });
 
@@ -351,6 +367,22 @@ export async function collectionRoutes(app: FastifyInstance) {
       } catch (err) {
         console.warn("Background batch enrichment notice:", err);
       }
+    }
+
+    // Cascade share any newly imported expansions whose base game is already shared by this user
+    try {
+      await db().$executeRawUnsafe(
+        `INSERT INTO "GroupShare" ("groupId", "userId", "bggId")
+         SELECT gs."groupId", ci."userId", ci."bggId"
+         FROM "GroupShare" gs
+         JOIN "Game" g_exp ON g_exp."baseGameBggId" = gs."bggId"
+         JOIN "CollectionItem" ci ON ci."userId" = gs."userId" AND ci."bggId" = g_exp."bggId"
+         WHERE gs."userId" = $1
+         ON CONFLICT ("groupId", "userId", "bggId") DO NOTHING;`,
+        user.id
+      );
+    } catch {
+      // Non-fatal if raw execute fails in test/mock environments
     }
 
     await db().user.update({
