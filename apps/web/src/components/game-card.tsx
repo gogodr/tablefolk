@@ -129,17 +129,7 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
         </div>
         <div className="game-card-body">
           <div className="game-card-heading">
-            <h3>
-              {game.name}
-              {expansions && expansions.length > 0 && (
-                <span className="game-attached-expansions-tag" title={expansions.map((e) => e.name).join(", ")}>
-                  {" + "}
-                  {expansions.length <= 2
-                    ? expansions.map((e) => cleanExpansionName(game.name, e.name)).join(", ")
-                    : `${expansions.slice(0, 2).map((e) => cleanExpansionName(game.name, e.name)).join(", ")} (+${expansions.length - 2} more)`}
-                </span>
-              )}
-            </h3>
+            <h3>{game.name}</h3>
             {game.kind === "boardgameexpansion" && (
               <span className={`game-kind ${"isStandalone" in game && game.isStandalone ? "game-kind-standalone" : ""}`}>
                 {"isStandalone" in game && game.isStandalone ? t("standalone") : t("expansion")}
@@ -189,14 +179,6 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
           {game.yearPublished && <span className="meta-pill meta-year">{game.yearPublished}</span>}
           {versionName && <span className="meta-pill meta-version" title={`Edition: ${versionName}`}>{versionName}</span>}
           {game.baseGameTitle && <span className="meta-pill meta-basegame" title={`Expansion for ${game.baseGameTitle}`}>{t("forBaseGame", { title: game.baseGameTitle })}</span>}
-          {expansions && expansions.length > 0 && (
-            <span
-              className="meta-pill meta-expansions-badge"
-              title={expansions.map((expansion) => `${expansion.name} (up to ${expansion.maxPlayers ?? "?"} players)`).join(", ")}
-            >
-              📦 {expansions.length === 1 && expansions[0] ? `+ ${cleanExpansionName(game.name, expansions[0].name)}` : `+ ${expansions.length} expansions`}
-            </span>
-          )}
           {!isAvailable && <span className="meta-pill meta-unavailable" title={displayedReason}>{displayedReason}</span>}
         </p>
 
