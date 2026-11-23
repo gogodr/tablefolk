@@ -11,6 +11,7 @@ import {
   useBggProfileQuery,
 } from "@/lib/queries";
 import { gameCoverSrc } from "@/lib/assets";
+import { useAutoEnrich } from "@/lib/use-auto-enrich";
 import "./dashboard.css";
 
 export function DashboardClient() {
@@ -27,6 +28,7 @@ export function DashboardClient() {
   const groups = groupsData?.groups ?? [];
   const games = collectionData?.games ?? [];
   const events = eventsData?.events ?? [];
+  useAutoEnrich(games);
 
   // Quick Draw local state
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");

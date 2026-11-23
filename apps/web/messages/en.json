@@ -122,6 +122,7 @@
     "bggConnectPrompt": "Connect your BGG account to automatically import and refresh your owned collection.",
     "refreshDetails": "Refresh game details",
     "refreshPending": "Refresh game details ({count})",
+    "refreshingBackground": "Syncing BGG details in background…",
     "searchPlaceholder": "Search by name, designer, or base game…",
     "showingCount": "Showing {shown} of {total} {total, plural, =1 {game} other {games}}",
     "filters": {
@@ -549,7 +550,13 @@
     "noSynopsis": "No synopsis available.",
     "design": "Design:",
     "publisher": "Publisher:",
-    "viewOnBgg": "View on BoardGameGeek"
+    "viewOnBgg": "View on BoardGameGeek",
+    "refreshFromBgg": "Refresh from BGG",
+    "refreshFromBggTitle": "Fetch latest rating, rank, complexity & community data from BoardGameGeek",
+    "refreshing": "Refreshing…",
+    "refreshSuccess": "✓ Updated with latest BGG stats!",
+    "alreadyUpToDate": "Already up to date (synced recently)",
+    "refreshError": "Could not update from BGG right now"
   },
   "shareControl": {
     "noGroups": "Create or join a group to share this game.",

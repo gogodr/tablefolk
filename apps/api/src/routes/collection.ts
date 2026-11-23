@@ -477,24 +477,24 @@ export async function collectionRoutes(app: FastifyInstance) {
   });
 
   // Manual single-game refresh from BGG (rate-limited to max once every 24h per game)
-  app.post("/v1/collection/:bggId/refresh", async (request, reply) => {
-    const user = await requireUser(request);
+  const refreshSingleGameHandler = async (request: any) => {
+    await requireUser(request);
     const bggId = Number((request.params as { bggId: string }).bggId);
     if (!Number.isInteger(bggId) || bggId < 1) throw new AppError(400, "INVALID_ID", "Invalid game ID");
 
-    const item = await db().collectionItem.findUnique({
-      where: { userId_bggId: { userId: user.id, bggId } },
-      include: { game: true },
-    });
-    if (!item) throw notFound("Game not found in your collection");
+    const game = await db().game.findUnique({ where: { bggId } });
+    if (!game) throw notFound("Game not found");
 
     const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
-    if (item.game.lastEnrichedAt && (Date.now() - item.game.lastEnrichedAt.getTime()) < TWENTY_FOUR_HOURS_MS) {
-      return { game: gameDto(item.game), refreshed: false };
+    const isRecent = game.lastEnrichedAt && (Date.now() - game.lastEnrichedAt.getTime()) < TWENTY_FOUR_HOURS_MS;
+    const force = Boolean(request.query?.force || request.body?.force);
+
+    if (isRecent && !force) {
+      return { game: gameDto(game), refreshed: false };
     }
 
     const details = await getBggGame(bggId);
-    let coverUrl = item.game.coverUrl;
+    let coverUrl = game.coverUrl;
     if (!coverUrl?.startsWith("/v1/covers/")) {
       const targetUrl = details.imageUrl ?? coverUrl ?? null;
       if (targetUrl) {
@@ -536,5 +536,8 @@ export async function collectionRoutes(app: FastifyInstance) {
     });
 
     return { game: gameDto(updated), refreshed: true };
-  });
+  };
+
+  app.post("/v1/collection/:bggId/refresh", refreshSingleGameHandler);
+  app.post("/v1/games/:bggId/refresh", refreshSingleGameHandler);
 }

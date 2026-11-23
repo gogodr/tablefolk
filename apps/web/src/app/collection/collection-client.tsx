@@ -11,6 +11,7 @@ import { GameSearch } from "@/components/game-search";
 import { ShareControl } from "@/components/share-control";
 import { useApi } from "@/lib/api";
 import { queryKeys, useCollectionQuery, useGroupsQuery, useBggProfileQuery } from "@/lib/queries";
+import { useAutoEnrich } from "@/lib/use-auto-enrich";
 
 type Filter = "all" | "boardgame" | "boardgameexpansion" | "available" | "unavailable" | "expanded";
 type SortOption = "name-asc" | "name-desc" | "weight-desc" | "weight-asc" | "time-asc" | "year-desc" | "recent";
@@ -75,6 +76,7 @@ export function CollectionClient() {
 
   const games = collectionData?.games ?? [];
   const groups = groupsData?.groups ?? [];
+  const { isAutoEnriching } = useAutoEnrich(games);
   const [error, setError] = useState("");
 
   // Filters & Search
@@ -247,16 +249,27 @@ export function CollectionClient() {
 
   const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-  // Pending enrichment count (missing complexity weight OR not yet cached locally in Tablefolk,
+  // Pending enrichment count (missing complexity weight, rating, rank, bestPlayers, OR not yet cached locally in Tablefolk,
   // excluding games refreshed within the last 7 days so items without weight/cover on BGG aren't stuck forever)
   const pendingEnrichmentCount = useMemo(() => {
     const now = Date.now();
     return games.filter((g) => {
       const missingData =
         g.weight === null ||
+        g.rating === null ||
+        g.rating === undefined ||
+        g.rank === null ||
+        g.rank === undefined ||
+        g.bestPlayers === null ||
+        g.bestPlayers === undefined ||
         !g.coverUrl ||
         !g.coverUrl.startsWith("/v1/covers/");
-      if (!missingData) return false;
+
+      if (!missingData) {
+        if (!g.lastEnrichedAt) return true;
+        const enrichedAt = new Date(g.lastEnrichedAt).getTime();
+        return now - enrichedAt > SEVEN_DAYS_MS;
+      }
 
       if (g.lastEnrichedAt) {
         const enrichedAt = new Date(g.lastEnrichedAt).getTime();
@@ -456,13 +469,24 @@ export function CollectionClient() {
             {syncStatus && <p className="form-success">{syncStatus}</p>}
           </div>
         </details>
-        {(pendingEnrichmentCount > 0 || enrichStatus) && (
+        {(pendingEnrichmentCount > 0 || enrichStatus || isAutoEnriching) && (
           <details className="collection-tool">
-            <summary>{pendingEnrichmentCount > 0 ? t("refreshPending", { count: pendingEnrichmentCount }) : t("refreshDetails")}</summary>
+            <summary>
+              {isAutoEnriching
+                ? `🔄 ${t("refreshingBackground")}`
+                : pendingEnrichmentCount > 0
+                ? t("refreshPending", { count: pendingEnrichmentCount })
+                : t("refreshDetails")}
+            </summary>
             <div className="collection-tool-content">
               <p>{t("enrichDesc")}</p>
-              <button type="button" className="button-secondary" onClick={() => void handleEnrich()} disabled={enriching || pendingEnrichmentCount === 0}>
-                {enriching ? t("refreshing") : t("refreshDetails")}
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => void handleEnrich()}
+                disabled={enriching || isAutoEnriching || pendingEnrichmentCount === 0}
+              >
+                {enriching || isAutoEnriching ? t("refreshing") : t("refreshDetails")}
               </button>
               {enrichStatus && <p className="form-success" role="status">{enrichStatus}</p>}
             </div>

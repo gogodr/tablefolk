@@ -122,6 +122,7 @@
     "bggConnectPrompt": "Conecta tu cuenta de BGG para importar y mantener actualizada tu ludoteca.",
     "refreshDetails": "Refrescar detalles de juegos",
     "refreshPending": "Refrescar detalles de juegos ({count})",
+    "refreshingBackground": "Actualizando detalles de BGG en segundo plano…",
     "searchPlaceholder": "Buscar por título, diseñador o juego base…",
     "showingCount": "Mostrando {shown} de {total} {total, plural, =1 {juego} other {juegos}}",
     "filters": {
@@ -545,7 +546,13 @@
     "noSynopsis": "No hay sinopsis disponible.",
     "design": "Diseño:",
     "publisher": "Editorial:",
-    "viewOnBgg": "Ver en BoardGameGeek"
+    "viewOnBgg": "Ver en BoardGameGeek",
+    "refreshFromBgg": "Actualizar desde BGG",
+    "refreshFromBggTitle": "Consultar último puntaje, ranking, dificultad y datos comunitarios desde BoardGameGeek",
+    "refreshing": "Actualizando…",
+    "refreshSuccess": "✓ ¡Actualizado con las últimas estadísticas de BGG!",
+    "alreadyUpToDate": "Ya está al día (sincronizado recientemente)",
+    "refreshError": "No se pudo actualizar desde BGG en este momento"
   },
   "shareControl": {
     "noGroups": "Crea o únete a un grupo para compartir este juego.",

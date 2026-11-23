@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import type { Game, CollectionGame, GroupGame, GameOwner, Member } from "@tablefolk/contracts";
 import { gameCoverSrc } from "@/lib/assets";
 import { playerRange, weightLabel, cleanExpansionName } from "@/components/game-card";
+import { useApi } from "@/lib/api";
+import { queryKeys } from "@/lib/queries";
 
 function decodeBggText(raw: string | null | undefined): string[] {
   if (!raw) return [];
@@ -42,6 +45,33 @@ interface GameDetailModalProps {
 export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailModalProps) {
   const t = useTranslations("gameDetail");
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const api = useApi();
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
+
+  async function handleRefreshSingle() {
+    setRefreshing(true);
+    setRefreshNotice(null);
+    try {
+      const res = await api<{ game: Game; refreshed: boolean }>(`/v1/games/${game.bggId}/refresh?force=true`, {
+        method: "POST",
+      });
+      if (res.refreshed) {
+        setRefreshNotice(t("refreshSuccess"));
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.collection }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.groups }),
+        ]);
+      } else {
+        setRefreshNotice(t("alreadyUpToDate"));
+      }
+    } catch {
+      setRefreshNotice(t("refreshError"));
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -212,7 +242,7 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
               </div>
             )}
 
-            <div className="game-detail-bgg-action">
+            <div className="game-detail-bgg-action" style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
               <a
                 href={game.sourceUrl}
                 target="_blank"
@@ -221,7 +251,21 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
               >
                 ↗ View on BoardGameGeek
               </a>
+              <button
+                type="button"
+                className="button-quiet button-small"
+                onClick={() => void handleRefreshSingle()}
+                disabled={refreshing}
+                title={t("refreshFromBggTitle")}
+              >
+                {refreshing ? `⏳ ${t("refreshing")}` : `🔄 ${t("refreshFromBgg")}`}
+              </button>
             </div>
+            {refreshNotice && (
+              <p style={{ fontSize: "11px", color: "var(--color-ink-muted)", margin: "4px 0 0" }}>
+                {refreshNotice}
+              </p>
+            )}
           </div>
 
           {/* Right Column: Tags & Description */}
