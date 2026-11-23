@@ -76,7 +76,14 @@ export async function collectionRoutes(app: FastifyInstance) {
       if (!game) game = await db().$transaction(async (tx) => {
         const imported = await tx.game.upsert({
           where: { bggId },
-          update: cover ? { coverUrl } : {},
+          update: {
+            ...(cover ? { coverUrl } : {}),
+            weight: details.weight ?? undefined,
+            rating: details.rating ?? undefined,
+            rank: details.rank ?? undefined,
+            bestPlayers: details.bestPlayers ?? undefined,
+            lastEnrichedAt: new Date(),
+          },
           create: {
             bggId,
             kind: details.kind,
@@ -90,6 +97,9 @@ export async function collectionRoutes(app: FastifyInstance) {
             minPlayingTime: details.minPlayingTime,
             maxPlayingTime: details.maxPlayingTime,
             weight: details.weight,
+            rating: details.rating,
+            rank: details.rank,
+            bestPlayers: details.bestPlayers,
             minAge: details.minAge,
             designers: details.designers,
             publishers: details.publishers,
@@ -323,6 +333,9 @@ export async function collectionRoutes(app: FastifyInstance) {
             data: {
               kind: details.kind,
               weight: details.weight,
+              rating: details.rating ?? undefined,
+              rank: details.rank ?? undefined,
+              bestPlayers: details.bestPlayers ?? undefined,
               baseGameBggId: details.baseGameBggId ?? undefined,
               baseGameTitle: details.baseGameTitle ?? undefined,
               coverUrl: coverUrl ?? undefined,
@@ -363,13 +376,18 @@ export async function collectionRoutes(app: FastifyInstance) {
     const now = Date.now();
 
     // Priority 1: Games never enriched yet
-    // Priority 2: Games enriched >7 days ago that still lack weight or local cover
+    // Priority 2: Games missing weight, rating, rank, bestPlayers or local cover
+    // Priority 3: Games enriched >7 days ago (to refresh community rank & rating)
     const candidates = items
       .filter((item) => {
         if (!item.game.lastEnrichedAt) return true;
-        const missingData = item.game.weight === null || !item.game.coverUrl?.startsWith("/v1/covers/");
+        const missingData = item.game.weight === null
+          || item.game.rating === null
+          || item.game.rank === null
+          || item.game.bestPlayers === null
+          || !item.game.coverUrl?.startsWith("/v1/covers/");
         const isStale = (now - item.game.lastEnrichedAt.getTime()) > SEVEN_DAYS_MS;
-        return missingData && isStale;
+        return missingData || isStale;
       })
       .sort((a, b) => {
         if (!a.game.lastEnrichedAt && b.game.lastEnrichedAt) return -1;
@@ -422,6 +440,9 @@ export async function collectionRoutes(app: FastifyInstance) {
           data: {
             kind: details.kind,
             weight: details.weight,
+            rating: details.rating ?? undefined,
+            rank: details.rank ?? undefined,
+            bestPlayers: details.bestPlayers ?? undefined,
             baseGameBggId: details.baseGameBggId ?? undefined,
             baseGameTitle: details.baseGameTitle ?? undefined,
             coverUrl: coverUrl ?? undefined,
@@ -453,5 +474,67 @@ export async function collectionRoutes(app: FastifyInstance) {
       remainingCount: Math.max(0, candidates.length - batch.length),
       totalCandidates: candidates.length,
     };
+  });
+
+  // Manual single-game refresh from BGG (rate-limited to max once every 24h per game)
+  app.post("/v1/collection/:bggId/refresh", async (request, reply) => {
+    const user = await requireUser(request);
+    const bggId = Number((request.params as { bggId: string }).bggId);
+    if (!Number.isInteger(bggId) || bggId < 1) throw new AppError(400, "INVALID_ID", "Invalid game ID");
+
+    const item = await db().collectionItem.findUnique({
+      where: { userId_bggId: { userId: user.id, bggId } },
+      include: { game: true },
+    });
+    if (!item) throw notFound("Game not found in your collection");
+
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+    if (item.game.lastEnrichedAt && (Date.now() - item.game.lastEnrichedAt.getTime()) < TWENTY_FOUR_HOURS_MS) {
+      return { game: gameDto(item.game), refreshed: false };
+    }
+
+    const details = await getBggGame(bggId);
+    let coverUrl = item.game.coverUrl;
+    if (!coverUrl?.startsWith("/v1/covers/")) {
+      const targetUrl = details.imageUrl ?? coverUrl ?? null;
+      if (targetUrl) {
+        try {
+          const cover = await fetchCover(targetUrl);
+          if (cover) {
+            await db().gameCover.upsert({
+              where: { bggId },
+              create: { bggId, contentType: cover.contentType, data: cover.data },
+              update: { contentType: cover.contentType, data: cover.data },
+            });
+            coverUrl = `/v1/covers/${bggId}`;
+          }
+        } catch (coverErr) {
+          console.warn(`Could not cache cover for game ${bggId}:`, coverErr);
+        }
+      }
+    }
+    if (!coverUrl && details.imageUrl) coverUrl = details.imageUrl;
+
+    const updated = await db().game.update({
+      where: { bggId },
+      data: {
+        kind: details.kind,
+        weight: details.weight,
+        rating: details.rating,
+        rank: details.rank,
+        bestPlayers: details.bestPlayers,
+        baseGameBggId: details.baseGameBggId ?? undefined,
+        baseGameTitle: details.baseGameTitle ?? undefined,
+        coverUrl: coverUrl ?? undefined,
+        description: details.description ?? undefined,
+        designers: details.designers.length ? details.designers : undefined,
+        publishers: details.publishers.length ? details.publishers : undefined,
+        categories: details.categories.length ? details.categories : undefined,
+        mechanics: details.mechanics.length ? details.mechanics : undefined,
+        lastEnrichedAt: new Date(),
+      },
+    });
+
+    return { game: gameDto(updated), refreshed: true };
   });
 }

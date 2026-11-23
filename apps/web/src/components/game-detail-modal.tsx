@@ -99,6 +99,21 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
                 {"isStandalone" in game && game.isStandalone ? t("standaloneExpansion") : t("expansion")}
               </span>
             )}
+            {game.rating && (
+              <span className="game-detail-badge badge-rating" title={t("bggRatingTooltip", { rating: game.rating.toFixed(1) })}>
+                ★ {game.rating.toFixed(1)}
+              </span>
+            )}
+            {game.rank && (
+              <span className="game-detail-badge badge-rank" title={t("bggRankTooltip", { rank: game.rank })}>
+                🏆 #{game.rank}
+              </span>
+            )}
+            {game.bestPlayers && (
+              <span className="game-detail-badge badge-best" title={t("bestWithPlayers", { count: game.bestPlayers })}>
+                ⭐ {t("bestAtBadge", { count: game.bestPlayers })}
+              </span>
+            )}
           </div>
           <button
             type="button"
@@ -130,18 +145,38 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
 
             <div className="game-detail-stats-grid">
               <div className="detail-stat">
-                <span className="detail-stat-label">👥 Players</span>
+                <span className="detail-stat-label">👥 {t("players")}</span>
                 <strong className="detail-stat-value">{playerRange(game)}</strong>
               </div>
+              {game.bestPlayers && (
+                <div className="detail-stat">
+                  <span className="detail-stat-label">⭐ {t("bestPlayerCount")}</span>
+                  <strong className="detail-stat-value" style={{ color: "#b45309" }}>
+                    {t("bestWithPlayers", { count: game.bestPlayers })}
+                  </strong>
+                </div>
+              )}
+              {game.rating && (
+                <div className="detail-stat">
+                  <span className="detail-stat-label">★ {t("bggRating")}</span>
+                  <strong className="detail-stat-value">{game.rating.toFixed(1)} / 10</strong>
+                </div>
+              )}
+              {game.rank && (
+                <div className="detail-stat">
+                  <span className="detail-stat-label">🏆 {t("bggRank")}</span>
+                  <strong className="detail-stat-value">#{game.rank.toLocaleString()}</strong>
+                </div>
+              )}
               {game.playingTime && (
                 <div className="detail-stat">
-                  <span className="detail-stat-label">⏱️ Duration</span>
+                  <span className="detail-stat-label">⏱️ {t("duration")}</span>
                   <strong className="detail-stat-value">{game.playingTime} min</strong>
                 </div>
               )}
               {complexity && (
                 <div className="detail-stat">
-                  <span className="detail-stat-label">⚖️ BGG Weight</span>
+                  <span className="detail-stat-label">⚖️ {t("bggWeight")}</span>
                   <strong
                     className={`detail-stat-value ${
                       (game.weight ?? 0) > 3.2
@@ -157,7 +192,7 @@ export function GameDetailModal({ game, owners, isOpen, onClose }: GameDetailMod
               )}
               {game.minAge && (
                 <div className="detail-stat">
-                  <span className="detail-stat-label">🎂 Min age</span>
+                  <span className="detail-stat-label">🎂 {t("minAge")}</span>
                   <strong className="detail-stat-value">{game.minAge}+</strong>
                 </div>
               )}

@@ -157,6 +157,21 @@ export function GameCard({ game, eagerCover = false, owners, actions, interestSc
           </div>
         <p className="game-meta">
           <span className="meta-pill meta-players">{playerRange(game, (key, values) => t(key as any, values))}</span>
+          {game.bestPlayers && (
+            <span className="meta-pill meta-best-players" title={t("bestWithPlayers", { count: game.bestPlayers })}>
+              ⭐ {t("bestAtBadge", { count: game.bestPlayers })}
+            </span>
+          )}
+          {game.rating && (
+            <span className="meta-pill meta-rating" title={t("bggRatingTooltip", { rating: game.rating.toFixed(1) })}>
+              ★ {game.rating.toFixed(1)}
+            </span>
+          )}
+          {game.rank && (
+            <span className="meta-pill meta-rank" title={t("bggRankTooltip", { rank: game.rank })}>
+              🏆 #{game.rank}
+            </span>
+          )}
           {game.playingTime && <span className="meta-pill meta-time">{game.playingTime} min</span>}
           {complexity && (
             <span

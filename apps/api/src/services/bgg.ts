@@ -125,15 +125,113 @@ interface RawItem {
   image?: string;
   thumbnail?: string;
   link?: RawLink | RawLink[];
+  poll?: any;
   statistics?: {
     ratings?: {
       averageweight?: { value: number | string };
+      average?: { value: number | string };
+      bayesaverage?: { value: number | string };
+      ranks?: any;
+      usersrated?: { value: number | string };
     };
   };
 }
 
 function nameValues(value: RawName | RawName[] | undefined): RawName[] {
   return array(value);
+}
+
+function parseBggRank(ratings: any): number | null {
+  if (!ratings?.ranks?.rank) return null;
+  const rankList = array(ratings.ranks.rank);
+  const bgRank = rankList.find((r: any) => r.name === "boardgame" || r.type === "subtype");
+  if (!bgRank) return null;
+  const val = typeof bgRank === "object" && bgRank !== null && "value" in bgRank ? bgRank.value : bgRank;
+  const parsed = Number(val);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function parseBestPlayers(pollData: any): string | null {
+  if (!pollData) return null;
+  const pollList = array(pollData);
+  const numPlayersPoll = pollList.find((p: any) => p.name === "suggested_numplayers");
+  if (!numPlayersPoll) return null;
+
+  const totalVotes = Number(numPlayersPoll.totalvotes);
+  if (!Number.isFinite(totalVotes) || totalVotes < 3) return null;
+
+  const resultsList = array(numPlayersPoll.results);
+  if (resultsList.length === 0) return null;
+
+  interface CountStat {
+    numplayers: string;
+    bestVotes: number;
+    recVotes: number;
+    notRecVotes: number;
+  }
+
+  const stats: CountStat[] = [];
+  for (const entry of resultsList) {
+    const numplayers = String(entry.numplayers ?? "").trim();
+    if (!numplayers) continue;
+
+    const voteResults = array(entry.result);
+    let bestVotes = 0;
+    let recVotes = 0;
+    let notRecVotes = 0;
+
+    for (const v of voteResults) {
+      const val = String(v.value ?? "").toLowerCase();
+      const votes = Number(v.numvotes ?? 0);
+      if (!Number.isFinite(votes)) continue;
+      if (val === "best") bestVotes = votes;
+      else if (val === "recommended") recVotes = votes;
+      else if (val.includes("not")) notRecVotes = votes;
+    }
+
+    stats.push({ numplayers, bestVotes, recVotes, notRecVotes });
+  }
+
+  if (stats.length === 0) return null;
+
+  const clearBest = stats.filter((s) => s.bestVotes > s.recVotes && s.bestVotes > s.notRecVotes && s.bestVotes > 0);
+
+  const selected = clearBest.length > 0
+    ? clearBest
+    : (() => {
+        const maxBest = [...stats].sort((a, b) => b.bestVotes - a.bestVotes)[0];
+        if (maxBest && maxBest.bestVotes > 0 && (maxBest.bestVotes + maxBest.recVotes) > maxBest.notRecVotes) {
+          return [maxBest];
+        }
+        return [];
+      })();
+
+  if (selected.length === 0) return null;
+
+  const numericCounts = selected
+    .map((s) => ({ raw: s.numplayers, num: Number(s.numplayers) }))
+    .filter((s) => Number.isInteger(s.num) && s.num > 0)
+    .map((s) => s.num)
+    .sort((a, b) => a - b);
+
+  if (numericCounts.length === 0) {
+    return selected.map((s) => s.numplayers).join(", ");
+  }
+
+  const isConsecutive = numericCounts.every((val, idx) => {
+    if (idx === 0) return true;
+    const prev = numericCounts[idx - 1];
+    return prev !== undefined && val === prev + 1;
+  });
+  if (numericCounts.length > 1 && isConsecutive) {
+    const first = numericCounts[0];
+    const last = numericCounts[numericCounts.length - 1];
+    if (first !== undefined && last !== undefined) {
+      return `${first}–${last}`;
+    }
+  }
+
+  return numericCounts.join(", ");
 }
 
 export interface BggGameDetails {
@@ -151,6 +249,9 @@ export interface BggGameDetails {
   minPlayingTime: number | null;
   maxPlayingTime: number | null;
   weight: number | null;
+  rating: number | null;
+  rank: number | null;
+  bestPlayers: string | null;
   minAge: number | null;
   designers: string[];
   publishers: string[];
@@ -187,6 +288,9 @@ function parseRawItem(item: RawItem): BggGameDetails | null {
     minPlayingTime: numberOrNull(item.minplaytime),
     maxPlayingTime: numberOrNull(item.maxplaytime),
     weight: floatOrNull(item.statistics?.ratings?.averageweight),
+    rating: floatOrNull(item.statistics?.ratings?.average),
+    rank: parseBggRank(item.statistics?.ratings),
+    bestPlayers: parseBestPlayers(item.poll),
     minAge: numberOrNull(item.minage),
     designers: linked("boardgamedesigner"),
     publishers: linked("boardgamepublisher"),

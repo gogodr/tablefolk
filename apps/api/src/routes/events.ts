@@ -1086,7 +1086,14 @@ export async function eventRoutes(app: FastifyInstance) {
           }
           await db().game.upsert({
             where: { bggId: missingId },
-            update: coverUrl ? { coverUrl } : {},
+            update: {
+              ...(coverUrl ? { coverUrl } : {}),
+              weight: details.weight ?? undefined,
+              rating: details.rating ?? undefined,
+              rank: details.rank ?? undefined,
+              bestPlayers: details.bestPlayers ?? undefined,
+              lastEnrichedAt: new Date(),
+            },
             create: {
               bggId: missingId,
               kind: details.kind,
@@ -1100,6 +1107,9 @@ export async function eventRoutes(app: FastifyInstance) {
               minPlayingTime: details.minPlayingTime,
               maxPlayingTime: details.maxPlayingTime,
               weight: details.weight,
+              rating: details.rating,
+              rank: details.rank,
+              bestPlayers: details.bestPlayers,
               minAge: details.minAge,
               designers: details.designers,
               publishers: details.publishers,

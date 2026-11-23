@@ -125,6 +125,9 @@ export interface Game {
   minPlayingTime: number | null;
   maxPlayingTime: number | null;
   weight: number | null;
+  rating?: number | null;
+  rank?: number | null;
+  bestPlayers?: string | null;
   minAge: number | null;
   coverUrl: string | null;
   sourceUrl: string;

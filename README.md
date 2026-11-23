@@ -321,7 +321,7 @@ Tablefolk focuses on what happens **around the physical table**: social coordina
 - [x] **📊 Personal Gathering Dashboard**: Live countdown to next game night, official lineup preview, voting points reload tracker, and 1-click Quick Draw launcher.
 - [x] **📜 Narrative Completed Session Timeline & Recap**: Chronological order of tabled games, intermission buffers, and 1-click WhatsApp / Discord recap generator.
 - [x] **🌐 Multilingual Interface (i18n)**: English & Spanish interface powered by `next-intl` (preserving authentic BGG metadata).
-- [ ] **⭐ BGG Rating, Geek Rank & Community Consensus**: Display BGG community rating, overall geek rank (`#42 BGG`), and community-recommended player counts ("Best at X") directly on cards and modals with 7-day refresh cycles.
+- [x] **⭐ BGG Rating, Geek Rank & Community Consensus**: Display BGG community rating, overall geek rank (`#42 BGG`), and community-recommended player counts ("Best at X") directly on cards and modals with 7-day refresh cycles.
 - [ ] **🎲 In-Room Mini-Kit & Animated Meeples**:
   - Interactive **First-Player Decider** featuring animated meeple avatars.
   - Optional **Turn / AP Timer** (Analysis Paralysis alert) for heavy turns.
