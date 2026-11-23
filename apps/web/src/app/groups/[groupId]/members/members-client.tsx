@@ -5,11 +5,13 @@ import { useParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import type { GroupInviteLink, Invitation } from "@tablefolk/contracts";
 import { useApi } from "@/lib/api";
 import { queryKeys, useGroupDetailQuery } from "@/lib/queries";
 
 export function MembersClient() {
+  const t = useTranslations("groupMembers");
   const { groupId } = useParams<{ groupId: string }>();
   const { isLoaded, isSignedIn, userId } = useAuth();
   const api = useApi();
@@ -170,7 +172,7 @@ export function MembersClient() {
   if (!isLoaded || (isSignedIn && groupLoading)) {
     return (
       <div className="page">
-        <p className="loading">Loading members…</p>
+        <p className="loading">{t("loading")}</p>
       </div>
     );
   }
@@ -178,8 +180,8 @@ export function MembersClient() {
   if (!isSignedIn) {
     return (
       <section className="narrow-page notice-page">
-        <h1>Sign in to see members.</h1>
-        <Link className="button" href="/sign-in">Sign in</Link>
+        <h1>{t("signInPrompt")}</h1>
+        <Link className="button" href="/sign-in">{t("signIn")}</Link>
       </section>
     );
   }
@@ -200,38 +202,38 @@ export function MembersClient() {
 
   return (
     <div className="page">
-      <Link href={`/groups/${groupId}`} className="back-link">← {group.name}</Link>
+      <Link href={`/groups/${groupId}`} className="back-link">{t("backLink", { name: group.name })}</Link>
       <div className="page-header">
         <div>
-          <h1>Members</h1>
-          <p>{group.name} has {group.members.length} {group.members.length === 1 ? "member" : "members"}.</p>
+          <h1>{t("title")}</h1>
+          <p>{t("memberCount", { name: group.name, count: group.members.length })}</p>
         </div>
       </div>
       {error && <p className="form-error" role="alert">{error}</p>}
       {success && <p className="form-success" role="status">{success}</p>}
       <div className="panel">
-        <h2>Current members</h2>
+        <h2>{t("currentMembers")}</h2>
         <ul className="member-list">
           {group.members.map((member) => (
             <li key={member.userId} className="member-row">
               <div>
                 <strong>{member.displayName}</strong>
-                {member.userId === group.creatorId && <span className="badge">Creator</span>}
+                {member.userId === group.creatorId && <span className="badge">{t("creatorBadge")}</span>}
               </div>
               {isCreator && member.userId !== userId && (
                 <div>
                   {confirmRemove === member.userId ? (
                     <>
                       <button className="button-danger button-small" disabled={busy} onClick={() => void remove(member.userId)}>
-                        Confirm remove
+                        {t("confirmRemove")}
                       </button>
                       <button className="button-quiet button-small" disabled={busy} onClick={() => setConfirmRemove(null)}>
-                        Cancel
+                        {t("cancel")}
                       </button>
                     </>
                   ) : (
                     <button className="button-quiet button-small" disabled={busy} onClick={() => setConfirmRemove(member.userId)}>
-                      Remove
+                      {t("remove")}
                     </button>
                   )}
                 </div>
@@ -244,23 +246,23 @@ export function MembersClient() {
       {isCreator && (
         <>
           <div className="panel">
-            <h2>Invite link</h2>
-            <p className="muted">Anyone with the link can join {group.name}.</p>
+            <h2>{t("inviteLink")}</h2>
+            <p className="muted">{t("inviteLinkDesc", { name: group.name })}</p>
             <form className="inline-form" onSubmit={createLink}>
               <div className="field">
-                <label htmlFor="expiry-mode">Expires</label>
+                <label htmlFor="expiry-mode">{t("expiryLabel")}</label>
                 <select
                   id="expiry-mode"
                   value={expiryMode}
                   onChange={(event) => setExpiryMode(event.target.value as "never" | "date")}
                 >
-                  <option value="never">Never</option>
-                  <option value="date">On date…</option>
+                  <option value="never">{t("neverExpires")}</option>
+                  <option value="date">{t("expiresOnDate")}</option>
                 </select>
               </div>
               {expiryMode === "date" && (
                 <div className="field">
-                  <label htmlFor="expiry-date">Expiration</label>
+                  <label htmlFor="expiry-date">{t("expiryLabel")}</label>
                   <input
                     id="expiry-date"
                     type="datetime-local"
@@ -271,7 +273,7 @@ export function MembersClient() {
                 </div>
               )}
               <button className="button" type="submit" disabled={busy}>
-                Generate link
+                {t("generateLink")}
               </button>
             </form>
 
@@ -279,7 +281,7 @@ export function MembersClient() {
               <div className="invite-link-box">
                 <input readOnly value={newLinkUrl} onFocus={(e) => e.target.select()} />
                 <button className="button button-small" type="button" onClick={() => void copyLink()}>
-                  Copy
+                  {t("copyLink")}
                 </button>
               </div>
             )}
@@ -292,16 +294,16 @@ export function MembersClient() {
                       <code>{link.id.slice(0, 8)}…</code>
                       <span className="muted" style={{ marginLeft: "0.5rem" }}>
                         {link.status === "REVOKED"
-                          ? "Revoked"
+                          ? t("revoke")
                           : link.expiresAt
-                          ? `Expires ${new Date(link.expiresAt).toLocaleDateString()}`
-                          : "Never expires"}
+                          ? t("expiresOn", { date: new Date(link.expiresAt).toLocaleDateString() })
+                          : t("neverExpires")}
                         {link.joinCount > 0 && ` · ${link.joinCount} uses`}
                       </span>
                     </div>
                     {link.status === "ACTIVE" && (
                       <button className="button-quiet button-small" disabled={busy} onClick={() => void revokeLink(link.id)}>
-                        Revoke
+                        {t("revoke")}
                       </button>
                     )}
                   </li>
@@ -311,21 +313,21 @@ export function MembersClient() {
           </div>
 
           <div className="panel">
-            <h2>Invite by email</h2>
+            <h2>{t("inviteByEmail")}</h2>
             <form className="inline-form" onSubmit={invite}>
               <div className="field">
-                <label htmlFor="invite-email">Email address</label>
+                <label htmlFor="invite-email">{t("emailLabel")}</label>
                 <input
                   id="invite-email"
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  placeholder="friend@example.com"
+                  placeholder={t("emailPlaceholder")}
                   required
                 />
               </div>
               <button className="button" type="submit" disabled={busy}>
-                Send invite
+                {t("sendInvite")}
               </button>
             </form>
 
@@ -342,10 +344,10 @@ export function MembersClient() {
                     {inv.status === "PENDING" && (
                       <div style={{ display: "flex", gap: "0.5rem" }}>
                         <button className="button-quiet button-small" disabled={busy} onClick={() => void resend(inv.id)}>
-                          Resend
+                          {t("resend")}
                         </button>
                         <button className="button-quiet button-small" disabled={busy} onClick={() => void revoke(inv.id)}>
-                          Revoke
+                          {t("revoke")}
                         </button>
                       </div>
                     )}

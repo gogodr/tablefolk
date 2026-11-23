@@ -127,6 +127,61 @@ describe("BGG import", () => {
     expect(map.get(102)?.kind).toBe("boardgameexpansion");
   });
 
+  it("parses rating, rank and community best player count from stats and poll", async () => {
+    const mockDetailXml = `
+      <items>
+        <item type="boardgame" id="13">
+          <name type="primary" value="Ticket to Ride" />
+          <yearpublished value="2004" />
+          <poll name="suggested_numplayers" title="User Suggested Number of Players" totalvotes="2821">
+            <results numplayers="1">
+              <result value="Best" numvotes="15" />
+              <result value="Recommended" numvotes="168" />
+              <result value="Not Recommended" numvotes="1438" />
+            </results>
+            <results numplayers="2">
+              <result value="Best" numvotes="398" />
+              <result value="Recommended" numvotes="1321" />
+              <result value="Not Recommended" numvotes="369" />
+            </results>
+            <results numplayers="3">
+              <result value="Best" numvotes="720" />
+              <result value="Recommended" numvotes="1361" />
+              <result value="Not Recommended" numvotes="113" />
+            </results>
+            <results numplayers="4">
+              <result value="Best" numvotes="1480" />
+              <result value="Recommended" numvotes="841" />
+              <result value="Not Recommended" numvotes="52" />
+            </results>
+            <results numplayers="5">
+              <result value="Best" numvotes="972" />
+              <result value="Recommended" numvotes="933" />
+              <result value="Not Recommended" numvotes="254" />
+            </results>
+          </poll>
+          <statistics page="1">
+            <ratings>
+              <average value="7.42" />
+              <bayesaverage value="7.31" />
+              <ranks>
+                <rank type="subtype" id="1" name="boardgame" friendlyname="Board Game Rank" value="195" />
+                <rank type="family" id="5499" name="familygames" friendlyname="Family Game Rank" value="48" />
+              </ranks>
+              <averageweight value="1.84" />
+            </ratings>
+          </statistics>
+        </item>
+      </items>
+    `;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(mockDetailXml)));
+    const game = await getBggGame(13);
+    expect(game.rating).toBe(7.42);
+    expect(game.rank).toBe(195);
+    expect(game.weight).toBe(1.84);
+    expect(game.bestPlayers).toBe("4–5");
+  });
+
   it("reports upstream failure within the add flow", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response("busy", { status: 503 })));
     await expect(getBggGame(12)).rejects.toMatchObject({ code: "BGG_BUSY" });

@@ -16,8 +16,11 @@ export function gameDto(game: DbGame): Game {
     minPlayingTime: game.minPlayingTime,
     maxPlayingTime: game.maxPlayingTime,
     weight: game.weight,
+    rating: game.rating ?? null,
+    rank: game.rank ?? null,
+    bestPlayers: game.bestPlayers ?? null,
     minAge: game.minAge,
-    coverUrl: game.coverUrl,
+    coverUrl: game.coverUrl ?? (game.bggId > 0 ? `/v1/covers/${game.bggId}` : null),
     sourceUrl: game.sourceUrl,
     designers: game.designers,
     publishers: game.publishers,
@@ -46,7 +49,14 @@ export interface GroupGameOptions {
 
 export function groupGames(shares: ShareWithRelations[], options: GroupGameOptions = {}): GroupGame[] {
   // Collect all expansions shared in this group mapped by base game BGG ID
-  const expansionsByBase = new Map<number, { bggId: number; name: string; maxPlayers: number | null }[]>();
+  const expansionsByBase = new Map<number, {
+    bggId: number;
+    name: string;
+    maxPlayers: number | null;
+    weight?: number | null;
+    playingTime?: number | null;
+    mechanics?: string[];
+  }[]>();
   for (const share of shares) {
     if (share.game.baseGameBggId) {
       const list = expansionsByBase.get(share.game.baseGameBggId) ?? [];
@@ -55,6 +65,9 @@ export function groupGames(shares: ShareWithRelations[], options: GroupGameOptio
           bggId: share.game.bggId,
           name: share.game.name,
           maxPlayers: share.game.maxPlayers,
+          weight: share.game.weight,
+          playingTime: share.game.playingTime,
+          mechanics: share.game.mechanics ?? [],
         });
         expansionsByBase.set(share.game.baseGameBggId, list);
       }

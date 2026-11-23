@@ -106,6 +106,18 @@
 .collection-inspector-section .owned-expansions-list { margin: 0; background: var(--color-paper-2); }
 .collection-inspector-section .base-game-reference { margin: 0; color: var(--color-muted); }
 .collection-inspector-section .share-list { display: grid; gap: var(--space-xs); }
+.share-group-card { display: flex; flex-direction: column; gap: var(--space-xs); border: 1px solid var(--color-rule); border-radius: var(--radius-input); background: var(--color-paper); overflow: hidden; }
+.share-group-card .share-pill { border: none; border-radius: 0; width: 100%; }
+.share-attached-expansions-panel { padding: var(--space-xs) var(--space-sm); background: var(--color-paper-2); border-top: 1px solid var(--color-rule); display: flex; flex-direction: column; gap: var(--space-xs); }
+.share-attached-expansions-title { font-size: var(--text-xs); font-weight: 600; color: var(--color-ink-2); }
+.share-attached-expansions-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2xs); }
+.share-expansion-checkbox-label { display: flex; align-items: center; gap: var(--space-xs); font-size: var(--text-xs); color: var(--color-ink); cursor: pointer; user-select: none; }
+.share-expansion-checkbox-label input[type="checkbox"] { width: 16px; height: 16px; margin: 0; cursor: pointer; accent-color: var(--color-focus); }
+.share-expansions-notice, .share-basegame-notice { padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-input); background: color-mix(in oklab, var(--color-focus) 10%, transparent); border: 1px dashed var(--color-focus); font-size: var(--text-xs); margin-bottom: var(--space-xs); }
+.share-expansions-notice p, .share-basegame-notice p { margin: var(--space-2xs) 0 0; color: var(--color-muted); }
+
+.collection-card-wrap-subexpansion { position: relative; border-left: 3px solid var(--color-accent); padding-left: var(--space-xs); }
+.subexpansion-banner { display: inline-flex; align-items: center; gap: var(--space-2xs); font-size: var(--text-xs); font-weight: 600; color: var(--color-ink-2); background: var(--color-paper-2); padding: var(--space-2xs) var(--space-xs); border-radius: var(--radius-pill); margin-bottom: var(--space-xs); }
 .collection-inspector-section .share-pill { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: var(--space-xs) var(--space-md); border-color: var(--color-rule); border-radius: var(--radius-input); background: var(--color-paper); color: var(--color-ink); font-size: var(--text-sm); text-align: left; }
 .collection-inspector-section .share-pill:hover { border-color: var(--color-ink); }
 .collection-inspector-section .share-pill:active { background: var(--color-paper-2); }

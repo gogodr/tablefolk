@@ -43,6 +43,9 @@ model Game {
   minPlayingTime Int?
   maxPlayingTime Int?
   weight         Float?
+  rating         Float?
+  rank           Int?
+  bestPlayers    String?
   minAge         Int?
   designers      String[]         @default([])
   publishers     String[]         @default([])

@@ -123,9 +123,13 @@ export interface TransitionDetail {
   reason: string;
 }
 
-export function getGameTransition(game: GroupGame): TransitionDetail {
-  const duration = game.playingTime ?? 60;
-  const weight = game.weight ?? 2.0;
+export function getGameTransition(
+  game: GroupGame,
+  customWeight?: number | null,
+  customDuration?: number | null
+): TransitionDetail {
+  const duration = customDuration ?? game.playingTime ?? 60;
+  const weight = customWeight ?? game.weight ?? 2.0;
 
   // Heavy / Epic game (e.g. Rising Sun, Brass, Scythe, Terraforming Mars)
   if (weight >= 3.2 || duration >= 90) {
@@ -155,6 +159,178 @@ export function getGameTransition(game: GroupGame): TransitionDetail {
   };
 }
 
+export interface PlayableGameVariant {
+  game: GroupGame;
+  expansions: { bggId: number; name: string }[];
+  duration: number;
+  weight: number;
+  mechanics: string[];
+  addedMechanics: string[];
+  isHeavy: boolean;
+  isLight: boolean;
+}
+
+export function buildGameVariants(game: GroupGame, playerCount: number): PlayableGameVariant[] {
+  const baseMax = game.maxPlayers ?? 4;
+  const attached = game.expansions ?? [];
+
+  // If playerCount exceeds base game capacity:
+  if (playerCount > baseMax) {
+    const playerExtensions = attached.filter((e) => (e.maxPlayers ?? 0) >= playerCount);
+    if (playerExtensions.length === 0) return [];
+
+    const extension = playerExtensions[0]!;
+    const extraDuration = extension.playingTime ? Math.min(extension.playingTime, 45) : 20;
+    const effectiveWeight = Math.max(game.weight ?? 2.0, extension.weight ?? game.weight ?? 2.0);
+    const addedMechanics = (extension.mechanics ?? []).filter((m) => !(game.mechanics ?? []).includes(m));
+
+    const variants: PlayableGameVariant[] = [
+      {
+        game,
+        expansions: [{ bggId: extension.bggId, name: extension.name }],
+        duration: (game.playingTime ?? 45) + extraDuration,
+        weight: effectiveWeight,
+        mechanics: [...(game.mechanics ?? []), ...addedMechanics],
+        addedMechanics,
+        isHeavy: effectiveWeight > 3.2,
+        isLight: effectiveWeight <= 2.2,
+      },
+    ];
+
+    // Optional content expansions combined with player extension
+    const contentExpansions = attached.filter((e) => e.bggId !== extension.bggId);
+    for (const ce of contentExpansions) {
+      const combinedExtraTime = extraDuration + (ce.playingTime ? Math.min(ce.playingTime, 45) : 25);
+      const combinedWeight = Math.max(effectiveWeight, ce.weight ?? effectiveWeight);
+      const combinedAdded = [
+        ...addedMechanics,
+        ...(ce.mechanics ?? []).filter((m) => !(game.mechanics ?? []).includes(m) && !addedMechanics.includes(m)),
+      ];
+      variants.push({
+        game,
+        expansions: [
+          { bggId: extension.bggId, name: extension.name },
+          { bggId: ce.bggId, name: ce.name },
+        ],
+        duration: (game.playingTime ?? 45) + combinedExtraTime,
+        weight: combinedWeight,
+        mechanics: [...(game.mechanics ?? []), ...combinedAdded],
+        addedMechanics: combinedAdded,
+        isHeavy: combinedWeight > 3.2,
+        isLight: combinedWeight <= 2.2,
+      });
+    }
+
+    return variants;
+  }
+
+  // If player count is supported by the base game directly:
+  const baseWeight = game.weight ?? 2.0;
+  const baseDuration = game.playingTime ?? 45;
+  const baseMechanics = game.mechanics ?? [];
+
+  // 1. Vanilla (Juego base sin expansiones)
+  const variants: PlayableGameVariant[] = [
+    {
+      game,
+      expansions: [],
+      duration: baseDuration,
+      weight: baseWeight,
+      mechanics: baseMechanics,
+      addedMechanics: [],
+      isHeavy: baseWeight > 3.2,
+      isLight: baseWeight <= 2.2,
+    },
+  ];
+
+  // 2. Individual content expansions
+  const contentExpansions = attached.filter((e) => {
+    // If it only expands players past baseMax and adds no mechanics or weight, skip for <= baseMax
+    if ((e.maxPlayers ?? 0) > baseMax && (!e.mechanics || e.mechanics.length === 0) && (!e.weight || e.weight <= baseWeight)) {
+      return false;
+    }
+    return true;
+  });
+
+  for (const exp of contentExpansions) {
+    const extraTime = exp.playingTime ? Math.min(exp.playingTime, 45) : 30;
+    const expWeight = Math.max(baseWeight, exp.weight ?? baseWeight);
+    const added = (exp.mechanics ?? []).filter((m) => !baseMechanics.includes(m));
+
+    variants.push({
+      game,
+      expansions: [{ bggId: exp.bggId, name: exp.name }],
+      duration: baseDuration + extraTime,
+      weight: expWeight,
+      mechanics: [...baseMechanics, ...added],
+      addedMechanics: added,
+      isHeavy: expWeight > 3.2,
+      isLight: expWeight <= 2.2,
+    });
+  }
+
+  return variants;
+}
+
+export function selectVariantForSlot(
+  game: GroupGame,
+  playerCount: number,
+  options: {
+    role: "main" | "warmup" | "cooldown";
+    maxDuration: number;
+    allowHeavy?: boolean;
+    requireLight?: boolean;
+    maxWeight?: number;
+    recipeId?: string;
+    themeCategory?: string;
+    random?: () => number;
+  }
+): PlayableGameVariant | null {
+  const variants = buildGameVariants(game, playerCount);
+  if (variants.length === 0) return null;
+
+  // Filter variants fitting constraints
+  const fitting = variants.filter((v) => {
+    if (v.duration > options.maxDuration) return false;
+    if (options.allowHeavy === false && v.isHeavy) return false;
+    if (options.requireLight && !v.isLight) return false;
+    if (options.maxWeight !== undefined && v.weight > options.maxWeight) return false;
+    return true;
+  });
+
+  if (fitting.length === 0) return null;
+  if (fitting.length === 1) return fitting[0]!;
+
+  const rnd = options.random ?? Math.random;
+
+  // If explicit recipe prefers heavy/complex (e.g. Brain burner)
+  if (options.recipeId === "heavy_euro_brainburner" || options.recipeId === "epic_strategy") {
+    return [...fitting].sort((a, b) => b.weight - a.weight)[0]!;
+  }
+
+  // If explicit recipe prefers accessible/gateway or this is warmup/cooldown
+  if (options.recipeId === "accessible_classics" || options.role === "warmup" || options.role === "cooldown") {
+    return [...fitting].sort((a, b) => a.weight - b.weight)[0]!;
+  }
+
+  // If a theme was requested
+  if (options.themeCategory) {
+    const themed = fitting.filter(
+      (v) =>
+        hasAnyKeyword(v.mechanics, [options.themeCategory!]) ||
+        hasAnyKeyword(game.categories, [options.themeCategory!])
+    );
+    if (themed.length > 0) {
+      const withAdded = themed.find((v) => hasAnyKeyword(v.addedMechanics, [options.themeCategory!]));
+      if (withAdded) return withAdded;
+      return themed[Math.floor(rnd() * themed.length)]!;
+    }
+  }
+
+  // Uniform sampling between vanilla and with-expansion
+  return fitting[Math.floor(rnd() * fitting.length)]!;
+}
+
 export const TRANSITION_BUFFER_MINUTES = 15;
 
 export interface LineupPlannerOptions {
@@ -165,6 +341,7 @@ export interface LineupPlannerOptions {
   excludeBggIds?: number[];
   mechanicsAffinity?: number;
   themeCategory?: string;
+  recipeId?: string;
   random?: () => number;
 }
 
@@ -180,6 +357,7 @@ export function planSessionLineup(
     excludeBggIds = [],
     mechanicsAffinity = 0,
     themeCategory,
+    recipeId,
     random = Math.random,
   } = options;
 
@@ -209,6 +387,23 @@ export function planSessionLineup(
     };
   }
 
+  // Check if an explicit recipe template was requested
+  const explicitRecipe = recipeId ? MENU_RECIPES.find((r) => r.id === recipeId) : undefined;
+  let effectiveAllowHeavy = allowHeavy;
+  let effectiveMechanicsAffinity = mechanicsAffinity;
+  let activeWeightsMap = new Map(weightsMap);
+
+  if (explicitRecipe) {
+    const recipeConfig = explicitRecipe.getWeightsAndOptions(eligible, activeWeightsMap);
+    activeWeightsMap = recipeConfig.weightsMap;
+    if (recipeConfig.allowHeavy !== undefined) {
+      effectiveAllowHeavy = recipeConfig.allowHeavy;
+    }
+    if (recipeConfig.mechanicsAffinity !== undefined) {
+      effectiveMechanicsAffinity = recipeConfig.mechanicsAffinity;
+    }
+  }
+
   // Helper classification
   const isHeavy = (g: GroupGame) => (g.weight ?? 0) > 3.2;
   const isLight = (g: GroupGame) => (g.weight ?? 2.0) <= 2.2;
@@ -226,7 +421,6 @@ export function planSessionLineup(
           hasAnyKeyword(g.mechanics, [themeCategory]))
     );
 
-  const activeWeightsMap = new Map(weightsMap);
   if (themeCategory) {
     const themedEligible = eligible.filter(matchesTheme);
     if (themedEligible.length > 0) {
@@ -242,17 +436,28 @@ export function planSessionLineup(
   }
 
   // 1. Choose Main Event (Centerpiece / Anchor)
-  // Look for candidates that fit within the total session time (with room for at least 15m transition if not the only game)
-  let mainCandidates = eligible.filter((g) => {
-    if (!allowHeavy && isHeavy(g)) return false;
-    const duration = getDuration(g);
-    return duration <= totalMinutes + 15;
-  });
+  // Look for candidates and their best matching variants for this session
+  const mainCandidateEntries = eligible
+    .map((g) => {
+      const variant = selectVariantForSlot(g, playerCount, {
+        role: "main",
+        maxDuration: totalMinutes + 15,
+        allowHeavy: effectiveAllowHeavy,
+        recipeId,
+        themeCategory,
+        random,
+      });
+      return variant ? { game: g, variant } : null;
+    })
+    .filter((e): e is { game: GroupGame; variant: PlayableGameVariant } => e !== null);
 
+  let filteredMain = mainCandidateEntries;
   if (themeCategory) {
-    const themedMain = mainCandidates.filter(matchesTheme);
-    if (themedMain.length > 0) {
-      mainCandidates = themedMain;
+    const themed = filteredMain.filter(
+      (e) => matchesTheme(e.game) || hasAnyKeyword(e.variant.mechanics, [themeCategory])
+    );
+    if (themed.length > 0) {
+      filteredMain = themed;
     }
   }
 
@@ -260,28 +465,31 @@ export function planSessionLineup(
   // enforce that the Main Game must be substantial so that a 15-30m micro filler isn't crowned
   // as the "Main Game" when meaty games are available.
   if (totalMinutes >= 90) {
-    const substantial = mainCandidates.filter((g) => getDuration(g) >= 45 || (g.weight ?? 0) >= 2.0);
+    const substantial = filteredMain.filter((e) => e.variant.duration >= 45 || e.variant.weight >= 2.0);
     if (substantial.length > 0) {
-      mainCandidates = substantial;
+      filteredMain = substantial;
     }
   }
 
-  if (mainCandidates.length > 0) {
-    const candidateIds = mainCandidates.map((g) => g.bggId);
+  if (filteredMain.length > 0) {
+    const candidateIds = filteredMain.map((e) => e.game.bggId);
     const mainId = chooseWeightedGameId(candidateIds, activeWeightsMap, undefined, random);
-    const mainGame = mainCandidates.find((g) => g.bggId === mainId)!;
-    const mainDuration = getDuration(mainGame);
-    const mainWeight = mainGame.weight ?? 2.0;
+    const chosenEntry = filteredMain.find((e) => e.game.bggId === mainId)!;
+    const mainGame = chosenEntry.game;
+    const mainVariant = chosenEntry.variant;
 
-    hasHeavyGame = isHeavy(mainGame);
+    hasHeavyGame = mainVariant.isHeavy;
     pickedIds.add(mainId);
-    remainingMinutes -= mainDuration;
+    remainingMinutes -= mainVariant.duration;
 
     selectedLineup.push({
       role: "main",
       label: hasHeavyGame ? "👑 Main Event (Heavy Game)" : "🎯 Main Event",
       game: mainGame,
-      estimatedMinutes: mainDuration,
+      estimatedMinutes: mainVariant.duration,
+      expansions: mainVariant.expansions,
+      effectiveWeight: mainVariant.weight,
+      addedMechanics: mainVariant.addedMechanics.length > 0 ? mainVariant.addedMechanics : undefined,
     });
 
     // 2. Anti-fatigue & Hierarchy Filler Selection
@@ -290,67 +498,84 @@ export function planSessionLineup(
       const hasWarmup = selectedLineup.some((s) => s.role === "warmup");
       const hasCooldown = selectedLineup.some((s) => s.role === "cooldown");
 
-      const fillerCandidates = eligible.filter((g) => {
-        if (pickedIds.has(g.bggId)) return false;
-        if (isHeavy(g)) return false; // Never a second heavy game
+      const fillerCandidatesWithVariants = eligible
+        .filter((g) => !pickedIds.has(g.bggId))
+        .map((g) => {
+          const isCasualNight = mainVariant.isLight && mainVariant.duration <= 45;
+          const warmupBuffer = getGameTransition(mainGame, mainVariant.weight, mainVariant.duration).minutes;
 
-        const duration = getDuration(g);
-        const weight = g.weight ?? 2.0;
+          const warmupVariant = !hasWarmup
+            ? selectVariantForSlot(g, playerCount, {
+                role: "warmup",
+                maxDuration: Math.min(35, remainingMinutes + 15 - warmupBuffer),
+                allowHeavy: false,
+                requireLight: true,
+                maxWeight: isCasualNight ? undefined : mainVariant.weight,
+                recipeId,
+                themeCategory,
+                random,
+              })
+            : null;
 
-        // Transition buffer required before the next game:
-        // - Warm-up is played before the Main Game, so the transition before Main Game depends on Main Game
-        const warmupBuffer = getGameTransition(mainGame).minutes;
-        // - Cooldown is played after the Main Game, so transition before Cooldown depends on Cooldown
-        const cooldownBuffer = getGameTransition(g).minutes;
+          const cooldownBuffer = getGameTransition(g).minutes;
+          const cooldownVariant = !hasCooldown
+            ? selectVariantForSlot(g, playerCount, {
+                role: "cooldown",
+                maxDuration: Math.min(50, remainingMinutes + 15 - cooldownBuffer),
+                allowHeavy: false,
+                requireLight: hasHeavyGame,
+                maxWeight: hasHeavyGame ? 2.0 : isCasualNight ? 2.4 : Math.min(2.4, mainVariant.weight),
+                recipeId,
+                themeCategory,
+                random,
+              })
+            : null;
 
-        // When the Main Game is already light/short (<= 45m or weight <= 2.2),
-        // allow other light/casual games to pair with it in a "Casual Showcase / Party Marathon"
-        // without choking on strict duration <= mainDuration and weight <= mainWeight.
-        const isCasualNight = isLight(mainGame) && mainDuration <= 45;
+          const canBeWarmup = Boolean(
+            warmupVariant &&
+            warmupVariant.duration + warmupBuffer <= remainingMinutes + 15 &&
+            (isCasualNight || (warmupVariant.duration <= mainVariant.duration && warmupVariant.weight <= mainVariant.weight))
+          );
 
-        // Warm-up eligibility (quick opener)
-        const canBeWarmup =
-          !hasWarmup &&
-          duration <= 35 &&
-          (isCasualNight
-            ? isLight(g)
-            : (duration <= mainDuration && isLight(g) && weight <= mainWeight)) &&
-          duration + warmupBuffer <= remainingMinutes + 15;
+          const canBeCooldown = Boolean(
+            cooldownVariant &&
+            cooldownVariant.duration + cooldownBuffer <= remainingMinutes + 15 &&
+            (isCasualNight || cooldownVariant.duration <= mainVariant.duration)
+          );
 
-        // Cooldown eligibility (wind-down closer)
-        const canBeCooldown =
-          !hasCooldown &&
-          duration <= 50 &&
-          (isCasualNight
-            ? (g.weight ?? 2.0) <= 2.4
-            : (duration <= mainDuration && (hasHeavyGame ? weight <= 2.0 : weight <= 2.4 && weight <= mainWeight))) &&
-          duration + cooldownBuffer <= remainingMinutes + 15;
+          if (!canBeWarmup && !canBeCooldown) return null;
 
-        return canBeWarmup || canBeCooldown;
-      });
+          return {
+            game: g,
+            canBeWarmup,
+            warmupVariant,
+            canBeCooldown,
+            cooldownVariant,
+          };
+        })
+        .filter((e): e is NonNullable<typeof e> => e !== null);
 
-      if (fillerCandidates.length === 0) break;
+      if (fillerCandidatesWithVariants.length === 0) break;
 
       // Adjust weights based on mechanics affinity relative to mainGame
       const fillerWeights = new Map<number, number>();
-      const mainMechanics = new Set(mainGame.mechanics ?? []);
+      const mainMechanics = new Set(mainVariant.mechanics);
       const mainCategories = new Set(mainGame.categories ?? []);
 
-      for (const g of fillerCandidates) {
+      for (const entry of fillerCandidatesWithVariants) {
+        const g = entry.game;
         const baseW = activeWeightsMap.get(g.bggId) ?? 1;
         const sharedM = (g.mechanics ?? []).filter((m) => mainMechanics.has(m));
         const sharedC = (g.categories ?? []).filter((c) => mainCategories.has(c));
         const matchScore = sharedC.length * 2.5 + sharedM.length * 0.75;
 
         let multiplier = 1;
-        if (mechanicsAffinity > 0) {
-          // Boost games that share themes (categories) & mechanics with Main Game
+        if (effectiveMechanicsAffinity > 0) {
           multiplier = matchScore > 0
-            ? 1 + mechanicsAffinity * (2 + matchScore * 1.5)
-            : Math.max(0.15, 1 - mechanicsAffinity * 0.7);
-        } else if (mechanicsAffinity < 0) {
-          // Boost games that differ in themes & mechanics from Main Game (prevent fatigue)
-          const diversityStrength = Math.abs(mechanicsAffinity);
+            ? 1 + effectiveMechanicsAffinity * (2 + matchScore * 1.5)
+            : Math.max(0.15, 1 - effectiveMechanicsAffinity * 0.7);
+        } else if (effectiveMechanicsAffinity < 0) {
+          const diversityStrength = Math.abs(effectiveMechanicsAffinity);
           multiplier = matchScore === 0
             ? 1 + diversityStrength * 3
             : Math.max(0.1, 1 / (1 + diversityStrength * matchScore * 1.5));
@@ -359,45 +584,42 @@ export function planSessionLineup(
         fillerWeights.set(g.bggId, Math.max(0.1, baseW * multiplier));
       }
 
-      const fillerIds = fillerCandidates.map((g) => g.bggId);
+      const fillerIds = fillerCandidatesWithVariants.map((e) => e.game.bggId);
       const chosenId = chooseWeightedGameId(fillerIds, fillerWeights, undefined, random);
-      const fillerGame = fillerCandidates.find((g) => g.bggId === chosenId)!;
-      const duration = getDuration(fillerGame);
-      const weight = fillerGame.weight ?? 2.0;
+      const chosenEntry = fillerCandidatesWithVariants.find((e) => e.game.bggId === chosenId)!;
+      const fillerGame = chosenEntry.game;
 
-      const warmupBuffer = getGameTransition(mainGame).minutes;
-      const cooldownBuffer = getGameTransition(fillerGame).minutes;
-
-      const isCasualNight = isLight(mainGame) && mainDuration <= 45;
-      const canBeWarmup =
-        !hasWarmup &&
-        duration <= 35 &&
-        (isCasualNight
-          ? isLight(fillerGame)
-          : (duration <= mainDuration && isLight(fillerGame) && weight <= mainWeight)) &&
-        duration + warmupBuffer <= remainingMinutes + 15;
-
+      const warmupBuffer = getGameTransition(mainGame, mainVariant.weight, mainVariant.duration).minutes;
       const sharedWithMain = (fillerGame.mechanics ?? []).filter((m) => mainMechanics.has(m));
 
       // Assign role: prefer warmup first if not present and eligible, otherwise cooldown
-      if (canBeWarmup && !hasWarmup) {
+      if (chosenEntry.canBeWarmup && chosenEntry.warmupVariant && !hasWarmup) {
+        const variant = chosenEntry.warmupVariant;
         pickedIds.add(chosenId);
-        remainingMinutes -= (duration + warmupBuffer);
+        remainingMinutes -= (variant.duration + warmupBuffer);
         selectedLineup.unshift({
           role: "warmup",
           label: "🍕 Warm-up",
           game: fillerGame,
-          estimatedMinutes: duration,
+          estimatedMinutes: variant.duration,
+          expansions: variant.expansions,
+          effectiveWeight: variant.weight,
+          addedMechanics: variant.addedMechanics.length > 0 ? variant.addedMechanics : undefined,
           sharedMechanics: sharedWithMain.length > 0 ? sharedWithMain : undefined,
         });
-      } else {
+      } else if (chosenEntry.cooldownVariant) {
+        const variant = chosenEntry.cooldownVariant;
+        const cooldownBuffer = getGameTransition(fillerGame, variant.weight, variant.duration).minutes;
         pickedIds.add(chosenId);
-        remainingMinutes -= (duration + cooldownBuffer);
+        remainingMinutes -= (variant.duration + cooldownBuffer);
         selectedLineup.push({
           role: "cooldown",
           label: "☕ Cooldown",
           game: fillerGame,
-          estimatedMinutes: duration,
+          estimatedMinutes: variant.duration,
+          expansions: variant.expansions,
+          effectiveWeight: variant.weight,
+          addedMechanics: variant.addedMechanics.length > 0 ? variant.addedMechanics : undefined,
           sharedMechanics: sharedWithMain.length > 0 ? sharedWithMain : undefined,
         });
       }
@@ -411,7 +633,7 @@ export function planSessionLineup(
       slot.transitionBeforeMinutes = 0;
       slot.transitionReason = undefined;
     } else {
-      const transition = getGameTransition(slot.game);
+      const transition = getGameTransition(slot.game, slot.effectiveWeight, slot.estimatedMinutes);
       slot.transitionBeforeMinutes = transition.minutes;
       slot.transitionReason = transition.reason;
     }
@@ -428,7 +650,7 @@ export function planSessionLineup(
   if (themeCategory) {
     themeNotice = `🎭 Themed Night: ${themeCategory}`;
   } else if (selectedLineup.length > 1) {
-    if (mechanicsAffinity > 0.2) {
+    if (effectiveMechanicsAffinity > 0.2) {
       const mainSlot = selectedLineup.find((s) => s.role === "main");
       const mainCategories = new Set(mainSlot?.game.categories ?? []);
       const allSharedCategories = selectedLineup
@@ -448,10 +670,21 @@ export function planSessionLineup(
           themeNotice = "🎯 Themed Night: aligned mechanics & style";
         }
       }
-    } else if (mechanicsAffinity < -0.2) {
+    } else if (effectiveMechanicsAffinity < -0.2) {
       themeNotice = "🌈 Diverse Menu: contrasting mechanics to prevent mental fatigue";
     }
   }
+
+  // Detect matching template/recipe if not explicitly set
+  const mainGame = selectedLineup.find((s) => s.role === "main")?.game;
+  const detectedRecipe = (!explicitRecipe && mainGame)
+    ? MENU_RECIPES.find((r) => {
+        if (r.id === "wildcard_random" || r.id === "table_favorites") return false;
+        return r.isViable([mainGame], effectiveAllowHeavy);
+      })
+    : undefined;
+
+  const finalRecipe = explicitRecipe || detectedRecipe;
 
   return {
     status: selectedLineup.length > 0 ? "success" : "no_match",
@@ -461,6 +694,10 @@ export function planSessionLineup(
     targetMinutes: totalMinutes,
     hasHeavy: hasHeavyGame,
     themeNotice,
+    recipeId: finalRecipe?.id,
+    recipeTitle: finalRecipe?.titlePrefix,
+    recipeBadge: finalRecipe?.styleBadge,
+    recipeDescription: finalRecipe?.description,
   };
 }
 

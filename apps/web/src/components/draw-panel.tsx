@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import type { EventDetail, GroupGame, PickResult, SessionLineupResult } from "@tablefolk/contracts";
+import { SESSION_TEMPLATES } from "@tablefolk/contracts";
 import { GameCard, cleanExpansionName } from "@/components/game-card";
 import { useApi } from "@/lib/api";
 
@@ -17,6 +19,9 @@ interface GameOwnerSummary {
 export function DrawPanel({ groupId }: { groupId: string }) {
   const api = useApi();
   const router = useRouter();
+  const t = useTranslations("draw");
+  const tCommon = useTranslations("common");
+  const tTemplates = useTranslations("templates");
   const [mode, setMode] = useState<Mode>("lineup");
 
   // Common headcount
@@ -32,6 +37,7 @@ export function DrawPanel({ groupId }: { groupId: string }) {
   const [allowHeavy, setAllowHeavy] = useState<boolean>(true);
   const [mechanicsAffinity, setMechanicsAffinity] = useState<number>(0);
   const [themeCategory, setThemeCategory] = useState<string>("");
+  const [recipeId, setRecipeId] = useState<string>("");
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [lineupResult, setLineupResult] = useState<SessionLineupResult | null>(null);
 
@@ -39,13 +45,19 @@ export function DrawPanel({ groupId }: { groupId: string }) {
   const [savingEvent, setSavingEvent] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
+
+  // Contributors / Attendees filtering
+  const [allGames, setAllGames] = useState<GroupGame[]>([]);
   const [owners, setOwners] = useState<GameOwnerSummary[]>([]);
+  const [selectedOwnerIds, setSelectedOwnerIds] = useState<string[]>([]);
 
   useEffect(() => {
     let isMounted = true;
     api<{ games: GroupGame[] }>(`/v1/groups/${groupId}/games`)
       .then((data) => {
         if (!isMounted) return;
+        setAllGames(data.games);
+
         const countMap = new Map<string, GameOwnerSummary>();
         for (const game of data.games) {
           for (const owner of game.owners) {
@@ -65,11 +77,7 @@ export function DrawPanel({ groupId }: { groupId: string }) {
           .filter((o) => o.count >= 1)
           .sort((a, b) => b.count - a.count || a.displayName.localeCompare(b.displayName));
         setOwners(list);
-
-        const allCategories = Array.from(
-          new Set(data.games.flatMap((g) => g.categories ?? []))
-        ).filter(Boolean).sort((a, b) => a.localeCompare(b));
-        setAvailableCategories(allCategories);
+        setSelectedOwnerIds(list.map((o) => o.userId));
       })
       .catch(() => {
         // Non-critical owner summary
@@ -80,10 +88,40 @@ export function DrawPanel({ groupId }: { groupId: string }) {
     };
   }, [api, groupId]);
 
+  // Dynamically update available themes based on active contributors
+  useEffect(() => {
+    if (allGames.length === 0) return;
+    const activeGames = selectedOwnerIds.length > 0
+      ? allGames.filter((g) => g.owners.some((o) => selectedOwnerIds.includes(o.userId)))
+      : [];
+    const categories = Array.from(
+      new Set(activeGames.flatMap((g) => g.categories ?? []))
+    ).filter(Boolean).sort((a, b) => a.localeCompare(b));
+    setAvailableCategories(categories);
+  }, [allGames, selectedOwnerIds]);
+
+  function toggleOwner(userId: string) {
+    setSelectedOwnerIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    );
+  }
+
+  function selectAllOwners() {
+    setSelectedOwnerIds(owners.map((o) => o.userId));
+  }
+
+  function deselectAllOwners() {
+    setSelectedOwnerIds([]);
+  }
+
   async function handleSinglePick(reroll = false) {
     const count = Number(playerCount);
     if (!Number.isInteger(count) || count < 1 || count > 1000) {
-      setError("Enter a whole number of players between 1 and 1,000.");
+      setError(t("playerCountError"));
+      return;
+    }
+    if (owners.length > 0 && selectedOwnerIds.length === 0) {
+      setError(t("noContributorsSelected"));
       return;
     }
     setBusy(true);
@@ -95,12 +133,13 @@ export function DrawPanel({ groupId }: { groupId: string }) {
           playerCount: count,
           maxDuration,
           maxWeight,
+          includedOwnerIds: selectedOwnerIds.length > 0 ? selectedOwnerIds : undefined,
           ...(reroll && singleResult?.status === "picked" ? { excludeBggId: singleResult.game.bggId } : {}),
         }),
       });
       setSingleResult(data);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not pick a game.");
+      setError(cause instanceof Error ? cause.message : t("pickError"));
     } finally {
       setBusy(false);
     }
@@ -109,7 +148,11 @@ export function DrawPanel({ groupId }: { groupId: string }) {
   async function handlePlanLineup(reroll = false) {
     const count = Number(playerCount);
     if (!Number.isInteger(count) || count < 1 || count > 1000) {
-      setError("Enter a whole number of players between 1 and 1,000.");
+      setError(t("playerCountError"));
+      return;
+    }
+    if (owners.length > 0 && selectedOwnerIds.length === 0) {
+      setError(t("noContributorsSelected"));
       return;
     }
     setBusy(true);
@@ -127,11 +170,13 @@ export function DrawPanel({ groupId }: { groupId: string }) {
           excludeBggIds,
           mechanicsAffinity,
           themeCategory: themeCategory || undefined,
+          recipeId: recipeId || undefined,
+          includedOwnerIds: selectedOwnerIds.length > 0 ? selectedOwnerIds : undefined,
         }),
       });
       setLineupResult(data);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not compose lineup.");
+      setError(cause instanceof Error ? cause.message : t("lineupError"));
     } finally {
       setBusy(false);
     }
@@ -171,26 +216,82 @@ export function DrawPanel({ groupId }: { groupId: string }) {
 
       router.push(`/groups/${groupId}/events/${event.id}`);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not save lineup as event.");
+      setError(cause instanceof Error ? cause.message : t("saveEventError"));
       setSavingEvent(false);
     }
   }
 
+  function getTemplateBadge(id: string, fallback?: string): string {
+    try {
+      return tTemplates(`${id}.badge`);
+    } catch {
+      return fallback ?? id;
+    }
+  }
+
+  function getTemplateDesc(id: string, fallback?: string): string {
+    try {
+      return tTemplates(`${id}.description`);
+    } catch {
+      return fallback ?? "";
+    }
+  }
+
+  function getLocalizedSlotLabel(slot: SessionLineupResult["lineup"][number]): string {
+    if (slot.role === "main") {
+      return (slot.game.weight ?? 0) >= 3.2 ? t("roleMainHeavy") : t("roleMain");
+    }
+    if (slot.role === "warmup") return t("roleWarmup");
+    if (slot.role === "cooldown") return t("roleCooldown");
+    if (slot.role === "filler") return t("roleFiller");
+    return slot.label;
+  }
+
+  function getLocalizedTransitionReason(minutes?: number): string {
+    const m = minutes ?? 15;
+    if (m >= 30) return t("transitionHeavy", { minutes: m });
+    if (m >= 25) return t("transitionMediumHeavy", { minutes: m });
+    if (m >= 20) return t("transitionMedium", { minutes: m });
+    return t("transitionLight", { minutes: m });
+  }
+
+  function getLocalizedThemeNotice(notice?: string): string | undefined {
+    if (!notice) return undefined;
+    if (notice.includes("Diverse Menu") || notice.includes("contrasting mechanics")) {
+      return t("themeNoticeDiverse");
+    }
+    if (notice.includes("aligned mechanics")) {
+      return t("themeNoticeAligned");
+    }
+    const match = notice.match(/(?:Themed Night:\s*(?:features\s*)?)(.*)/i);
+    if (match && match[1]) {
+      return t("themeNoticeThemed", { theme: match[1].trim() });
+    }
+    return notice;
+  }
+
   function handleCopyLineup() {
     if (!lineupResult || lineupResult.lineup.length === 0) return;
+    const activeRecipeId = lineupResult.recipeId;
+    const templateName = activeRecipeId
+      ? getTemplateBadge(activeRecipeId, lineupResult.recipeBadge)
+      : (lineupResult.recipeBadge ?? lineupResult.recipeTitle);
     const textLines = [
-      `🎲 *Game Night Lineup · Tablefolk*`,
-      `⏱️ Planned Time: ~${lineupResult.totalEstimatedMinutes} min${
-        lineupResult.transitionMinutes ? ` (includes ${lineupResult.transitionMinutes}m setup & breaks)` : ""
+      t("clipboardTitle"),
+      ...(templateName ? [t("clipboardTemplate", { name: templateName })] : []),
+      `${t("clipboardPlannedTime", { minutes: lineupResult.totalEstimatedMinutes })}${
+        lineupResult.transitionMinutes ? t("clipboardBuffer", { minutes: lineupResult.transitionMinutes }) : ""
       }`,
-      ``,
+      "",
       ...lineupResult.lineup.flatMap((s, idx) => {
         const expText = s.game.expansions && s.game.expansions.length > 0
           ? ` (+ ${s.game.expansions.map((e) => cleanExpansionName(s.game.name, e.name)).join(", ")})`
           : "";
+        const roleLabel = getLocalizedSlotLabel(s);
+        const bufferLabel = getLocalizedTransitionReason(s.transitionBeforeMinutes);
         return [
-          ...(idx > 0 && s.transitionBeforeMinutes ? [`  ${s.transitionReason ?? `☕ ${s.transitionBeforeMinutes}m Setup buffer`}`] : []),
-          `• ${s.label}: *${s.game.name}*${expText} (~${s.estimatedMinutes} min)`,
+          ...(idx > 0 && s.transitionBeforeMinutes ? [`  ${bufferLabel}`] : []),
+          `• ${roleLabel}: *${s.game.name}*${expText} (~${s.estimatedMinutes} min)`,
         ];
       }),
     ];
@@ -199,13 +300,15 @@ export function DrawPanel({ groupId }: { groupId: string }) {
     setTimeout(() => setCopied(false), 2500);
   }
 
+  const hasNoSelectedContributors = owners.length > 0 && selectedOwnerIds.length === 0;
+
   return (
     <div className="draw-container">
       {/* Mode switcher pills */}
       <div className="section-title" style={{ marginBottom: 20 }}>
         <div>
-          <h2>Draw Mode</h2>
-          <p>Roll for a single title or let the engine compose a balanced multi-game session menu.</p>
+          <h2>{t("modeTitle")}</h2>
+          <p>{t("modeSubtitle")}</p>
         </div>
         <div className="share-pills">
           <button
@@ -213,16 +316,16 @@ export function DrawPanel({ groupId }: { groupId: string }) {
             className={`count-filter ${mode === "lineup" ? "active" : ""}`}
             onClick={() => setMode("lineup")}
           >
-            <span>🍱 Session Menu</span>
-            <strong>Multi-game</strong>
+            <span>{t("sessionMenu")}</span>
+            <strong>{t("multiGame")}</strong>
           </button>
           <button
             type="button"
             className={`count-filter ${mode === "single" ? "active" : ""}`}
             onClick={() => setMode("single")}
           >
-            <span>🎲 Single Pick</span>
-            <strong>1 title</strong>
+            <span>{t("singlePick")}</span>
+            <strong>{t("oneTitle")}</strong>
           </button>
         </div>
       </div>
@@ -231,32 +334,70 @@ export function DrawPanel({ groupId }: { groupId: string }) {
         <div className="draw-owners-strip panel">
           <div className="draw-owners-label">
             <span className="draw-owners-icon">🎲</span>
-            <strong>Games contributed by:</strong>
+            <strong>{t("contributedBy")}</strong>
+            <span style={{ fontWeight: "normal", color: "var(--muted)" }}>
+              {t("presentMembers", { count: selectedOwnerIds.length, total: owners.length })}
+            </span>
           </div>
-          <div className="draw-owners-chips">
-            {owners.map((owner) => (
-              <span key={owner.userId} className="draw-owner-chip">
-                {owner.displayName} <strong className="owner-chip-count">({owner.count})</strong>
-              </span>
-            ))}
+
+          <div className="draw-owners-actions">
+            <button
+              type="button"
+              className="draw-owners-quick-btn"
+              onClick={selectAllOwners}
+              title={t("selectAll")}
+            >
+              {t("selectAll")}
+            </button>
+            <span style={{ color: "var(--border)" }} aria-hidden="true">|</span>
+            <button
+              type="button"
+              className="draw-owners-quick-btn"
+              onClick={deselectAllOwners}
+              title={t("deselectAll")}
+            >
+              {t("deselectAll")}
+            </button>
           </div>
+
+          <div className="draw-owners-chips" role="group" aria-label={t("contributedBy")}>
+            {owners.map((owner) => {
+              const isActive = selectedOwnerIds.includes(owner.userId);
+              return (
+                <button
+                  key={owner.userId}
+                  type="button"
+                  className={`draw-owner-chip ${isActive ? "active" : "inactive"}`}
+                  onClick={() => toggleOwner(owner.userId)}
+                  aria-pressed={isActive}
+                  title={`${owner.displayName} (${owner.count})`}
+                >
+                  <span className="draw-owner-chip-indicator" aria-hidden="true">
+                    {isActive ? "✓" : "–"}
+                  </span>
+                  <span>{owner.displayName}</span>
+                  <strong className="owner-chip-count">({owner.count})</strong>
+                </button>
+              );
+            })}
+          </div>
+
+          <p className="draw-owners-hint">{t("toggleHint")}</p>
         </div>
       )}
 
       <div className="draw-layout">
         <section className="draw-card">
           <div className="draw-card-header">
-            <h2>{mode === "lineup" ? "Session Menu Planner" : "Single Pick Filters"}</h2>
+            <h2>{mode === "lineup" ? t("sessionPlannerTitle") : t("singlePickTitle")}</h2>
             <p>
-              {mode === "lineup"
-                ? "Plan a balanced evening matching your total gathering duration, pairing a main game with warm-up/cooldown fillers (max 1 heavy game)."
-                : "Draw 1 title matching your players headcount, duration, and complexity."}
+              {mode === "lineup" ? t("sessionPlannerDesc") : t("singlePickDesc")}
             </p>
           </div>
 
           <div className="draw-card-form">
             <div className="field">
-              <label htmlFor="draw-player-count">Players Headcount</label>
+              <label htmlFor="draw-player-count">{t("playerCountLabel")}</label>
               <input
                 id="draw-player-count"
                 type="number"
@@ -264,42 +405,42 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                 max={1000}
                 value={playerCount}
                 onChange={(e) => setPlayerCount(e.target.value)}
-                placeholder="e.g. 5"
+                placeholder={t("playerCountPlaceholder")}
               />
             </div>
 
             {mode === "lineup" ? (
               <>
                 <div className="field">
-                  <label>Total Gathering Duration</label>
+                  <label>{t("gatheringDurationLabel")}</label>
                   <div className="filter-pill-group">
                     <button
                       type="button"
                       className={`filter-pill ${totalMinutes === 120 ? "active" : ""}`}
                       onClick={() => setTotalMinutes(120)}
                     >
-                      2 hours (120m)
+                      {t("durationHours", { hours: 2, minutes: 120 })}
                     </button>
                     <button
                       type="button"
                       className={`filter-pill ${totalMinutes === 180 ? "active" : ""}`}
                       onClick={() => setTotalMinutes(180)}
                     >
-                      3 hours (180m)
+                      {t("durationHours", { hours: 3, minutes: 180 })}
                     </button>
                     <button
                       type="button"
                       className={`filter-pill ${totalMinutes === 240 ? "active" : ""}`}
                       onClick={() => setTotalMinutes(240)}
                     >
-                      4 hours (240m)
+                      {t("durationHours", { hours: 4, minutes: 240 })}
                     </button>
                     <button
                       type="button"
                       className={`filter-pill ${totalMinutes === 300 ? "active" : ""}`}
                       onClick={() => setTotalMinutes(300)}
                     >
-                      5 hours (300m)
+                      {t("durationHours", { hours: 5, minutes: 300 })}
                     </button>
                   </div>
                 </div>
@@ -310,13 +451,38 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                     checked={allowHeavy}
                     onChange={(e) => setAllowHeavy(e.target.checked)}
                   />
-                  <span>Allow a Heavy game (Weight &gt; 3.2 · Anti-fatigue rule limits to max 1)</span>
+                  <span>{t("allowHeavyLabel")}</span>
                 </label>
+
+                <div className="field">
+                  <label htmlFor="draw-recipe-id">
+                    📋 {t("templateSelectorLabel")}{" "}
+                    <span style={{ fontWeight: "normal", color: "var(--muted)" }}>{t("optional")}</span>
+                  </label>
+                  <select
+                    id="draw-recipe-id"
+                    className="select"
+                    value={recipeId}
+                    onChange={(e) => setRecipeId(e.target.value)}
+                  >
+                    <option value="">{t("templateAuto")}</option>
+                    {SESSION_TEMPLATES.map((tmpl) => (
+                      <option key={tmpl.id} value={tmpl.id}>
+                        {getTemplateBadge(tmpl.id, tmpl.styleBadge)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="field-hint">
+                    {recipeId
+                      ? getTemplateDesc(recipeId, SESSION_TEMPLATES.find((tmpl) => tmpl.id === recipeId)?.description)
+                      : t("templateAutoHint")}
+                  </p>
+                </div>
 
                 {availableCategories.length > 0 && (
                   <div className="field">
                     <label htmlFor="draw-theme-category">
-                      🎭 Night Theme &amp; Setting <span style={{ fontWeight: "normal", color: "var(--muted)" }}>(Optional)</span>
+                      🎭 {t("themeSettingLabel")} <span style={{ fontWeight: "normal", color: "var(--muted)" }}>{t("optional")}</span>
                     </label>
                     <select
                       id="draw-theme-category"
@@ -324,7 +490,7 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                       value={themeCategory}
                       onChange={(e) => setThemeCategory(e.target.value)}
                     >
-                      <option value="">🎲 Open Collection (No specific theme)</option>
+                      <option value="">{t("openCollection")}</option>
                       {availableCategories.map((cat) => (
                         <option key={cat} value={cat}>
                           {cat}
@@ -332,7 +498,7 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                       ))}
                     </select>
                     <p className="field-hint">
-                      Anchor your session to a thematic setting from your collection (e.g. Horror, Fantasy, Sci-Fi).
+                      {t("themeSettingHint")}
                     </p>
                   </div>
                 )}
@@ -340,18 +506,18 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                 <div className="field affinity-slider-field">
                   <div className="affinity-slider-header">
                     <label htmlFor="mechanics-affinity">
-                      Thematic &amp; Mechanics Affinity
+                      {t("affinityLabel")}
                     </label>
                     <span className={`affinity-badge ${mechanicsAffinity > 0 ? "affinity-theme" : mechanicsAffinity < 0 ? "affinity-diverse" : "affinity-neutral"}`}>
-                      {mechanicsAffinity === 0 && "⚖️ Balanced (Neutral)"}
-                      {mechanicsAffinity > 0 && mechanicsAffinity <= 0.5 && "🎯 Similar themes"}
-                      {mechanicsAffinity > 0.5 && "🎯 Themed night"}
-                      {mechanicsAffinity < 0 && mechanicsAffinity >= -0.5 && "🌈 Diverse themes"}
-                      {mechanicsAffinity < -0.5 && "🌈 Maximum variety"}
+                      {mechanicsAffinity === 0 && t("affinityBalanced")}
+                      {mechanicsAffinity > 0 && mechanicsAffinity <= 0.5 && t("affinitySimilar")}
+                      {mechanicsAffinity > 0.5 && t("affinityThemed")}
+                      {mechanicsAffinity < 0 && mechanicsAffinity >= -0.5 && t("affinityDiverse")}
+                      {mechanicsAffinity < -0.5 && t("affinityMaxVariety")}
                     </span>
                   </div>
                   <div className="affinity-slider-control">
-                    <span className="slider-label slider-label-left">🌈 Variety</span>
+                    <span className="slider-label slider-label-left">{t("sliderVariety")}</span>
                     <input
                       id="mechanics-affinity"
                       type="range"
@@ -361,90 +527,90 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                       value={mechanicsAffinity}
                       onChange={(e) => setMechanicsAffinity(parseFloat(e.target.value))}
                     />
-                    <span className="slider-label slider-label-right">🎯 Themed</span>
+                    <span className="slider-label slider-label-right">{t("sliderThemed")}</span>
                   </div>
                   <p className="field-hint">
-                    {mechanicsAffinity === 0 && "Neutral selection: balances by duration and standard complexity."}
-                    {mechanicsAffinity > 0 && "Favors secondary games sharing thematic setting & style with the main event (great for an immersive night)."}
-                    {mechanicsAffinity < 0 && "Favors contrasting themes and mechanics to refresh the table and prevent mental fatigue."}
+                    {mechanicsAffinity === 0 && t("affinityHintNeutral")}
+                    {mechanicsAffinity > 0 && t("affinityHintThemed")}
+                    {mechanicsAffinity < 0 && t("affinityHintVariety")}
                   </p>
                 </div>
 
                 <button
                   type="button"
                   className="button button-large"
-                  disabled={busy || !playerCount}
+                  disabled={busy || !playerCount || hasNoSelectedContributors}
                   onClick={() => void handlePlanLineup(false)}
                 >
-                  {busy ? "Composing Lineup…" : "✨ Plan Evening Session Menu"}
+                  {busy ? t("composingLineup") : t("planEveningMenu")}
                 </button>
               </>
             ) : (
               <>
                 <div className="field">
-                  <label>Maximum Playing Time</label>
+                  <label>{t("maxPlayingTimeLabel")}</label>
                   <div className="filter-pill-group">
                     <button
                       type="button"
                       className={`filter-pill ${maxDuration === undefined ? "active" : ""}`}
                       onClick={() => setMaxDuration(undefined)}
                     >
-                      Any length
+                      {t("anyLength")}
                     </button>
                     <button
                       type="button"
                       className={`filter-pill ${maxDuration === 45 ? "active" : ""}`}
                       onClick={() => setMaxDuration(45)}
                     >
-                      ⚡ Short (&le; 45m)
+                      {t("shortTime")}
                     </button>
                     <button
                       type="button"
                       className={`filter-pill ${maxDuration === 90 ? "active" : ""}`}
                       onClick={() => setMaxDuration(90)}
                     >
-                      🎯 Standard (&le; 90m)
+                      {t("standardTime")}
                     </button>
                     <button
                       type="button"
                       className={`filter-pill ${maxDuration === 150 ? "active" : ""}`}
                       onClick={() => setMaxDuration(150)}
                     >
-                      ⏳ Long (&le; 2.5h)
+                      {t("longTime")}
                     </button>
                   </div>
                 </div>
 
                 <div className="field">
-                  <label>Maximum Complexity (BGG Weight)</label>
+                  <label>{t("maxComplexityLabel")}</label>
                   <div className="filter-pill-group">
                     <button
                       type="button"
                       className={`filter-pill ${maxWeight === undefined ? "active" : ""}`}
                       onClick={() => setMaxWeight(undefined)}
                     >
-                      Any weight
+                      {t("anyWeight")}
                     </button>
                     <button
                       type="button"
                       className={`filter-pill ${maxWeight === 2.2 ? "active" : ""}`}
                       onClick={() => setMaxWeight(2.2)}
                     >
-                      🟢 Light / Casual (&le; 2.2)
+                      {t("lightWeight")}
                     </button>
                     <button
                       type="button"
                       className={`filter-pill ${maxWeight === 3.2 ? "active" : ""}`}
                       onClick={() => setMaxWeight(3.2)}
                     >
-                      🟡 Medium (&le; 3.2)
+                      {t("mediumWeight")}
                     </button>
                     <button
                       type="button"
                       className={`filter-pill ${maxWeight === 4.5 ? "active" : ""}`}
                       onClick={() => setMaxWeight(4.5)}
                     >
-                      🔴 Heavy (&le; 4.5)
+                      {t("heavyWeight")}
                     </button>
                   </div>
                 </div>
@@ -452,12 +618,16 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                 <button
                   type="button"
                   className="button button-large"
-                  disabled={busy || !playerCount}
+                  disabled={busy || !playerCount || hasNoSelectedContributors}
                   onClick={() => void handleSinglePick(false)}
                 >
-                  {busy ? "Picking…" : "🎲 Pick a Game"}
+                  {busy ? t("picking") : t("pickAGame")}
                 </button>
               </>
+            )}
+
+            {hasNoSelectedContributors && (
+              <p className="form-error" role="alert">{t("noContributorsSelected")}</p>
             )}
 
             {error && <p className="form-error" role="alert">{error}</p>}
@@ -469,28 +639,51 @@ export function DrawPanel({ groupId }: { groupId: string }) {
           {mode === "lineup" ? (
             !lineupResult ? (
               <div>
-                <h2>Ready to plan tonight&apos;s menu?</h2>
-                <p>Pick the duration on the left to compose a balanced sequence of games.</p>
+                <h2>{t("readyLineupTitle")}</h2>
+                <p>{t("readyLineupDesc")}</p>
                 <img className="draw-art" src="/brand/tablefolk-mark.png" alt="" />
               </div>
             ) : lineupResult.status === "empty" || lineupResult.lineup.length === 0 ? (
               <div className="no-match">
                 <img src="/brand/tablefolk-mark.png" alt="" />
                 <div>
-                  <h2>No matching lineup found.</h2>
-                  <p>Try allowing heavy games, choosing a different duration, or adding more games to your group.</p>
+                  <h2>{t("noLineupFoundTitle")}</h2>
+                  <p>{t("noLineupFoundDesc")}</p>
                 </div>
               </div>
             ) : (
               <div>
                 <span className="draw-result-intro">
-                  ✨ Tonight&apos;s Lineup · Estimated {lineupResult.totalEstimatedMinutes} min of {lineupResult.targetMinutes} min planned
-                  {lineupResult.transitionMinutes ? ` (${lineupResult.transitionMinutes}m buffer included)` : ""}
+                  {t("lineupIntro", {
+                    minutes: lineupResult.totalEstimatedMinutes,
+                    target: lineupResult.targetMinutes,
+                  })}
+                  {lineupResult.transitionMinutes ? ` ${t("bufferIncluded", { minutes: lineupResult.transitionMinutes })}` : ""}
                 </span>
-                <h2>Game Night Menu</h2>
+                <h2>{t("menuTitle")}</h2>
+                {(lineupResult.recipeBadge || lineupResult.recipeTitle) && (() => {
+                  const activeRecipeId = lineupResult.recipeId;
+                  const activeBadge = activeRecipeId
+                    ? getTemplateBadge(activeRecipeId, lineupResult.recipeBadge)
+                    : (lineupResult.recipeBadge ?? lineupResult.recipeTitle);
+                  const activeDesc = activeRecipeId
+                    ? getTemplateDesc(activeRecipeId, lineupResult.recipeDescription)
+                    : lineupResult.recipeDescription;
+                  return (
+                    <div className="lineup-recipe-banner">
+                      <div className="lineup-recipe-header">
+                        <span className="lineup-recipe-tag">📋 {t("activeTemplateLabel")}</span>
+                        <span className="lineup-recipe-badge">{activeBadge}</span>
+                      </div>
+                      {activeDesc && (
+                        <p className="lineup-recipe-desc">{activeDesc}</p>
+                      )}
+                    </div>
+                  );
+                })()}
                 {lineupResult.themeNotice && (
                   <div className="lineup-theme-notice">
-                    {lineupResult.themeNotice}
+                    {getLocalizedThemeNotice(lineupResult.themeNotice)}
                   </div>
                 )}
 
@@ -499,20 +692,20 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                     <div key={slot.game.bggId} style={{ display: "contents" }}>
                       {idx > 0 && (
                         <div className="lineup-buffer-pill">
-                          {slot.transitionReason ?? `☕ ${slot.transitionBeforeMinutes ?? 15}m Intermission & Setup buffer`}
+                          {getLocalizedTransitionReason(slot.transitionBeforeMinutes)}
                         </div>
                       )}
                       <div className="lineup-slot-card panel">
                         <div className="lineup-slot-header">
                           <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
-                            <span className="slot-role-badge">{slot.label}</span>
+                            <span className="slot-role-badge">{getLocalizedSlotLabel(slot)}</span>
                             {slot.sharedMechanics && slot.sharedMechanics.length > 0 && (
                               <span className="slot-shared-chip" title="Shared mechanics with main game">
-                                🔗 Shares: {slot.sharedMechanics.slice(0, 2).join(", ")}
+                                {t("sharedMechanics", { mechanics: slot.sharedMechanics.slice(0, 2).join(", ") })}
                               </span>
                             )}
                           </div>
-                          <span className="slot-time-badge">⏱️ ~{slot.estimatedMinutes} min</span>
+                          <span className="slot-time-badge">{t("estimatedMinutes", { minutes: slot.estimatedMinutes })}</span>
                         </div>
                         <GameCard game={slot.game} owners={slot.game.owners} />
                       </div>
@@ -527,49 +720,49 @@ export function DrawPanel({ groupId }: { groupId: string }) {
                     disabled={savingEvent}
                     onClick={() => void handleSaveAsEvent()}
                   >
-                    {savingEvent ? "Saving Event…" : "📌 Save as Group Event"}
+                    {savingEvent ? t("savingEvent") : t("saveAsGroupEvent")}
                   </button>
                   <button
                     type="button"
                     className="button-secondary"
                     onClick={handleCopyLineup}
                   >
-                    {copied ? "✓ Copied to clipboard!" : "📋 Copy Menu"}
+                    {copied ? t("copiedMenu") : t("copyMenu")}
                   </button>
                   <button
                     type="button"
                     className="button-secondary"
-                    disabled={busy || savingEvent}
+                    disabled={busy || savingEvent || hasNoSelectedContributors}
                     onClick={() => void handlePlanLineup(true)}
                   >
-                    {busy ? "Regenerating…" : "🎲 Reroll Lineup"}
+                    {busy ? t("regenerating") : t("rerollLineup")}
                   </button>
                 </div>
               </div>
             )
           ) : !singleResult ? (
             <div>
-              <h2>Let the group decide with a draw.</h2>
-              <p>Choose the headcount and filters to see what fits your table.</p>
+              <h2>{t("readySingleTitle")}</h2>
+              <p>{t("readySingleDesc")}</p>
               <img className="draw-art" src="/brand/tablefolk-mark.png" alt="" />
             </div>
           ) : singleResult.status === "empty" ? (
             <div className="no-match">
               <img src="/brand/tablefolk-mark.png" alt="" />
               <div>
-                <h2>No shared games yet.</h2>
-                <p>Ask group members to share games from their personal collections, then come back to draw.</p>
+                <h2>{t("noSharedGamesTitle")}</h2>
+                <p>{t("noSharedGamesDesc")}</p>
               </div>
             </div>
           ) : singleResult.status === "no_match" ? (
             <div className="no-match">
               <img src="/brand/tablefolk-mark.png" alt="" />
               <div>
-                <h2>No single game fits the selected filters.</h2>
-                <p>Try loosening the duration or complexity restrictions.</p>
+                <h2>{t("noSingleMatchTitle")}</h2>
+                <p>{t("noSingleMatchDesc")}</p>
                 {singleResult.unknownPlayerCount > 0 && (
                   <p className="draw-hint">
-                    {singleResult.unknownPlayerCount} {singleResult.unknownPlayerCount === 1 ? "game has" : "games have"} no player count listed and could not be included.
+                    {t("unknownPlayerCountHint", { count: singleResult.unknownPlayerCount })}
                   </p>
                 )}
               </div>
@@ -577,10 +770,10 @@ export function DrawPanel({ groupId }: { groupId: string }) {
           ) : (
             <div>
               <span className="draw-result-intro">
-                Your game night pick · {singleResult.eligibleCount} {singleResult.eligibleCount === 1 ? "game fits" : "games fit"}
+                {t("singlePickIntro", { count: singleResult.eligibleCount })}
               </span>
               <h2>
-                Let&apos;s play {singleResult.game.name}
+                {t("letsPlay", { name: singleResult.game.name })}
                 {singleResult.game.expansions && singleResult.game.expansions.length > 0 && (
                   <span className="draw-title-expansions">
                     {" + "}{singleResult.game.expansions.map((e) => cleanExpansionName(singleResult.game.name, e.name)).join(", ")}
@@ -590,19 +783,19 @@ export function DrawPanel({ groupId }: { groupId: string }) {
               </h2>
               <GameCard game={singleResult.game} owners={singleResult.game.owners} />
               <p className="draw-hint">
-                Check with a sharing member that they can bring it.
+                {t("bringHint")}
               </p>
               <div className="draw-actions">
                 <button
                   type="button"
                   className="button-secondary"
-                  disabled={busy}
+                  disabled={busy || hasNoSelectedContributors}
                   onClick={() => void handleSinglePick(true)}
                 >
-                  {busy ? "Picking…" : "🎲 Pick another"}
+                  {busy ? t("picking") : t("pickAnother")}
                 </button>
                 {singleResult.onlyMatch && (
-                  <span className="draw-hint">This is the only listed game that fits.</span>
+                  <span className="draw-hint">{t("onlyMatch")}</span>
                 )}
               </div>
             </div>

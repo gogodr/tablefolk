@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import type { BggSyncResult } from "@tablefolk/contracts";
+import { useTranslations } from "next-intl";
+import type { BggSyncResult, CollectionGame } from "@tablefolk/contracts";
 import { GameCard } from "@/components/game-card";
 import { GameSearch } from "@/components/game-search";
 import { ShareControl } from "@/components/share-control";
 import { useApi } from "@/lib/api";
 import { queryKeys, useCollectionQuery, useGroupsQuery, useBggProfileQuery } from "@/lib/queries";
+import { useAutoEnrich } from "@/lib/use-auto-enrich";
 
 type Filter = "all" | "boardgame" | "boardgameexpansion" | "available" | "unavailable" | "expanded";
 type SortOption = "name-asc" | "name-desc" | "weight-desc" | "weight-asc" | "time-asc" | "year-desc" | "recent";
@@ -21,6 +23,52 @@ export function CollectionClient() {
   const { isLoaded, isSignedIn } = useAuth();
   const api = useApi();
   const queryClient = useQueryClient();
+  const t = useTranslations("collection");
+  const tCommon = useTranslations("common");
+  const tNav = useTranslations("navigation");
+
+  function formatReason(raw: string | null | undefined): string {
+    if (!raw) return t("homeOnlyReason");
+    switch (raw) {
+      case "In storage":
+      case "Guardado en almacén":
+        return t("inStorage");
+      case "Lent out":
+      case "Prestado a un amigo":
+        return t("lentOut");
+      case "Too heavy to transport":
+      case "Demasiado pesado para transportar":
+        return t("tooHeavy");
+      case "Home only":
+      case "Solo en casa (jugar en mi casa)":
+        return t("homeOnlyReason");
+      case "Missing pieces":
+      case "Piezas faltantes / en reparación":
+        return t("missingPieces");
+      case "Not ready to play":
+      case "No listo para jugar / sin destroquelar":
+        return t("notReadyToPlay");
+      case "At another location / in transit":
+      case "En otra casa / en tránsito":
+        return t("inTransit");
+      case "Needs sleeving / organizing":
+      case "Pendiente de enfundar u organizar":
+        return t("needsOrganizing");
+      default:
+        return raw;
+    }
+  }
+
+  const standardReasons = [
+    { value: "In storage", label: t("inStorage") },
+    { value: "Lent out", label: t("lentOut") },
+    { value: "Too heavy to transport", label: t("tooHeavy") },
+    { value: "Home only", label: t("homeOnlyReason") },
+    { value: "Missing pieces", label: t("missingPieces") },
+    { value: "Not ready to play", label: t("notReadyToPlay") },
+    { value: "At another location / in transit", label: t("inTransit") },
+    { value: "Needs sleeving / organizing", label: t("needsOrganizing") },
+  ];
 
   const { data: collectionData, isLoading: collectionLoading, error: collectionError } = useCollectionQuery();
   const { data: groupsData, isLoading: groupsLoading } = useGroupsQuery();
@@ -28,6 +76,7 @@ export function CollectionClient() {
 
   const games = collectionData?.games ?? [];
   const groups = groupsData?.groups ?? [];
+  const { isAutoEnriching } = useAutoEnrich(games);
   const [error, setError] = useState("");
 
   // Filters & Search
@@ -200,16 +249,27 @@ export function CollectionClient() {
 
   const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-  // Pending enrichment count (missing complexity weight OR not yet cached locally in Tablefolk,
+  // Pending enrichment count (missing complexity weight, rating, rank, bestPlayers, OR not yet cached locally in Tablefolk,
   // excluding games refreshed within the last 7 days so items without weight/cover on BGG aren't stuck forever)
   const pendingEnrichmentCount = useMemo(() => {
     const now = Date.now();
     return games.filter((g) => {
       const missingData =
         g.weight === null ||
+        g.rating === null ||
+        g.rating === undefined ||
+        g.rank === null ||
+        g.rank === undefined ||
+        g.bestPlayers === null ||
+        g.bestPlayers === undefined ||
         !g.coverUrl ||
         !g.coverUrl.startsWith("/v1/covers/");
-      if (!missingData) return false;
+
+      if (!missingData) {
+        if (!g.lastEnrichedAt) return true;
+        const enrichedAt = new Date(g.lastEnrichedAt).getTime();
+        return now - enrichedAt > SEVEN_DAYS_MS;
+      }
 
       if (g.lastEnrichedAt) {
         const enrichedAt = new Date(g.lastEnrichedAt).getTime();
@@ -221,6 +281,11 @@ export function CollectionClient() {
       return true;
     }).length;
   }, [games]);
+
+  const ownedBaseGameIds = useMemo(
+    () => new Set(games.filter((g) => g.kind !== "boardgameexpansion").map((g) => g.bggId)),
+    [games]
+  );
 
   // Filtered & Sorted Collection List
   const shown = useMemo(() => {
@@ -239,9 +304,6 @@ export function CollectionClient() {
     }
 
     // 2. View Mode (Grouped under Base Game vs Flat view)
-    const ownedBaseGameIds = new Set(
-      games.filter((g) => g.kind !== "boardgameexpansion").map((g) => g.bggId)
-    );
     if (viewMode === "grouped" && filter !== "boardgameexpansion") {
       list = list.filter((g) => {
         if (g.kind !== "boardgameexpansion") return true;
@@ -299,17 +361,56 @@ export function CollectionClient() {
       return 0; // Default recent DB order
     });
 
+    // 7. In Flat view ("All boxes"), group expansions immediately following their base game
+    if (viewMode === "flat" && filter !== "boardgameexpansion") {
+      const childrenByBase = new Map<number, CollectionGame[]>();
+      const basesAndOrphans: CollectionGame[] = [];
+
+      for (const item of list) {
+        if (item.kind === "boardgameexpansion" && item.baseGameBggId) {
+          const arr = childrenByBase.get(item.baseGameBggId) ?? [];
+          arr.push(item);
+          childrenByBase.set(item.baseGameBggId, arr);
+        } else {
+          basesAndOrphans.push(item);
+        }
+      }
+
+      const finalList: CollectionGame[] = [];
+      const placedChildIds = new Set<number>();
+
+      for (const item of basesAndOrphans) {
+        finalList.push(item);
+        const children = childrenByBase.get(item.bggId);
+        if (children) {
+          for (const child of children) {
+            finalList.push(child);
+            placedChildIds.add(child.bggId);
+          }
+        }
+      }
+
+      // Any expansions whose base game was NOT in basesAndOrphans (e.g. orphan expansions)
+      for (const item of list) {
+        if (item.kind === "boardgameexpansion" && !placedChildIds.has(item.bggId)) {
+          finalList.push(item);
+        }
+      }
+
+      return finalList;
+    }
+
     return list;
   }, [games, searchQuery, filter, playerFilter, weightFilter, sharedFilter, sortBy]);
 
   const loading = !isLoaded || (isSignedIn && (collectionLoading || groupsLoading));
-  if (loading) return <div className="page"><p className="loading">Loading your collection…</p></div>;
+  if (loading) return <div className="page"><p className="loading">{tCommon("loading")}</p></div>;
   if (!isSignedIn) {
     return (
       <section className="narrow-page notice-page">
-        <h1>Your collection starts here.</h1>
-        <p>Sign in to add games and share them with a group.</p>
-        <Link href="/sign-in" className="button">Sign in</Link>
+        <h1>{t("unauthTitle")}</h1>
+        <p>{t("unauthSubtitle")}</p>
+        <Link href="/sign-in" className="button">{tNav("signIn")}</Link>
       </section>
     );
   }
@@ -320,20 +421,20 @@ export function CollectionClient() {
     <div className="page collection-page">
       <div className="page-header collection-heading">
         <div>
-          <h1>My collection</h1>
-          <p>Keep the games you own close, manage what can travel, and share them with your groups.</p>
+          <h1>{t("title")}</h1>
+          <p>{t("subtitle")}</p>
         </div>
-        <Link href="/groups" className="collection-groups-link">View groups</Link>
+        <Link href="/groups" className="collection-groups-link">{t("viewGroups")}</Link>
       </div>
 
       <div className="collection-tools">
         <details className="collection-tool collection-tool-add">
-          <summary>Add a game</summary>
+          <summary>{t("addGame")}</summary>
           <div className="collection-tool-content"><GameSearch onAdded={() => void refreshCollection()} /></div>
         </details>
         <details className="collection-tool">
           <summary>
-            {savedBggUsername ? `BoardGameGeek (@${savedBggUsername})` : "Import from BoardGameGeek"}
+            {savedBggUsername ? `BoardGameGeek (@${savedBggUsername})` : t("bggImportTitle")}
           </summary>
           <div className="collection-tool-content">
             {savedBggUsername && !editingBggUser ? (
@@ -341,15 +442,15 @@ export function CollectionClient() {
                 <div className="bgg-connected-header">
                   <span className="bgg-status-dot" aria-hidden="true">●</span>
                   <div>
-                    <strong>Connected as @{savedBggUsername}</strong>
+                    <strong>{t("bggConnected", { username: savedBggUsername })}</strong>
                     {lastBggSyncAt && (
                       <span className="bgg-last-sync">
-                        {" "}· Last synced {new Date(lastBggSyncAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        {" "}· {t("bggLastSynced", { date: new Date(lastBggSyncAt).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) })}
                       </span>
                     )}
                   </div>
                 </div>
-                <p>One-click sync of your owned games from BoardGameGeek.</p>
+                <p>{t("bggSubtitle")}</p>
                 <div className="bgg-connected-actions">
                   <button
                     type="button"
@@ -357,7 +458,7 @@ export function CollectionClient() {
                     onClick={() => void handleSyncBgg()}
                     disabled={syncing}
                   >
-                    {syncing ? "Syncing with BGG…" : "🔄 Sync BGG Collection Now"}
+                    {syncing ? t("bggSyncing") : t("bggSyncNow")}
                   </button>
                   <button
                     type="button"
@@ -365,16 +466,16 @@ export function CollectionClient() {
                     onClick={() => setEditingBggUser(true)}
                     disabled={syncing}
                   >
-                    Change username
+                    {t("bggChangeUser")}
                   </button>
                 </div>
               </div>
             ) : (
               <>
-                <p>Connect your BGG account to automatically import and refresh your owned collection.</p>
+                <p>{t("bggConnectPrompt")}</p>
                 <form onSubmit={handleSyncBgg} className="inline-form">
                   <div className="field">
-                    <label htmlFor="bgg-user">BGG Username</label>
+                    <label htmlFor="bgg-user">{t("bggUsernameLabel")}</label>
                     <input
                       id="bgg-user"
                       type="text"
@@ -387,7 +488,7 @@ export function CollectionClient() {
                   </div>
                   <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
                     <button type="submit" className="button" disabled={syncing || !bggUsername.trim()}>
-                      {syncing ? "Connecting…" : savedBggUsername ? "Save & Sync" : "Connect & Sync BGG"}
+                      {syncing ? t("bggConnecting") : savedBggUsername ? t("bggSaveAndSync") : t("bggConnectAndSync")}
                     </button>
                     {savedBggUsername && (
                       <button
@@ -399,7 +500,7 @@ export function CollectionClient() {
                         }}
                         disabled={syncing}
                       >
-                        Cancel
+                        {tCommon("cancel")}
                       </button>
                     )}
                   </div>
@@ -409,13 +510,24 @@ export function CollectionClient() {
             {syncStatus && <p className="form-success">{syncStatus}</p>}
           </div>
         </details>
-        {(pendingEnrichmentCount > 0 || enrichStatus) && (
+        {(pendingEnrichmentCount > 0 || enrichStatus || isAutoEnriching) && (
           <details className="collection-tool">
-            <summary>Refresh game details{pendingEnrichmentCount > 0 ? ` (${pendingEnrichmentCount})` : ""}</summary>
+            <summary>
+              {isAutoEnriching
+                ? `🔄 ${t("refreshingBackground")}`
+                : pendingEnrichmentCount > 0
+                ? t("refreshPending", { count: pendingEnrichmentCount })
+                : t("refreshDetails")}
+            </summary>
             <div className="collection-tool-content">
-              <p>Cache covers locally and fill in missing complexity weights for your games.</p>
-              <button type="button" className="button-secondary" onClick={() => void handleEnrich()} disabled={enriching || pendingEnrichmentCount === 0}>
-                {enriching ? "Refreshing…" : "Refresh game details"}
+              <p>{t("enrichDesc")}</p>
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={() => void handleEnrich()}
+                disabled={enriching || isAutoEnriching || pendingEnrichmentCount === 0}
+              >
+                {enriching || isAutoEnriching ? t("refreshing") : t("refreshDetails")}
               </button>
               {enrichStatus && <p className="form-success" role="status">{enrichStatus}</p>}
             </div>
@@ -424,9 +536,9 @@ export function CollectionClient() {
       </div>
 
       <div className="section-title">
-        <h2>Your games</h2>
+        <h2>{t("yourGames")}</h2>
         <p>
-          Showing {shown.length} of {games.length} {games.length === 1 ? "game" : "games"}
+          {t("showingCount", { shown: shown.length, total: games.length })}
         </p>
       </div>
 
@@ -438,7 +550,7 @@ export function CollectionClient() {
           <input
             type="search"
             className="collection-search-input"
-            placeholder={`Filter ${games.length} games by title, edition, or designer…`}
+            placeholder={t("filterPlaceholder", { count: games.length })}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -458,14 +570,14 @@ export function CollectionClient() {
         <div className="count-filters" role="group" aria-label="Filter games by category">
           {(
             [
-              { id: "all", label: "All games", count: games.length },
-              { id: "available", label: "Available to travel", count: games.filter((g) => g.isAvailable).length },
-              { id: "unavailable", label: "Unavailable", count: games.filter((g) => !g.isAvailable).length },
-              { id: "boardgame", label: "Base games", count: games.filter((g) => g.kind === "boardgame").length },
-              { id: "boardgameexpansion", label: "Expansions", count: games.filter((g) => g.kind === "boardgameexpansion").length },
+              { id: "all", label: t("filters.all"), count: games.length },
+              { id: "available", label: t("filters.available"), count: games.filter((g) => g.isAvailable).length },
+              { id: "unavailable", label: t("filters.unavailable"), count: games.filter((g) => !g.isAvailable).length },
+              { id: "boardgame", label: t("filters.boardgame"), count: games.filter((g) => g.kind === "boardgame").length },
+              { id: "boardgameexpansion", label: t("filters.expansion"), count: games.filter((g) => g.kind === "boardgameexpansion").length },
               {
                 id: "expanded",
-                label: "🧩 Has Expansions",
+                label: t("hasExpansions"),
                 count: games.filter((g) => (g.effectiveMaxPlayers ?? 0) > (g.maxPlayers ?? 0) || (g.expansionCount ?? 0) > 0).length,
               },
             ] as const
@@ -493,10 +605,10 @@ export function CollectionClient() {
               onChange={(e) => setPlayerFilter(e.target.value as PlayerFilter)}
               aria-label="Filter by player count"
             >
-              <option value="all">👥 Any player count</option>
-              <option value="2">2 Players</option>
-              <option value="3-4">3–4 Players</option>
-              <option value="5+">5+ Players</option>
+              <option value="all">{t("anyPlayerCount")}</option>
+              <option value="2">{t("playersCount", { count: 2 })}</option>
+              <option value="3-4">3–4 {t("playersCount", { count: 4 }).split(" ")[1]}</option>
+              <option value="5+">{t("playersFivePlus")}</option>
             </select>
 
             {/* Complexity Weight Filter */}
@@ -506,10 +618,10 @@ export function CollectionClient() {
               onChange={(e) => setWeightFilter(e.target.value as WeightFilter)}
               aria-label="Filter by complexity weight"
             >
-              <option value="all">⚖️ Any complexity</option>
-              <option value="light">Light (≤ 2.2)</option>
-              <option value="medium">Medium (2.2–3.5)</option>
-              <option value="heavy">Heavy (&gt; 3.5)</option>
+              <option value="all">{t("complexity.all")}</option>
+              <option value="light">{t("complexity.light")}</option>
+              <option value="medium">{t("complexity.medium")}</option>
+              <option value="heavy">{t("complexity.heavy")}</option>
             </select>
 
             {/* Shared with Groups Filter */}
@@ -519,9 +631,9 @@ export function CollectionClient() {
               onChange={(e) => setSharedFilter(e.target.value as SharedFilter)}
               aria-label="Filter by group sharing"
             >
-              <option value="all">🌐 All sharing</option>
-              <option value="shared">Shared with a group</option>
-              <option value="unshared">Not shared yet</option>
+              <option value="all">{t("allSharing")}</option>
+              <option value="shared">{t("sharedWithGroup")}</option>
+              <option value="unshared">{t("notSharedYet")}</option>
             </select>
           </div>
 
@@ -532,22 +644,22 @@ export function CollectionClient() {
                 type="button"
                 className={`view-mode-btn ${viewMode === "grouped" ? "active" : ""}`}
                 onClick={() => setViewMode("grouped")}
-                title="Group expansions under base games"
+                title={t("viewModeGrouped")}
               >
-                🧩 Grouped
+                {t("viewModeGrouped")}
               </button>
               <button
                 type="button"
                 className={`view-mode-btn ${viewMode === "flat" ? "active" : ""}`}
                 onClick={() => setViewMode("flat")}
-                title="Show all individual expansion cards"
+                title={t("viewModeFlat")}
               >
-                📄 All boxes
+                {t("viewModeFlat")}
               </button>
             </div>
 
             <label htmlFor="collection-sort" style={{ fontSize: "13px", fontWeight: 700 }}>
-              Sort:
+              {t("sortLabel")}
             </label>
             <select
               id="collection-sort"
@@ -555,13 +667,13 @@ export function CollectionClient() {
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as SortOption)}
             >
-              <option value="name-asc">Title: A → Z</option>
-              <option value="name-desc">Title: Z → A</option>
-              <option value="weight-desc">Complexity: High → Low</option>
-              <option value="weight-asc">Complexity: Low → High</option>
-              <option value="time-asc">Play time: Shortest</option>
-              <option value="year-desc">Year: Newest</option>
-              <option value="recent">Recently Added</option>
+              <option value="name-asc">{t("sort.nameAsc")}</option>
+              <option value="name-desc">{t("sort.nameDesc")}</option>
+              <option value="weight-desc">{t("sort.weightDesc")}</option>
+              <option value="weight-asc">{t("sort.weightAsc")}</option>
+              <option value="time-asc">{t("sort.timeAsc")}</option>
+              <option value="year-desc">{t("sort.yearDesc")}</option>
+              <option value="recent">{t("sort.recent")}</option>
             </select>
           </div>
         </div>
@@ -570,7 +682,7 @@ export function CollectionClient() {
       {error && (
         <div className="state-message error" role="alert">
           <p>{error}</p>
-          <button className="button-quiet" onClick={() => void refreshCollection()}>Try again</button>
+          <button className="button-quiet" onClick={() => void refreshCollection()}>{tCommon("confirm")}</button>
         </div>
       )}
 
@@ -578,15 +690,15 @@ export function CollectionClient() {
         <div className="empty-state">
           <img src="/brand/tablefolk-mark.png" alt="" />
           <div>
-            <h2>Your shelf is ready for its first game.</h2>
-            <p>Search above or sync your BoardGameGeek collection. You can share games with a group afterward.</p>
+            <h2>{t("emptyShelfTitle")}</h2>
+            <p>{t("emptyShelfDesc")}</p>
           </div>
         </div>
       ) : shown.length === 0 ? (
         <div className="empty-state">
           <div>
-            <h2>No games match your filters.</h2>
-            <p>Try clearing your search query or adjusting your filters.</p>
+            <h2>{t("noGamesMatchedTitle")}</h2>
+            <p>{t("noGamesMatchedDesc")}</p>
             <button
               type="button"
               className="button-secondary"
@@ -598,50 +710,65 @@ export function CollectionClient() {
                 setSharedFilter("all");
               }}
             >
-              Reset all filters
+              {t("resetAllFilters")}
             </button>
           </div>
         </div>
       ) : (
         <div className="game-grid collection-grid">
-          {shown.map((game, index) => (
-            <div className="collection-card-wrap" key={game.bggId}>
-              <GameCard
-                game={game}
-                eagerCover={index === 0}
-                actions={
-                  <div className="collection-card-actions">
-                    <button
-                      type="button"
-                      className="collection-action"
-                      onClick={() => openInspector(game.bggId, "share")}
-                      aria-label={`Share ${game.name} with groups`}
-                    >
-                      Share {game.sharedGroupIds.length > 0 && <span>{game.sharedGroupIds.length}</span>}
-                    </button>
-                    <button
-                      type="button"
-                      className="collection-action"
-                      onClick={() => openInspector(game.bggId, "details")}
-                      aria-label={`Manage ${game.name}`}
-                    >
-                      Manage
-                    </button>
+          {shown.map((game, index) => {
+            const isSubExpansionInFlat =
+              viewMode === "flat" &&
+              game.kind === "boardgameexpansion" &&
+              Boolean(game.baseGameBggId && ownedBaseGameIds.has(game.baseGameBggId));
+
+            return (
+              <div
+                className={`collection-card-wrap ${isSubExpansionInFlat ? "collection-card-wrap-subexpansion" : ""}`}
+                key={game.bggId}
+              >
+                {isSubExpansionInFlat && game.baseGameTitle && (
+                  <div className="subexpansion-banner">
+                    <span>↳ {game.baseGameTitle}</span>
                   </div>
-                }
-              />
-              <span className={`collection-status ${game.isAvailable ? "" : "collection-status-unavailable"}`}>
-                {game.isAvailable ? "Available to travel" : game.unavailableReason || "Unavailable"}
-              </span>
-            </div>
-          ))}
+                )}
+                <GameCard
+                  game={game}
+                  eagerCover={index === 0}
+                  actions={
+                    <div className="collection-card-actions">
+                      <button
+                        type="button"
+                        className="collection-action"
+                        onClick={() => openInspector(game.bggId, "share")}
+                        aria-label={`${t("shareAction")} ${game.name}`}
+                      >
+                        {t("shareAction")} {game.sharedGroupIds.length > 0 && <span>{game.sharedGroupIds.length}</span>}
+                      </button>
+                      <button
+                        type="button"
+                        className="collection-action"
+                        onClick={() => openInspector(game.bggId, "details")}
+                        aria-label={`${t("manageAction")} ${game.name}`}
+                      >
+                        {t("manageAction")}
+                      </button>
+                    </div>
+                  }
+                />
+                <span className={`collection-status ${game.isAvailable ? "" : "collection-status-unavailable"}`}>
+                  {game.isAvailable ? t("availableToTravel") : formatReason(game.unavailableReason)}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 
       <dialog
         ref={inspectorRef}
         className="collection-inspector"
-        aria-label={game ? `Manage ${game.name}` : "Manage game"}
+        aria-label={game ? `${t("manageAction")} ${game.name}` : t("manageAction")}
         onClose={closeInspector}
         onClick={(event) => {
           const bounds = event.currentTarget.getBoundingClientRect();
@@ -657,20 +784,23 @@ export function CollectionClient() {
             <div className="collection-inspector-head">
               <div>
                 <h2>{game.name}</h2>
-                <p>{game.isAvailable ? "Available to travel" : game.unavailableReason || "Unavailable"}</p>
+                <p>{game.isAvailable ? t("availableToTravel") : formatReason(game.unavailableReason)}</p>
               </div>
-              <button type="button" className="collection-close" onClick={() => inspectorRef.current?.close()} aria-label="Close game details">Close</button>
+              <button type="button" className="collection-close" onClick={() => inspectorRef.current?.close()} aria-label={t("close")}>{t("close")}</button>
             </div>
             <div className="collection-inspector-tabs" role="group" aria-label="Game settings">
-              <button type="button" className={sharingId === game.bggId ? "active" : ""} aria-pressed={sharingId === game.bggId} onClick={() => openInspector(game.bggId, "share")}>Share</button>
-              <button type="button" className={editingId === game.bggId ? "active" : ""} aria-pressed={editingId === game.bggId} onClick={() => openInspector(game.bggId, "details")}>Details</button>
+              <button type="button" className={sharingId === game.bggId ? "active" : ""} aria-pressed={sharingId === game.bggId} onClick={() => openInspector(game.bggId, "share")}>{t("shareAction")}</button>
+              <button type="button" className={editingId === game.bggId ? "active" : ""} aria-pressed={editingId === game.bggId} onClick={() => openInspector(game.bggId, "details")}>{tCommon("details")}</button>
             </div>
 
             {sharingId === game.bggId ? (
               <section className="collection-inspector-section">
-                <h3>Share with groups</h3>
+                <h3>{t("shareWithGroups")}</h3>
                 <ShareControl
                   bggId={game.bggId}
+                  gameName={game.name}
+                  baseGameTitle={game.baseGameTitle}
+                  expansions={game.expansions}
                   sharedGroupIds={game.sharedGroupIds}
                   groups={groups}
                   onChanged={() => void refreshCollection()}
@@ -678,7 +808,7 @@ export function CollectionClient() {
               </section>
             ) : (
               <section className="collection-inspector-section">
-                <h3>Game Availability &amp; Version</h3>
+                <h3>{t("availabilityAndVersion")}</h3>
                   <div className="field">
                     <label>
                       <input
@@ -688,41 +818,54 @@ export function CollectionClient() {
                           void updateAvailability(
                             game.bggId,
                             e.target.checked,
-                            e.target.checked ? null : (game.unavailableReason || "Lent out"),
+                            e.target.checked ? null : (game.unavailableReason || "In storage"),
                             game.versionName
                           )
                         }
                       />
-                      {" "}Available to bring to Game Nights
+                      {" "}{t("availableToBring")}
                     </label>
                   </div>
 
                   {!game.isAvailable && (
                     <div className="field reason-field">
-                      <label htmlFor={`reason-${game.bggId}`}>Reason if unavailable</label>
+                      <label htmlFor={`reason-${game.bggId}`}>{t("reasonIfUnavailable")}</label>
                       <select
                         id={`reason-${game.bggId}`}
-                        value={game.unavailableReason || "Lent out"}
-                        onChange={(e) =>
-                          void updateAvailability(
-                            game.bggId,
-                            false,
-                            e.target.value,
-                            game.versionName
-                          )
-                        }
+                        value={standardReasons.some((r) => r.value === (game.unavailableReason || "In storage")) ? (game.unavailableReason || "In storage") : "__custom__"}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === "__custom__") {
+                            void updateAvailability(game.bggId, false, "Custom", game.versionName);
+                          } else {
+                            void updateAvailability(game.bggId, false, val, game.versionName);
+                          }
+                        }}
                       >
-                        <option value="Lent out">Lent out to a friend</option>
-                        <option value="Too heavy to transport">Too heavy to transport</option>
-                        <option value="Home only">Home only (play at my place)</option>
-                        <option value="Missing pieces">Missing pieces / under repair</option>
-                        <option value="Not ready to play">Not ready to play / unpunched</option>
+                        {standardReasons.map((r) => (
+                          <option key={r.value} value={r.value}>
+                            {r.label}
+                          </option>
+                        ))}
+                        <option value="__custom__">{t("otherReason")}</option>
                       </select>
+                      {(!standardReasons.some((r) => r.value === game.unavailableReason) && Boolean(game.unavailableReason)) && (
+                        <input
+                          type="text"
+                          style={{ marginTop: "8px" }}
+                          placeholder={t("customReasonPlaceholder")}
+                          defaultValue={game.unavailableReason === "Custom" ? "" : (game.unavailableReason || "")}
+                          onBlur={(e) => {
+                            const customVal = e.target.value.trim() || "In storage";
+                            void updateAvailability(game.bggId, false, customVal, game.versionName);
+                          }}
+                        />
+                      )}
                     </div>
                   )}
 
                   <div className="field version-field">
-                    <label htmlFor={`version-${game.bggId}`}>Specific Edition / Version Name</label>
+                    <label htmlFor={`version-${game.bggId}`}>{t("editionVersionLabel")}</label>
                     <input
                       key={game.bggId}
                       id={`version-${game.bggId}`}
@@ -741,7 +884,7 @@ export function CollectionClient() {
                     />
                   </div>
                   <div className="field max-players-field">
-                    <label htmlFor={`max-players-${game.bggId}`}>Max players with expansions</label>
+                    <label htmlFor={`max-players-${game.bggId}`}>{t("maxPlayersExpansions")}</label>
                     {game.effectiveMaxPlayers && game.effectiveMaxPlayers > (game.maxPlayers ?? 0) && (
                       <span className="field-hint">Calculated from your expansions: {game.effectiveMaxPlayers} players</span>
                     )}

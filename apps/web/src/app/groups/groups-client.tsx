@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useQueryClient } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { queryKeys, useGroupsQuery } from "@/lib/queries";
@@ -11,6 +12,9 @@ export function GroupsClient() {
   const { isLoaded, isSignedIn } = useAuth();
   const api = useApi();
   const queryClient = useQueryClient();
+  const t = useTranslations("groupsList");
+  const tNav = useTranslations("navigation");
+  const tCommon = useTranslations("common");
   const { data, isLoading, error: queryError } = useGroupsQuery();
   const groups = data?.groups ?? [];
   const [name, setName] = useState("");
@@ -21,7 +25,7 @@ export function GroupsClient() {
   async function createGroup(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (name.trim().length < 2) {
-      setError("Use at least two characters for the group name.");
+      setError(t("nameLengthError"));
       return;
     }
     setCreating(true);
@@ -35,7 +39,7 @@ export function GroupsClient() {
       setShowCreate(false);
       await queryClient.invalidateQueries({ queryKey: queryKeys.groups });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not create the group.");
+      setError(cause instanceof Error ? cause.message : t("createError"));
     } finally {
       setCreating(false);
     }
@@ -44,7 +48,7 @@ export function GroupsClient() {
   if (!isLoaded || (isSignedIn && isLoading)) {
     return (
       <div className="page">
-        <p className="loading">Loading groups…</p>
+        <p className="loading">{t("loading")}</p>
       </div>
     );
   }
@@ -52,9 +56,9 @@ export function GroupsClient() {
   if (!isSignedIn) {
     return (
       <section className="narrow-page notice-page">
-        <h1>Find your people.</h1>
-        <p>Sign in to create or join a board game group.</p>
-        <Link className="button" href="/sign-in">Sign in</Link>
+        <h1>{t("unauthTitle")}</h1>
+        <p>{t("unauthSubtitle")}</p>
+        <Link className="button" href="/sign-in">{tNav("signIn")}</Link>
       </section>
     );
   }
@@ -63,8 +67,8 @@ export function GroupsClient() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1>Groups</h1>
-          <p>Invite friends, share collections, schedule game nights, and pick what to play together.</p>
+          <h1>{t("title")}</h1>
+          <p>{t("subtitle")}</p>
         </div>
         <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
           {!showCreate && groups.length > 0 && (
@@ -73,11 +77,11 @@ export function GroupsClient() {
               className="button"
               onClick={() => setShowCreate(true)}
             >
-              + New Group
+              {t("newGroup")}
             </button>
           )}
           <Link href="/collection" className="button-secondary">
-            My collection
+            {t("myCollection")}
           </Link>
         </div>
       </div>
@@ -86,7 +90,7 @@ export function GroupsClient() {
       {showCreate && (
         <div className="panel" style={{ border: "2px solid var(--accent, #d97706)", marginBottom: "24px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-            <h2 style={{ margin: 0, fontSize: "18px" }}>Start a new group</h2>
+            <h2 style={{ margin: 0, fontSize: "18px" }}>{t("startNewGroup")}</h2>
             <button
               type="button"
               className="button-quiet button-small"
@@ -95,23 +99,23 @@ export function GroupsClient() {
                 setError("");
               }}
             >
-              ✕ Cancel
+              ✕ {tCommon("cancel")}
             </button>
           </div>
           <form className="inline-form" onSubmit={createGroup}>
             <div className="field" style={{ flex: 1 }}>
-              <label htmlFor="group-name">Group name</label>
+              <label htmlFor="group-name">{t("groupNameLabel")}</label>
               <input
                 id="group-name"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="Friday game night, The Meeple Guild, etc."
+                placeholder={t("groupNamePlaceholder")}
                 maxLength={80}
                 autoFocus
               />
             </div>
             <button className="button" type="submit" disabled={creating}>
-              {creating ? "Creating…" : "Create group"}
+              {creating ? t("creating") : t("createGroup")}
             </button>
           </form>
           {error && <p className="form-error" role="alert" style={{ marginTop: "8px" }}>{error}</p>}
@@ -120,9 +124,9 @@ export function GroupsClient() {
 
       {/* Groups List First */}
       <div className="section-title">
-        <h2>Your groups</h2>
+        <h2>{t("title")}</h2>
         <p>
-          {groups.length} {groups.length === 1 ? "group" : "groups"}
+          {groups.length} {groups.length === 1 ? t("memberCount", { count: 1 }).split(" ")[1] : t("subtitle")}
         </p>
       </div>
 
@@ -130,22 +134,22 @@ export function GroupsClient() {
         <div className="empty-state panel">
           <img src="/brand/tablefolk-mark.png" alt="" />
           <div>
-            <h2>Your table is waiting.</h2>
-            <p>Create your first group to invite friends, pool your board games, and plan your next game night.</p>
+            <h2>{t("noGroupsTitle")}</h2>
+            <p>{t("noGroupsDesc")}</p>
             <form className="inline-form" onSubmit={createGroup} style={{ marginTop: "16px" }}>
               <div className="field">
                 <input
                   value={name}
                   onChange={(event) => setName(event.target.value)}
-                  placeholder="e.g. Friday Game Night"
+                  placeholder={t("groupNamePlaceholder")}
                   maxLength={80}
                 />
               </div>
               <button className="button" type="submit" disabled={creating}>
-                {creating ? "Creating…" : "Create your first group"}
+                {creating ? t("creating") : t("createGroup")}
               </button>
             </form>
-            {error && <p className="form-error" role="alert">{error}</p>}
+            {error && <p className="form-error" role="alert" style={{ marginTop: "8px" }}>{error}</p>}
           </div>
         </div>
       ) : (
@@ -155,8 +159,8 @@ export function GroupsClient() {
               <div>
                 <h2>{group.name}</h2>
                 <p>
-                  👥 {group.memberCount} {group.memberCount === 1 ? "member" : "members"} · 🎲{" "}
-                  {group.gameCount} {group.gameCount === 1 ? "shared game" : "shared games"}
+                  👥 {t("memberCount", { count: group.memberCount })} · 🎲{" "}
+                  {t("gamesCount", { count: group.gameCount })}
                 </p>
               </div>
               <span className="group-link-arrow" aria-hidden="true">
@@ -180,8 +184,8 @@ export function GroupsClient() {
               }}
             >
               <div>
-                <strong style={{ fontSize: "16px", color: "var(--accent, #d97706)" }}>+ Start another group</strong>
-                <p style={{ margin: "2px 0 0" }}>Create a new table for different friends or coworkers</p>
+                <strong style={{ fontSize: "16px", color: "var(--accent, #d97706)" }}>{t("newGroup")}</strong>
+                <p style={{ margin: "2px 0 0" }}>{t("subtitle")}</p>
               </div>
               <span className="group-link-arrow" style={{ color: "var(--accent, #d97706)" }}>
                 +

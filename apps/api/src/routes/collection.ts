@@ -22,7 +22,15 @@ export async function collectionRoutes(app: FastifyInstance) {
     });
 
     // Map expansions owned by the user to their base games
-    const expansionsByBase = new Map<number, { bggId: number; name: string; maxPlayers: number | null }[]>();
+    const expansionsByBase = new Map<number, {
+      bggId: number;
+      name: string;
+      maxPlayers: number | null;
+      weight?: number | null;
+      playingTime?: number | null;
+      mechanics?: string[];
+      sharedGroupIds: string[];
+    }[]>();
     for (const item of items) {
       if (item.game.baseGameBggId) {
         const list = expansionsByBase.get(item.game.baseGameBggId) ?? [];
@@ -30,6 +38,10 @@ export async function collectionRoutes(app: FastifyInstance) {
           bggId: item.game.bggId,
           name: item.game.name,
           maxPlayers: item.game.maxPlayers,
+          weight: item.game.weight,
+          playingTime: item.game.playingTime,
+          mechanics: item.game.mechanics,
+          sharedGroupIds: item.shares.map((share) => share.groupId),
         });
         expansionsByBase.set(item.game.baseGameBggId, list);
       }
@@ -76,7 +88,14 @@ export async function collectionRoutes(app: FastifyInstance) {
       if (!game) game = await db().$transaction(async (tx) => {
         const imported = await tx.game.upsert({
           where: { bggId },
-          update: cover ? { coverUrl } : {},
+          update: {
+            ...(cover ? { coverUrl } : {}),
+            weight: details.weight ?? undefined,
+            rating: details.rating ?? undefined,
+            rank: details.rank ?? undefined,
+            bestPlayers: details.bestPlayers ?? undefined,
+            lastEnrichedAt: new Date(),
+          },
           create: {
             bggId,
             kind: details.kind,
@@ -90,6 +109,9 @@ export async function collectionRoutes(app: FastifyInstance) {
             minPlayingTime: details.minPlayingTime,
             maxPlayingTime: details.maxPlayingTime,
             weight: details.weight,
+            rating: details.rating,
+            rank: details.rank,
+            bestPlayers: details.bestPlayers,
             minAge: details.minAge,
             designers: details.designers,
             publishers: details.publishers,
@@ -119,6 +141,21 @@ export async function collectionRoutes(app: FastifyInstance) {
       });
     }
     await db().collectionItem.create({ data: { userId: user.id, bggId } });
+
+    // If adding an expansion whose base game is already shared, auto-share with the same groups
+    if (game.baseGameBggId) {
+      const existingShares = await db().groupShare.findMany({
+        where: { userId: user.id, bggId: game.baseGameBggId },
+        select: { groupId: true },
+      });
+      for (const s of existingShares) {
+        await db().groupShare.upsert({
+          where: { groupId_userId_bggId: { groupId: s.groupId, userId: user.id, bggId } },
+          create: { groupId: s.groupId, userId: user.id, bggId },
+          update: {},
+        });
+      }
+    }
     return reply.code(201).send({ game: gameDto(game) });
   });
 
@@ -323,6 +360,9 @@ export async function collectionRoutes(app: FastifyInstance) {
             data: {
               kind: details.kind,
               weight: details.weight,
+              rating: details.rating ?? undefined,
+              rank: details.rank ?? undefined,
+              bestPlayers: details.bestPlayers ?? undefined,
               baseGameBggId: details.baseGameBggId ?? undefined,
               baseGameTitle: details.baseGameTitle ?? undefined,
               coverUrl: coverUrl ?? undefined,
@@ -338,6 +378,22 @@ export async function collectionRoutes(app: FastifyInstance) {
       } catch (err) {
         console.warn("Background batch enrichment notice:", err);
       }
+    }
+
+    // Cascade share any newly imported expansions whose base game is already shared by this user
+    try {
+      await db().$executeRawUnsafe(
+        `INSERT INTO "GroupShare" ("groupId", "userId", "bggId")
+         SELECT gs."groupId", ci."userId", ci."bggId"
+         FROM "GroupShare" gs
+         JOIN "Game" g_exp ON g_exp."baseGameBggId" = gs."bggId"
+         JOIN "CollectionItem" ci ON ci."userId" = gs."userId" AND ci."bggId" = g_exp."bggId"
+         WHERE gs."userId" = $1
+         ON CONFLICT ("groupId", "userId", "bggId") DO NOTHING;`,
+        user.id
+      );
+    } catch {
+      // Non-fatal if raw execute fails in test/mock environments
     }
 
     await db().user.update({
@@ -363,13 +419,18 @@ export async function collectionRoutes(app: FastifyInstance) {
     const now = Date.now();
 
     // Priority 1: Games never enriched yet
-    // Priority 2: Games enriched >7 days ago that still lack weight or local cover
+    // Priority 2: Games missing weight, rating, rank, bestPlayers or local cover
+    // Priority 3: Games enriched >7 days ago (to refresh community rank & rating)
     const candidates = items
       .filter((item) => {
         if (!item.game.lastEnrichedAt) return true;
-        const missingData = item.game.weight === null || !item.game.coverUrl?.startsWith("/v1/covers/");
+        const missingData = item.game.weight === null
+          || item.game.rating === null
+          || item.game.rank === null
+          || item.game.bestPlayers === null
+          || !item.game.coverUrl?.startsWith("/v1/covers/");
         const isStale = (now - item.game.lastEnrichedAt.getTime()) > SEVEN_DAYS_MS;
-        return missingData && isStale;
+        return missingData || isStale;
       })
       .sort((a, b) => {
         if (!a.game.lastEnrichedAt && b.game.lastEnrichedAt) return -1;
@@ -422,6 +483,9 @@ export async function collectionRoutes(app: FastifyInstance) {
           data: {
             kind: details.kind,
             weight: details.weight,
+            rating: details.rating ?? undefined,
+            rank: details.rank ?? undefined,
+            bestPlayers: details.bestPlayers ?? undefined,
             baseGameBggId: details.baseGameBggId ?? undefined,
             baseGameTitle: details.baseGameTitle ?? undefined,
             coverUrl: coverUrl ?? undefined,
@@ -454,4 +518,69 @@ export async function collectionRoutes(app: FastifyInstance) {
       totalCandidates: candidates.length,
     };
   });
+
+  // Manual single-game refresh from BGG (rate-limited to max once every 24h per game)
+  const refreshSingleGameHandler = async (request: any) => {
+    await requireUser(request);
+    const bggId = Number((request.params as { bggId: string }).bggId);
+    if (!Number.isInteger(bggId) || bggId < 1) throw new AppError(400, "INVALID_ID", "Invalid game ID");
+
+    const game = await db().game.findUnique({ where: { bggId } });
+    if (!game) throw notFound("Game not found");
+
+    const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+    const isRecent = game.lastEnrichedAt && (Date.now() - game.lastEnrichedAt.getTime()) < TWENTY_FOUR_HOURS_MS;
+    const force = Boolean(request.query?.force || request.body?.force);
+
+    if (isRecent && !force) {
+      return { game: gameDto(game), refreshed: false };
+    }
+
+    const details = await getBggGame(bggId);
+    let coverUrl = game.coverUrl;
+    if (!coverUrl?.startsWith("/v1/covers/")) {
+      const targetUrl = details.imageUrl ?? coverUrl ?? null;
+      if (targetUrl) {
+        try {
+          const cover = await fetchCover(targetUrl);
+          if (cover) {
+            await db().gameCover.upsert({
+              where: { bggId },
+              create: { bggId, contentType: cover.contentType, data: cover.data },
+              update: { contentType: cover.contentType, data: cover.data },
+            });
+            coverUrl = `/v1/covers/${bggId}`;
+          }
+        } catch (coverErr) {
+          console.warn(`Could not cache cover for game ${bggId}:`, coverErr);
+        }
+      }
+    }
+    if (!coverUrl && details.imageUrl) coverUrl = details.imageUrl;
+
+    const updated = await db().game.update({
+      where: { bggId },
+      data: {
+        kind: details.kind,
+        weight: details.weight,
+        rating: details.rating,
+        rank: details.rank,
+        bestPlayers: details.bestPlayers,
+        baseGameBggId: details.baseGameBggId ?? undefined,
+        baseGameTitle: details.baseGameTitle ?? undefined,
+        coverUrl: coverUrl ?? undefined,
+        description: details.description ?? undefined,
+        designers: details.designers.length ? details.designers : undefined,
+        publishers: details.publishers.length ? details.publishers : undefined,
+        categories: details.categories.length ? details.categories : undefined,
+        mechanics: details.mechanics.length ? details.mechanics : undefined,
+        lastEnrichedAt: new Date(),
+      },
+    });
+
+    return { game: gameDto(updated), refreshed: true };
+  };
+
+  app.post("/v1/collection/:bggId/refresh", refreshSingleGameHandler);
+  app.post("/v1/games/:bggId/refresh", refreshSingleGameHandler);
 }

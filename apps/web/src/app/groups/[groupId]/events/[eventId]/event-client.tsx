@@ -342,8 +342,9 @@ export function EventClient() {
     pollOptions.forEach((opt) => {
       message += `🔹 *${opt.title}* (${opt.styleBadge}) · ~${opt.totalEstimatedMinutes} min\n`;
       opt.lineup.forEach((slot) => {
-        const expStr = slot.game.expansions?.length
-          ? ` (+ ${slot.game.expansions.map((e) => cleanExpansionName(slot.game.name, e.name)).join(", ")})`
+        const expList = slot.expansions !== undefined ? slot.expansions : slot.game.expansions;
+        const expStr = expList && expList.length > 0
+          ? ` (+ ${expList.map((e) => cleanExpansionName(slot.game.name, e.name)).join(", ")})`
           : "";
         message += `  • ${slot.label}: *${slot.game.name}*${expStr} (~${slot.estimatedMinutes}m)\n`;
       });
@@ -995,12 +996,29 @@ export function EventClient() {
                         <div className="completed-slot-order">#{idx + 1}</div>
                         <div className="completed-slot-cover">
                           {g.coverUrl ? (
-                            <img src={gameCoverSrc(g.coverUrl)} alt="" />
-                          ) : (
-                            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "24px" }}>
-                              🎲
-                            </div>
-                          )}
+                            <img
+                              src={gameCoverSrc(g.coverUrl)}
+                              alt=""
+                              onError={(e) => {
+                                e.currentTarget.style.display = "none";
+                                const fallback = e.currentTarget.parentElement?.querySelector(".fallback-dice");
+                                if (fallback) (fallback as HTMLElement).style.display = "flex";
+                              }}
+                            />
+                          ) : null}
+                          <div
+                            className="fallback-dice"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              display: g.coverUrl ? "none" : "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "24px",
+                            }}
+                          >
+                            🎲
+                          </div>
                         </div>
                         <div className="completed-slot-info">
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>
@@ -1154,7 +1172,14 @@ export function EventClient() {
                           }}
                         >
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                            <strong>{slot.label}: {slot.game.name}</strong>
+                            <strong>
+                              {slot.label}: {slot.game.name}
+                              {((slot.expansions !== undefined ? slot.expansions : slot.game.expansions)?.length ?? 0) > 0 && (
+                                <span className="game-attached-expansions-tag">
+                                  {" + "}{(slot.expansions !== undefined ? slot.expansions : slot.game.expansions)!.map((e) => cleanExpansionName(slot.game.name, e.name)).join(", ")}
+                                </span>
+                              )}
+                            </strong>
                             <span style={{ color: "var(--muted)" }}>~{slot.estimatedMinutes}m</span>
                           </div>
                         </div>
@@ -1544,9 +1569,26 @@ export function EventClient() {
                             <div className="lineup-slot-card panel">
                               <div className="lineup-slot-header">
                                 <span className="slot-role-badge">{slot.label}</span>
+                                {slot.addedMechanics && slot.addedMechanics.length > 0 && (
+                                  <span className="slot-role-badge" title={`Added by expansion: ${slot.addedMechanics.join(", ")}`}>
+                                    ✨ +{slot.addedMechanics.join(", ")}
+                                  </span>
+                                )}
                                 <span className="slot-time-badge">⏱️ ~{slot.estimatedMinutes} min</span>
                               </div>
-                              <GameCard game={slot.game} owners={slot.game.owners} />
+                              <GameCard
+                                game={{
+                                  ...slot.game,
+                                  expansions: (slot.expansions !== undefined ? slot.expansions : slot.game.expansions)?.map((e) => ({
+                                    bggId: e.bggId,
+                                    name: e.name,
+                                    maxPlayers: typeof (e as { maxPlayers?: number | null }).maxPlayers === "number" ? (e as { maxPlayers?: number | null }).maxPlayers! : null,
+                                  })),
+                                  weight: slot.effectiveWeight ?? slot.game.weight,
+                                  playingTime: slot.estimatedMinutes,
+                                }}
+                                owners={slot.game.owners}
+                              />
                             </div>
                           </div>
                         ))}
@@ -1588,9 +1630,26 @@ export function EventClient() {
                       <div className="lineup-slot-card panel">
                         <div className="lineup-slot-header">
                           <span className="slot-role-badge">{slot.label}</span>
+                          {slot.addedMechanics && slot.addedMechanics.length > 0 && (
+                            <span className="slot-role-badge" title={`Added by expansion: ${slot.addedMechanics.join(", ")}`}>
+                              ✨ +{slot.addedMechanics.join(", ")}
+                            </span>
+                          )}
                           <span className="slot-time-badge">⏱️ ~{slot.estimatedMinutes} min</span>
                         </div>
-                        <GameCard game={slot.game} owners={slot.game.owners} />
+                        <GameCard
+                          game={{
+                            ...slot.game,
+                            expansions: (slot.expansions !== undefined ? slot.expansions : slot.game.expansions)?.map((e) => ({
+                              bggId: e.bggId,
+                              name: e.name,
+                              maxPlayers: typeof (e as { maxPlayers?: number | null }).maxPlayers === "number" ? (e as { maxPlayers?: number | null }).maxPlayers! : null,
+                            })),
+                            weight: slot.effectiveWeight ?? slot.game.weight,
+                            playingTime: slot.estimatedMinutes,
+                          }}
+                          owners={slot.game.owners}
+                        />
                       </div>
                     </div>
                   ))}

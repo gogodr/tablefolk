@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslations } from "next-intl";
 
 interface GuestRsvpModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ export function GuestRsvpModal({
   initialGuestNames,
   onSave,
 }: GuestRsvpModalProps) {
+  const t = useTranslations("guestRsvp");
   const [guestNames, setGuestNames] = useState<string[]>(initialGuestNames);
   const [nameInput, setNameInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -48,7 +50,7 @@ export function GuestRsvpModal({
       await onSave(guestNames);
       onClose();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update guests");
+      alert(err instanceof Error ? err.message : t("error"));
     } finally {
       setSaving(false);
     }
@@ -85,10 +87,10 @@ export function GuestRsvpModal({
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
           <div>
-            <h3 style={{ margin: "0 0 4px", fontSize: "18px" }}>👥 Bringing Guests?</h3>
+            <h3 style={{ margin: "0 0 4px", fontSize: "18px" }}>{t("title")}</h3>
             <p style={{ margin: 0, fontSize: "13px", color: "var(--muted)" }}>{eventTitle}</p>
           </div>
-          <button type="button" className="button-quiet button-small" onClick={onClose}>
+          <button type="button" className="button-quiet button-small" onClick={onClose} aria-label={t("cancel")}>
             ✕
           </button>
         </div>
@@ -96,7 +98,7 @@ export function GuestRsvpModal({
         <form onSubmit={handleAddGuest} style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
           <input
             type="text"
-            placeholder="Guest name (e.g. Andrea, Alex)"
+            placeholder={t("inputPlaceholder")}
             value={nameInput}
             onChange={(e) => setNameInput(e.target.value)}
             maxLength={60}
@@ -104,17 +106,17 @@ export function GuestRsvpModal({
             style={{ flex: 1, padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)" }}
           />
           <button type="submit" className="button button-small" disabled={!nameInput.trim()}>
-            + Add
+            {t("add")}
           </button>
         </form>
 
         <div style={{ marginBottom: "20px" }}>
           <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--muted)", marginBottom: "8px" }}>
-            Your Guests ({guestNames.length}):
+            {t("yourGuests", { count: guestNames.length })}
           </label>
           {guestNames.length === 0 ? (
             <p style={{ fontSize: "13px", color: "var(--muted)", fontStyle: "italic", margin: "8px 0" }}>
-              No guests added yet. Coming solo!
+              {t("noGuests")}
             </p>
           ) : (
             <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -146,7 +148,8 @@ export function GuestRsvpModal({
                       fontSize: "14px",
                       lineHeight: 1,
                     }}
-                    title="Remove guest"
+                    title={t("removeGuest")}
+                    aria-label={t("removeGuest")}
                   >
                     ✕
                   </button>
@@ -158,10 +161,10 @@ export function GuestRsvpModal({
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
           <button type="button" className="button-secondary" onClick={onClose} disabled={saving}>
-            Cancel
+            {t("cancel")}
           </button>
           <button type="button" className="button" onClick={() => void handleSave()} disabled={saving}>
-            {saving ? "Saving…" : "Save Guests"}
+            {saving ? t("saving") : t("save")}
           </button>
         </div>
       </div>

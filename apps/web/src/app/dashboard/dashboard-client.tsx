@@ -10,6 +10,8 @@ import {
   useEventsCalendarQuery,
   useBggProfileQuery,
 } from "@/lib/queries";
+import { gameCoverSrc } from "@/lib/assets";
+import { useAutoEnrich } from "@/lib/use-auto-enrich";
 import "./dashboard.css";
 
 export function DashboardClient() {
@@ -26,6 +28,7 @@ export function DashboardClient() {
   const groups = groupsData?.groups ?? [];
   const games = collectionData?.games ?? [];
   const events = eventsData?.events ?? [];
+  useAutoEnrich(games);
 
   // Quick Draw local state
   const [selectedGroupId, setSelectedGroupId] = useState<string>("");
@@ -156,9 +159,12 @@ export function DashboardClient() {
                 <div className="hero-event-pick">
                   {nextEvent.officialPick.coverUrl ? (
                     <img
-                      src={nextEvent.officialPick.coverUrl}
+                      src={gameCoverSrc(nextEvent.officialPick.coverUrl)}
                       alt=""
                       className="hero-event-pick-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
                     />
                   ) : (
                     <div className="hero-event-pick-cover" />
