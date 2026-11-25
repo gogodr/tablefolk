@@ -16,6 +16,11 @@
     "footerTagline": "Made for the games you bring to the table.",
     "poweredByBgg": "Powered by BoardGameGeek"
   },
+  "setupNotice": {
+    "title": "Connect your app to start playing.",
+    "description": "The collection and group screens need Clerk, PostgreSQL, and the API settings. Add the values described in the README, then reload this page.",
+    "backHome": "Back to Tablefolk"
+  },
   "navigation": {
     "home": "Home",
     "dashboard": "Dashboard",
@@ -82,6 +87,7 @@
     "viewYourGroups": "View your groups",
     "viewEventsCalendar": "View events calendar",
     "quickDrawTitle": "Quick Game Picker (Quick Draw)",
+    "quickDrawBadge": "Game Night",
     "quickDrawSubtitle": "Instantly filter shared games across your group to find the ideal title for tonight.",
     "groupLabel": "Group",
     "playersLabel": "Players",
@@ -230,6 +236,7 @@
     "newEvent": "+ New Event",
     "gameNightCompleted": "Game Night Completed",
     "eventFinishedVerified": "🏆 Event Finished & Verified",
+    "rulesVideo": "▶ Rules Video",
     "gamesTabled": "What a night! {count} {count, plural, =1 {game hit} other {games hit}} the table",
     "playersGathered": "{count} {count, plural, =1 {player gathered} other {players gathered}} around the table",
     "atLocation": " at {location}",

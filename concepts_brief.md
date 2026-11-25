@@ -2,7 +2,7 @@
 
 * **Author:** Gogod
 * **Date:** 2026-11-11
-* **Status:** Working concept for review
+* **Status:** Historical v1 concept brief (superseded by [README.md](README.md) for current architecture, events, modular expansions, and roadmap)
 
 ## Overview
 

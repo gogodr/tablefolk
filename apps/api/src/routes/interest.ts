@@ -21,11 +21,13 @@ function hasMondayPassed(lastRefill: Date | null, now: Date = new Date()): boole
 }
 
 async function ensureWeeklyRefill(userId: string, groupId: string) {
-  const dbUser = await db().user.findUnique({ where: { id: userId } });
-  if (!dbUser) return { totalPoints: 5, availablePoints: 5, usedPoints: 0 };
+  const member = await db().groupMember.findUnique({
+    where: { groupId_userId: { groupId, userId } },
+  });
+  if (!member) return { totalPoints: 5, availablePoints: 5, usedPoints: 0 };
 
   const now = new Date();
-  let totalPoints = dbUser.votingPoints;
+  let totalPoints = member.votingPoints;
 
   const userInterests = await db().gameInterest.findMany({
     where: { groupId, userId },
@@ -33,29 +35,29 @@ async function ensureWeeklyRefill(userId: string, groupId: string) {
   const usedPoints = userInterests.reduce((sum, i) => sum + i.points, 0);
   let availablePoints = Math.max(0, totalPoints - usedPoints);
 
-  if (hasMondayPassed(dbUser.lastPointsRefillAt, now)) {
+  if (hasMondayPassed(member.lastPointsRefillAt, now)) {
     // Reload up to +3 points per week, with a strict cap of 5 liquid unspent points
     if (availablePoints < 5) {
       const pointsToAdd = Math.min(3, 5 - availablePoints);
       if (pointsToAdd > 0) {
         totalPoints += pointsToAdd;
         availablePoints += pointsToAdd;
-        await db().user.update({
-          where: { id: userId },
+        await db().groupMember.update({
+          where: { groupId_userId: { groupId, userId } },
           data: {
             votingPoints: totalPoints,
             lastPointsRefillAt: now,
           },
         });
       } else {
-        await db().user.update({
-          where: { id: userId },
+        await db().groupMember.update({
+          where: { groupId_userId: { groupId, userId } },
           data: { lastPointsRefillAt: now },
         });
       }
     } else {
-      await db().user.update({
-        where: { id: userId },
+      await db().groupMember.update({
+        where: { groupId_userId: { groupId, userId } },
         data: { lastPointsRefillAt: now },
       });
     }

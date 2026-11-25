@@ -14,7 +14,7 @@ export async function pickRoutes(app: FastifyInstance) {
     const { playerCount, excludeBggId, maxDuration, maxWeight, includedOwnerIds } = pickSchema.parse(request.body);
     await requireMember(groupId, user.id);
 
-    const shares = await db().groupShare.findMany({
+    const allShares = await db().groupShare.findMany({
       where: {
         groupId,
         ...(includedOwnerIds !== undefined ? { userId: { in: includedOwnerIds } } : {}),
@@ -25,6 +25,8 @@ export async function pickRoutes(app: FastifyInstance) {
         user: { select: { id: true, displayName: true } },
       },
     });
+
+    const shares = allShares.filter((s) => s.collection?.isAvailable ?? true);
 
     if (shares.length === 0) {
       audit("pick.empty", { groupId, actorId: user.id, playerCount });
@@ -84,7 +86,7 @@ export async function pickRoutes(app: FastifyInstance) {
 
     await requireMember(groupId, user.id);
 
-    const shares = await db().groupShare.findMany({
+    const allShares = await db().groupShare.findMany({
       where: {
         groupId,
         ...(body.includedOwnerIds !== undefined ? { userId: { in: body.includedOwnerIds } } : {}),
@@ -95,6 +97,8 @@ export async function pickRoutes(app: FastifyInstance) {
         user: { select: { id: true, displayName: true } },
       },
     });
+
+    const shares = allShares.filter((s) => s.collection?.isAvailable ?? true);
 
     if (shares.length === 0) {
       return {

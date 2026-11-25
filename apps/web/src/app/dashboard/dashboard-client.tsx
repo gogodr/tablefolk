@@ -241,7 +241,7 @@ export function DashboardClient() {
                 <h2 className="dashboard-card-title">
                   <span>🎯</span> {t("quickDrawTitle")}
                 </h2>
-                <span className="dashboard-card-badge">Game Night</span>
+                <span className="dashboard-card-badge">{t("quickDrawBadge")}</span>
               </div>
               <div className="quick-draw-box">
                 <p style={{ margin: 0, color: "var(--color-muted)", fontSize: "var(--text-sm)" }}>

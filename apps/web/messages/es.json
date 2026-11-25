@@ -16,6 +16,11 @@
     "footerTagline": "Hecho para los juegos que llevas a la mesa.",
     "poweredByBgg": "Desarrollado con BoardGameGeek"
   },
+  "setupNotice": {
+    "title": "Conecta tu app para empezar a jugar.",
+    "description": "Las pantallas de colección y grupos necesitan la configuración de Clerk, PostgreSQL y la API. Agrega los valores indicados en el README y recarga esta página.",
+    "backHome": "Volver a Tablefolk"
+  },
   "navigation": {
     "home": "Inicio",
     "dashboard": "Dashboard",
@@ -82,6 +87,7 @@
     "viewYourGroups": "Ver tus grupos",
     "viewEventsCalendar": "Ver calendario de eventos",
     "quickDrawTitle": "Selector rápido de juegos (Quick Draw)",
+    "quickDrawBadge": "Noche de Juegos",
     "quickDrawSubtitle": "Filtra al instante los juegos que tus amigos han compartido para encontrar el título ideal para hoy.",
     "groupLabel": "Grupo",
     "playersLabel": "Jugadores",
@@ -230,6 +236,7 @@
     "newEvent": "+ Nuevo Evento",
     "gameNightCompleted": "Game Night Finalizada",
     "eventFinishedVerified": "🏆 Evento Finalizado & Verificado",
+    "rulesVideo": "▶ Video de Reglas",
     "gamesTabled": "¡Qué gran noche! {count} {count, plural, =1 {juego vio} other {juegos vieron}} mesa",
     "playersGathered": "{count} {count, plural, =1 {jugador reunido} other {jugadores reunidos}} en torno a la mesa",
     "atLocation": " en {location}",

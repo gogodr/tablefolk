@@ -1,12 +1,16 @@
+"use client";
+
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 export function SetupNotice() {
+  const t = useTranslations("setupNotice");
+
   return (
     <section className="narrow-page notice-page">
-      
-      <h1>Connect your app to start playing.</h1>
-      <p>The collection and group screens need Clerk, PostgreSQL, and the API settings. Add the values described in the README, then reload this page.</p>
-      <Link href="/" className="button">Back to Tablefolk</Link>
+      <h1>{t("title")}</h1>
+      <p>{t("description")}</p>
+      <Link href="/" className="button">{t("backHome")}</Link>
     </section>
   );
 }
