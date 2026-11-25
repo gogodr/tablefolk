@@ -6,6 +6,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages, getTranslations } from "next-intl/server";
 import { QueryProvider } from "@/components/query-provider";
 import { LanguageToggle } from "@/components/language-toggle";
+import { MobileNav } from "@/components/mobile-nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -35,15 +36,32 @@ async function Header({ configured, locale }: { configured: boolean; locale: str
           <Link href="/events">{tNav("events")}</Link>
         </nav>
         <div className="header-account">
-          <LanguageToggle currentLocale={locale} />
+          <div className="header-desktop-controls">
+            <LanguageToggle currentLocale={locale} />
+          </div>
           {configured ? (
             <>
               <Suspense>
-                <Show when="signed-out"><Link className="button button-small" href="/sign-in">{tNav("signIn")}</Link></Show>
+                <Show when="signed-out"><Link className="button button-small header-desktop-controls" href="/sign-in">{tNav("signIn")}</Link></Show>
                 <Show when="signed-in"><UserButton /></Show>
               </Suspense>
             </>
-          ) : <Link className="button button-small" href="/collection">{tNav("getStarted")}</Link>}
+          ) : <Link className="button button-small header-desktop-controls" href="/collection">{tNav("getStarted")}</Link>}
+          <MobileNav
+            configured={configured}
+            locale={locale}
+            labels={{
+              dashboard: tNav("dashboard"),
+              collection: tNav("collection"),
+              groups: tNav("groups"),
+              events: tNav("events"),
+              signIn: tNav("signIn"),
+              getStarted: tNav("getStarted"),
+              openMenu: tNav("openMenu"),
+              closeMenu: tNav("closeMenu"),
+              mainNavAria: tNav("mainNavAria"),
+            }}
+          />
         </div>
       </div>
     </header>

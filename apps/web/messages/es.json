@@ -31,7 +31,9 @@
     "signOut": "Cerrar sesión",
     "getStarted": "Comenzar",
     "mainNavAria": "Navegación principal",
-    "tablefolkHomeAria": "Inicio de Tablefolk"
+    "tablefolkHomeAria": "Inicio de Tablefolk",
+    "openMenu": "Abrir menú",
+    "closeMenu": "Cerrar menú"
   },
   "home": {
     "bannerAria": "Acceso rápido al dashboard",

@@ -27,6 +27,79 @@ img { max-width: 100%; }
 .main-nav { display: flex; align-items: center; gap: 30px; margin-right: auto; font-size: 14px; font-weight: 600; color: var(--muted); }
 .main-nav a:hover, .text-link:hover { color: var(--accent); }
 .header-account { min-width: 82px; display: flex; justify-content: flex-end; align-items: center; gap: 12px; }
+.header-desktop-controls { display: inline-flex; align-items: center; }
+.mobile-nav-root { display: none; }
+.mobile-nav-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-input);
+  background: var(--color-card);
+  color: var(--color-ink);
+  transition: background-color var(--dur-short), border-color var(--dur-short);
+}
+.mobile-nav-toggle:hover {
+  background: var(--color-paper-2);
+  border-color: var(--color-ink);
+}
+.mobile-nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: color-mix(in oklab, var(--color-ink) 35%, transparent);
+}
+.mobile-nav-drawer {
+  position: fixed;
+  top: 64px;
+  left: var(--gutter);
+  right: var(--gutter);
+  z-index: 100;
+  padding: var(--space-md);
+  background: var(--color-card);
+  border: 1px solid var(--color-edge);
+  border-radius: var(--radius-card);
+  box-shadow: 0 18px 40px color-mix(in oklab, var(--color-ink) 18%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+.mobile-nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mobile-nav-link {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: var(--radius-input);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--color-ink);
+  transition: background-color var(--dur-short);
+}
+.mobile-nav-link:hover,
+.mobile-nav-link.active {
+  background: var(--color-paper-2);
+}
+.mobile-nav-link.active {
+  color: var(--color-accent-2);
+  font-weight: 700;
+}
+.mobile-nav-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--color-rule);
+}
 .language-toggle {
   display: inline-flex;
   align-items: center;
@@ -370,15 +443,21 @@ body { font-size: var(--text-md); }
   .hero > div:first-child { width: 65%; }
   .home-preview { grid-template-columns: 1fr; }
 }
+@media (max-width: 768px) {
+  .site-header { position: relative; z-index: 105; }
+  .header-inner { min-height: 62px; padding: 8px var(--gutter); gap: var(--space-sm); justify-content: space-between; }
+  .main-nav { display: none; }
+  .header-desktop-controls { display: none !important; }
+  .mobile-nav-root { display: inline-flex; align-items: center; }
+  .header-account { margin-left: auto; min-width: 0; gap: 10px; }
+}
 @media (max-width: 640px) {
-  .header-inner { min-height: 68px; padding-inline: var(--gutter); gap: var(--space-sm); }
   .wordmark { gap: var(--space-3xs); font-size: 19px; }
-  .wordmark img { width: 38px; height: 38px; }
-  .main-nav { gap: var(--space-sm); font-size: var(--text-xs); }
-  .header-account { min-width: 0; }
-  .header-account .button-small { min-height: 34px; padding: 6px 10px; }
+  .wordmark img { width: 34px; height: 34px; }
   .page, .home-page { padding: 28px var(--gutter); }
   .narrow-page { padding-inline: var(--gutter); }
+  .section-title { flex-wrap: wrap; gap: var(--space-xs); }
+  .draw-card { padding: 20px; min-height: 0; }
   .hero { min-height: 680px; align-items: flex-start; border-radius: var(--radius-card); }
   .hero > div:first-child { width: 100%; padding: 30px 26px; }
   .hero h1 { max-width: 12ch; font-size: clamp(2.75rem, 11vw, 4rem); }
@@ -395,11 +474,12 @@ body { font-size: var(--text-md); }
   .preview-top .muted, .preview-row span { display: block; margin-top: 3px; }
   .preview-row span:last-child { text-align: left; }
   .site-footer { padding-inline: var(--gutter); }
+  .site-footer > div { flex-wrap: wrap; margin-top: 12px; }
 }
 @media (max-width: 380px) {
-  .wordmark { font-size: 0; }
-  .wordmark img { width: 42px; height: 42px; }
-  .main-nav { margin-left: auto; }
+  .wordmark { font-size: 17px; }
+  .wordmark img { width: 30px; height: 30px; }
+  .main-nav { gap: 10px; }
 }
 
 /* --- New Features Styling: BGG Sync, Events, Want to Play & Availability --- */
@@ -2523,5 +2603,162 @@ body { font-size: var(--text-md); }
   background: var(--color-paper-2);
   border: 1px dashed var(--color-edge);
   border-radius: var(--radius-stock);
+}
+
+/* ==========================================================================
+   Mobile Responsive Fixes for Events, Calendar, Draw & Modals
+   ========================================================================== */
+@media (max-width: 640px) {
+  .panel {
+    padding: var(--space-md);
+  }
+  .panel-actions,
+  .draw-actions,
+  .official-selection-header,
+  .detail-expansion-item {
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+  }
+  .headcount-badge {
+    padding: 5px 10px;
+    font-size: 12px;
+    white-space: normal;
+  }
+  .guests-stepper {
+    margin-left: 0;
+  }
+  .event-card-actions {
+    justify-content: stretch;
+  }
+  .event-card-actions > * {
+    flex: 1;
+    text-align: center;
+  }
+  .draw-owners-strip {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+  .draw-owners-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  .affinity-slider-control {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .affinity-slider-control input[type="range"] {
+    flex-basis: 100%;
+    order: -1;
+  }
+  .game-detail-dialog {
+    width: 96vw;
+    max-height: 92dvh;
+  }
+  .game-detail-container {
+    max-height: 92dvh;
+  }
+  .game-detail-header {
+    padding: 14px 16px;
+  }
+  .game-detail-title-wrap h2 {
+    font-size: 17px;
+  }
+  .member-row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .group-link {
+    padding: var(--space-md);
+  }
+  .calendar-panel {
+    padding: var(--space-sm);
+  }
+  .calendar-nav-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .calendar-nav-buttons {
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .calendar-grid-header {
+    font-size: 10px;
+    padding: 6px 0;
+  }
+  .calendar-grid {
+    gap: 2px;
+  }
+  .calendar-day-cell {
+    min-height: 62px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .calendar-day-number {
+    font-size: 10px;
+  }
+  .calendar-day-cell.calendar-day-today .calendar-day-number span {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
+  .day-count-badge {
+    font-size: 9px;
+    padding: 0 4px;
+  }
+  .calendar-day-events {
+    max-height: 68px;
+    gap: 2px;
+  }
+  .calendar-event-pill {
+    padding: 2px 4px;
+    font-size: 10px;
+    gap: 2px;
+  }
+  .calendar-event-pill .pill-time,
+  .calendar-event-pill .pill-badge,
+  .calendar-event-pill .pill-badge-rsvp {
+    display: none;
+  }
+  .completed-hero-banner {
+    padding: var(--space-md);
+    gap: var(--space-md);
+  }
+  .completed-hero-titles h2 {
+    font-size: var(--text-xl);
+  }
+  .completed-timeline-track-card {
+    padding: var(--space-sm);
+  }
+  .completed-timeline-track-header {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .completed-timeline-bar {
+    overflow-x: auto;
+  }
+  .completed-slot-card {
+    padding: var(--space-sm);
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+  }
+  .completed-slot-order {
+    width: 28px;
+    height: 28px;
+    font-size: 12px;
+  }
+  .completed-slot-cover {
+    width: 52px;
+    height: 52px;
+  }
+  .completed-crew-card {
+    padding: var(--space-sm) var(--space-md);
+  }
+  .completed-crew-title {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .completed-footer-actions {
+    padding: var(--space-md);
+  }
 }
 

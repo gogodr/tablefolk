@@ -97,7 +97,7 @@ export function GuestRsvpModal({
           </button>
         </div>
 
-        <form onSubmit={handleAddGuest} style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+        <form onSubmit={handleAddGuest} style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "16px" }}>
           <input
             type="text"
             placeholder={t("inputPlaceholder")}
@@ -105,7 +105,7 @@ export function GuestRsvpModal({
             onChange={(e) => setNameInput(e.target.value)}
             maxLength={60}
             autoFocus
-            style={{ flex: 1, padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)" }}
+            style={{ flex: "1 1 160px", minWidth: 0, padding: "8px 12px", borderRadius: "6px", border: "1px solid var(--border)" }}
           />
           <button type="submit" className="button button-small" disabled={!nameInput.trim()}>
             {t("add")}
