@@ -436,8 +436,8 @@ export function EventClient() {
       .map((r) => r.userId);
     setAttendedUserIds(initialAttendees);
 
-    const initialGuests = (event?.confirmedGuestNames && event.confirmedGuestNames.length > 0)
-      ? event.confirmedGuestNames
+    const initialGuests = event?.status === "COMPLETED"
+      ? (event.confirmedGuestNames ?? [])
       : (event?.rsvps ?? [])
           .filter((r) => r.status === "ATTENDING")
           .flatMap((r) => r.guestNames ?? []);
@@ -1001,11 +1001,7 @@ export function EventClient() {
             isHost: r.userId === event.hostUserId,
             isGuest: false,
           })),
-          ...(event.confirmedGuestNames && event.confirmedGuestNames.length > 0
-            ? event.confirmedGuestNames.map((name) => ({ name, isHost: false, isGuest: true }))
-            : event.rsvps
-                .filter((r) => r.status === "ATTENDING")
-                .flatMap((r) => (r.guestNames ?? []).map((name) => ({ name, isHost: false, isGuest: true })))),
+          ...(event.confirmedGuestNames ?? []).map((name) => ({ name, isHost: false, isGuest: true })),
         ];
 
         const totalPlayingMinutes = playedGames.reduce((acc, g) => acc + (g.playingTime || 45), 0);
@@ -1469,7 +1465,7 @@ export function EventClient() {
                         rel="noopener noreferrer"
                         className="rules-video-link"
                       >
-                        ▶ Rules Video
+                        {tEvents("rulesVideo")}
                       </a>
                     </div>
                   </div>

@@ -74,11 +74,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang={locale}>
       <body>
-        <QueryProvider>
-          <NextIntlClientProvider messages={messages} locale={locale}>
-            {key ? <ClerkProvider publishableKey={key}>{content}</ClerkProvider> : content}
-          </NextIntlClientProvider>
-        </QueryProvider>
+        <NextIntlClientProvider messages={messages} locale={locale}>
+          {key ? (
+            <ClerkProvider publishableKey={key}>
+              <QueryProvider clerkEnabled>{content}</QueryProvider>
+            </ClerkProvider>
+          ) : (
+            <QueryProvider>{content}</QueryProvider>
+          )}
+        </NextIntlClientProvider>
       </body>
     </html>
   );

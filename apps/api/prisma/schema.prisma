@@ -13,8 +13,6 @@ model User {
   email              String
   bggUsername        String?
   lastBggSyncAt      DateTime?
-  votingPoints       Int              @default(5)
-  lastPointsRefillAt DateTime?
   createdAt          DateTime         @default(now())
   collection         CollectionItem[]
   createdGroups      Group[]          @relation("GroupCreator")
@@ -104,12 +102,14 @@ model Group {
 }
 
 model GroupMember {
-  groupId   String
-  userId    String
-  joinedAt  DateTime     @default(now())
-  group     Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  shares    GroupShare[]
+  groupId            String
+  userId             String
+  votingPoints       Int          @default(5)
+  lastPointsRefillAt DateTime?
+  joinedAt           DateTime     @default(now())
+  group              Group        @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shares             GroupShare[]
 
   @@id([groupId, userId])
   @@index([userId])

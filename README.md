@@ -174,7 +174,7 @@ To eliminate the classic *"What should we play? I don't care, you pick"* paralys
 
 ### 🎲 Contributor Toggles & Live Archetype Badges
 
-- **Selective Contributor Filtering (`excludedUserIds`):** In both Single Pick and Session Menu modes, hosts can activate or deactivate individual game owners who contributed titles to the candidate pool. If a member couldn't bring their bag or only certain attendees arrived, toggle their collection off with 1 click to restrict the draw exclusively to physical boxes present in the room.
+- **Selective Contributor Filtering (`includedOwnerIds`):** In both Single Pick and Session Menu modes, hosts can activate or deactivate individual game owners who contributed titles to the candidate pool. If a member couldn't bring their bag or only certain attendees arrived, toggle their collection off with 1 click to restrict the draw exclusively to physical boxes present in the room.
 - **Session Template & Archetype Identification:** When rolling a Quick Pick or Session Menu, Tablefolk visibly badges the matched recipe archetype (e.g. `🎉 Party Night Express`, `🧠 Euro Engine Heavy`, `🤝 Co-op Anchor`, `☕ Light & Easy Warmup`) and its target playtime directly on the result card.
 
 ---
@@ -353,19 +353,19 @@ Tablefolk focuses on what happens **around the physical table**: social coordina
 - [x] **🌐 Multilingual Interface (i18n)**: English & Spanish interface powered by `next-intl` (preserving authentic BGG metadata).
 - [x] **⭐ BGG Rating, Geek Rank & Community Consensus**: Display BGG community rating, overall geek rank (`#42 BGG`), and community-recommended player counts ("Best at X") directly on cards and modals with gentle background auto-enrichment and single-game refresh.
 - [x] **📦 Cascaded Expansion Sharing & Modular Session Planning**: Auto-share owned expansions with base games, per-group toggle checkboxes in the share modal, sub-expansion grouping in "All boxes" view, and modular session engine selection (Vanilla vs. Expansions with dynamic BGG complexity weight, duration, and added mechanics).
-- [ ] **🎲 In-Room Mini-Kit & Animated Meeples**:
+- [x] **📺 1-Click Rules Video Links**: Direct YouTube "How to Play" links on the locked official lineup and WhatsApp/Discord shares.
+- [ ] **🎲 In-Room Mini-Kit & Animated Meeples** *(Sprint 3 — see [Sprint 3 Spec](docs/roadmap-sprint-3.md))*:
   - Interactive **First-Player Decider** featuring animated meeple avatars.
   - Optional **Turn / AP Timer** (Analysis Paralysis alert) for heavy turns.
-  - 1-click **Rules Video & Reference links** on the locked official lineup.
+  - **BGG Rules & Reference Links** on the locked official lineup.
 
 ### 🟡 Phase 2: Gathering Notifications & Group Logistics (Mid-term)
-- [ ] **🔔 Discord & WhatsApp Webhooks**:
-  - Automated rich embeds when an event is scheduled.
-  - Instant notification blast when the 3-Menu Trio poll opens for voting.
-  - Final call alert when the host locks the Official Lineup.
+- [ ] **🔔 Discord Webhooks & WhatsApp Deep-Links**:
+  - Automated Discord rich embeds when an event is scheduled, when the 3-Menu Trio poll opens, and when the host locks the Official Lineup.
+  - Enhanced 1-click WhatsApp (`wa.me` deep-link + formatted ballot/recap copy).
 - [ ] **🪑 Multi-Table Splitter**: Intelligent partitioning for large groups (8–16+ attendees) into 2 balanced parallel game tables without time clashes.
 - [ ] **🍕 Potluck & Beverage Checklist**: Lightweight collaborative table board for food and drinks tied to the event room.
 
 ### 🟣 Phase 3: Platform & Ecosystem Integrations (Long-term)
-- [ ] **🔄 BGG Play Logging Sync**: 1-click export of the completed session's played games directly to the attendee's personal BoardGameGeek play log.
-- [ ] **📱 PWA & Offline Table Mode**: Full progressive web app with offline local caching for playing in cabins, basements, or venues with spotty connection.
+- [ ] **🔄 BGG Play Logging Export / Assisted Link**: 1-click CSV/JSON export or pre-filled BGG play-log deep-links for completed sessions (without requiring or storing BGG user passwords, as BGG XML API2 is read-only).
+- [ ] **📱 PWA & Offline Table Mode**: Full progressive web app (`manifest.json`, Service Worker, offline mutation queue) building on the existing per-user 3-day TanStack Query cache.

@@ -75,10 +75,12 @@ vi.mock("../db.js", () => {
   const client = {
     groupMember: {
       findUnique: async ({ where }: { where: { groupId_userId: { groupId: string; userId: string } } }) => {
-        return state.groupMembers.find(
+        const found = state.groupMembers.find(
           (m) => m.groupId === where.groupId_userId.groupId && m.userId === where.groupId_userId.userId
-        ) ?? null;
+        );
+        return found ? { ...found, votingPoints: 5, lastPointsRefillAt: null } : null;
       },
+      update: async () => ({ groupId: "group-1", userId: "user-ricardo", votingPoints: 5, lastPointsRefillAt: null }),
     },
     event: {
       create: async ({ data, include }: any) => {
@@ -303,5 +305,45 @@ describe("Events management & attendance", () => {
     expect(closeRes.json().event.playedGames[1].coverUrl).toBe("/v1/covers/999");
     expect(closeRes.json().event.rsvps).toHaveLength(2);
     expect(closeRes.json().event.rsvps.every((r: any) => r.status === "ATTENDING")).toBe(true);
+  });
+
+  it("uses actual confirmed attendance for totalHeadcount on COMPLETED events even when manualHeadcount was set or guests are cleared", async () => {
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/v1/groups/group-1/events",
+      payload: {
+        title: "Manual Headcount Night",
+        scheduledDate: "2026-11-22T19:00:00Z",
+        manualHeadcount: 6,
+      },
+    });
+    expect(createRes.statusCode).toBe(201);
+    const eventId = createRes.json().event.id;
+    expect(createRes.json().event.totalHeadcount).toBe(6);
+
+    // Add an RSVP with additionalGuests
+    state.rsvps.push({
+      id: "rsvp-gogo",
+      eventId,
+      userId: "user-gogo",
+      status: "ATTENDING",
+      additionalGuests: 2,
+      updatedAt: new Date(),
+    });
+
+    // Close with only 2 members and 0 confirmed guests
+    const closeRes = await app.inject({
+      method: "POST",
+      url: `/v1/events/${eventId}/close`,
+      payload: {
+        playedBggIds: [42],
+        attendedUserIds: ["user-ricardo", "user-gogo"],
+        attendedGuestNames: [],
+      },
+    });
+    expect(closeRes.statusCode).toBe(200);
+    expect(closeRes.json().event.status).toBe("COMPLETED");
+    expect(closeRes.json().event.totalHeadcount).toBe(2);
+    expect(closeRes.json().event.confirmedGuestNames).toEqual([]);
   });
 });
