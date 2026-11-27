@@ -31,7 +31,9 @@
     "signOut": "Sign out",
     "getStarted": "Get started",
     "mainNavAria": "Main navigation",
-    "tablefolkHomeAria": "Tablefolk home"
+    "tablefolkHomeAria": "Tablefolk home",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu"
   },
   "home": {
     "bannerAria": "Quick access to dashboard",

@@ -140,7 +140,7 @@ export function EventsClient() {
             {isCompleted ? (
               <strong>{tCal("completedBadge", { count: event.totalHeadcount })}</strong>
             ) : (
-              <><strong>{event.totalHeadcount}</strong> {tCal("attendingBadge", { count: event.totalHeadcount })}</>
+              <strong>{tCal("attendingBadge", { count: event.totalHeadcount })}</strong>
             )}
           </div>
         </div>

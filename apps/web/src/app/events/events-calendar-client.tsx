@@ -156,14 +156,14 @@ export function EventsCalendarClient() {
             {isCompleted ? (
               <strong>{t("completedBadge", { count: event.totalHeadcount })}</strong>
             ) : (
-              <><strong>{event.totalHeadcount}</strong> {t("attendingBadge", { count: event.totalHeadcount })}</>
+              <strong>{t("attendingBadge", { count: event.totalHeadcount })}</strong>
             )}
           </div>
         </div>
 
         {/* Voting Banner */}
         {event.menuPoll?.status === "OPEN" && !isCompleted && (
-          <div style={{ background: "#fef3c7", border: "1px solid #fde68a", padding: "10px 14px", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ background: "#fef3c7", border: "1px solid #fde68a", padding: "10px 14px", borderRadius: "8px", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
             <span>{t("votingOpenBanner")}</span>
             <Link href={`/groups/${event.groupId}/events/${event.id}`} className="button-small">
               {t("castVote")}
@@ -518,7 +518,7 @@ export function EventsCalendarClient() {
                   {selectedEvent.hostDisplayName && <p className="event-host" style={{ margin: "2px 0" }}>🏠 Host: {selectedEvent.hostDisplayName}</p>}
                 </div>
 
-                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
                   <span className="headcount-badge">👥 {selectedEvent.totalHeadcount} players</span>
                   <Link
                     href={`/groups/${selectedEvent.groupId}/events/${selectedEvent.id}`}

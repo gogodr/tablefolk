@@ -822,7 +822,7 @@ export function EventClient() {
           <p>
             {event?.location ? `📍 ${event.location} · ` : ""}
             {event?.hostDisplayName ? `🏠 Host: ${event.hostDisplayName} · ` : ""}
-            <strong>{event?.totalHeadcount}</strong> {tEvents("headcountConfirmed", { count: event?.totalHeadcount ?? 0 })}
+            <strong>{tEvents("headcountConfirmed", { count: event?.totalHeadcount ?? 0 })}</strong>
           </p>
 
           {/* Attendees preview pill list */}
@@ -1299,7 +1299,7 @@ export function EventClient() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))", gap: "16px" }}>
             {event.menuPoll.options.map((opt) => {
               const myVote = opt.votes.some((v) => v.userId === user?.id);
               const voteCount = opt.votes.length;
@@ -1994,7 +1994,7 @@ export function EventClient() {
                 <span style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "var(--muted)", marginBottom: "6px" }}>
                   {tEvents("groupMembersLabel")}
                 </span>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "8px", maxHeight: "150px", overflowY: "auto" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(160px, 100%), 1fr))", gap: "8px", maxHeight: "150px", overflowY: "auto" }}>
                   {groupMembers.map((m) => {
                     const checked = attendedUserIds.includes(m.userId);
                     return (

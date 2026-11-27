@@ -425,3 +425,37 @@
   font-size: var(--text-xs);
   color: var(--color-muted);
 }
+
+@media (max-width: 640px) {
+  .dashboard-page {
+    padding-top: var(--space-lg);
+    padding-bottom: var(--space-2xl);
+  }
+  .dashboard-header {
+    margin-bottom: var(--space-lg);
+    padding-bottom: var(--space-md);
+  }
+  .dashboard-card {
+    padding: var(--space-md);
+  }
+  .dashboard-card-header {
+    flex-wrap: wrap;
+  }
+  .hero-event-pick {
+    flex-wrap: wrap;
+  }
+  .dashboard-group-item {
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+  }
+  .dashboard-bgg-sync {
+    flex-wrap: wrap;
+    gap: var(--space-xs);
+  }
+}
+
+@media (max-width: 380px) {
+  .dashboard-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
